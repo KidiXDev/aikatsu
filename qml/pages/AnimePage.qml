@@ -6,7 +6,6 @@ import QtQuick.Effects
 import QtQuick.Layouts
 import Aikatsu
 
-// Series page: AniList banner hero, synopsis, episode grid with progress.
 Item {
     id: root
 
@@ -169,7 +168,6 @@ Item {
             width: flick.width
             spacing: Theme.spacing.large
 
-            // ---- hero
             Item {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 300
@@ -367,7 +365,6 @@ Item {
                 }
             }
 
-            // ---- episodes
             RowLayout {
                 Layout.fillWidth: true
                 Layout.leftMargin: Theme.padding.extraLarge

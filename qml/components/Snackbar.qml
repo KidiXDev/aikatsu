@@ -1,7 +1,6 @@
 import QtQuick
 import Aikatsu
 
-// Bottom-center transient message.
 StyledRect {
     id: root
 

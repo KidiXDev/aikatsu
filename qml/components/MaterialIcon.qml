@@ -1,7 +1,6 @@
 import QtQuick
 import Aikatsu
 
-// Material Symbols Rounded ligature icon with animatable FILL/GRAD axes.
 StyledText {
     property real fill
     property int grade: Theme.dark ? -25 : 0

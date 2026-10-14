@@ -2,9 +2,7 @@ pragma Singleton
 
 import QtQuick
 
-// Material 3 tokens (values from caelestia's Config/tokens.hpp, i.e. the M3 spec)
-// and Aikatsu's sakura palette: TonalSpot surfaces with Vibrant accent roles,
-// generated once from seed #ff7aa8 with materialyoucolor.
+// Material 3 design tokens and the sakura palette (generated from #ff7aa8).
 QtObject {
     id: root
 

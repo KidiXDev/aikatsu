@@ -21,7 +21,7 @@ fn log_path() -> PathBuf {
     dirs::data_dir().unwrap_or_else(std::env::temp_dir).join("aikatsu").join("logs").join("aikatsu.log")
 }
 
-/// One log file per run (like the CLI), mirrored to stderr.
+/// A fresh log file each run, also printed to the console.
 fn debug_enabled() -> bool {
     std::env::args().any(|a| a == "--debug") || api::setting("debug") == "true"
 }

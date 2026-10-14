@@ -1,6 +1,5 @@
-//! Discord Rich Presence ("Watching"), ported from GonimeId internal/discord.
-//! The IPC client is blocking, so it lives on its own thread; QML pushes the
-//! player state every few seconds and only meaningful changes reach Discord.
+//! Discord "Watching" status. The Discord client blocks, so it runs on its own
+//! thread; the player reports every few seconds and only real changes are sent.
 
 use discord_rich_presence::activity::{Activity, ActivityType, Assets, Button, Timestamps};
 use discord_rich_presence::{DiscordIpc, DiscordIpcClient};

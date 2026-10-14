@@ -1,7 +1,6 @@
 import QtQuick
 import Aikatsu
 
-// M3 linear progress: track + indicator with a small gap; indeterminate sweeps.
 Item {
     id: root
 

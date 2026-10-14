@@ -1,6 +1,5 @@
-//! The six Indonesian-sub sources, ported 1:1 from GonimeId's
-//! internal/scraper/providers. Each module exposes search / episodes /
-//! qualities / stream; this module dispatches by `SourceId`.
+//! The six streaming sites. Each module offers search / episodes / qualities /
+//! stream; this one picks the module for a `SourceId`.
 
 mod astronime;
 mod moenime;
@@ -30,7 +29,7 @@ pub enum SourceId {
 }
 
 impl SourceId {
-    /// Priority order (the CLI's descriptor priorities 10..60).
+    /// In priority order.
     pub const ALL: [SourceId; 6] = [
         SourceId::Otakudesu,
         SourceId::Samehadaku,
@@ -144,7 +143,6 @@ pub async fn stream(src: SourceId, episode_url: &str, quality: &str) -> Result<S
     res
 }
 
-// --- search fan-out with per-source circuit breaker (dispatch.go / netx/circuit.go)
 
 const SEARCH_ALL_TIMEOUT: Duration = Duration::from_secs(15);
 const PER_SOURCE_TIMEOUT: Duration = Duration::from_secs(12);
@@ -225,7 +223,6 @@ pub async fn search_all(query: &str, enabled: &[SourceId], on_result: impl Fn(So
     }
 }
 
-// --- helpers shared by the providers
 
 static HEIGHT_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\d{3,4})").unwrap());
 static SUB_INDO_RE: LazyLock<Regex> =

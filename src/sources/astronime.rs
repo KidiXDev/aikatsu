@@ -1,5 +1,5 @@
 //! astronime.id — Hydrax/Abyss player. The embed's `const datas` blob is
-//! decrypted by the third-party enc-dec.app service (as the CLI does).
+//! decrypted by the third-party enc-dec.app service.
 
 use super::{Anime, Episode, SourceId, Stream, attr, height_of, text_of};
 use crate::http::{self, absolute, query_escape, sel};

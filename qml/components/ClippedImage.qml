@@ -2,8 +2,7 @@ import QtQuick
 import QtQuick.Effects
 import Aikatsu
 
-// Image with rounded corners (MultiEffect mask), a tinted placeholder while
-// loading, and a fade-in once ready.
+// Rounded image with a placeholder while loading.
 Item {
     id: root
 

@@ -4,7 +4,6 @@ import QtQuick
 import QtQuick.Layouts
 import Aikatsu
 
-// M3 navigation rail: logo, destinations with a pill indicator, theme toggle.
 StyledRect {
     id: root
 

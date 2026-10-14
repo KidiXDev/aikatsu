@@ -6,7 +6,6 @@ import QtQuick.Dialogs
 import QtQuick.Layouts
 import Aikatsu
 
-// Everything the CLI took as flags/env vars, persisted in the settings table.
 Item {
     id: root
 
@@ -129,7 +128,7 @@ Item {
 
                 Row {
                     label: "Theme"
-                    hint: "Sakura dark, sakura light, or follow the system."
+                    hint: "Dark, light, or match your system."
 
                     Repeater {
                         model: [["system", "System"], ["dark", "Dark"], ["light", "Light"]]
@@ -161,7 +160,7 @@ Item {
                 }
                 Row {
                     label: "Skip intro & outro automatically"
-                    hint: "Uses AniSkip timestamps when the anime has a MyAnimeList id."
+                    hint: "Jumps past openings and endings when their timing is known."
 
                     StyledSwitch {
                         checked: root.s.autoSkip === "true"
@@ -186,8 +185,8 @@ Item {
                     }
                 }
                 Row {
-                    label: "Anime4K real-time upscaling"
-                    hint: root.shadersInstalled ? "Default shader mode for new playback. Change it any time from the player." : "Shaders download automatically the first time a mode is used."
+                    label: "Sharpen video (Anime4K)"
+                    hint: "Makes lower-quality video look crisper. Uses your graphics card. You can also change it from the player." + (root.shadersInstalled ? "" : " A small add-on downloads the first time you use it.")
 
                     TextButton {
                         visible: !root.shadersInstalled
@@ -245,7 +244,7 @@ Item {
 
                 StyledText {
                     Layout.fillWidth: true
-                    text: "Search queries every enabled source in parallel. A source that keeps failing is paused for 10 minutes."
+                    text: "Search looks through every site that's turned on. A site that keeps failing is skipped for 10 minutes."
                     color: Theme.palette.onSurfaceVariant
                     wrapMode: Text.Wrap
                 }
@@ -286,12 +285,13 @@ Item {
                     }
                 }
                 Row {
-                    label: "Helpers"
-                    hint: `ffmpeg: ${root.tools.ffmpeg ? "found" : "not found (HLS stays .ts)"}  ·  yt-dlp: ${root.tools.ytdlp ? "found" : "fetched automatically when needed"}`
+                    visible: !root.tools.ffmpeg
+                    label: "ffmpeg isn't installed"
+                    hint: "Some episodes will be saved as .ts files instead of .mp4. Install ffmpeg to fix this."
                 }
                 Row {
-                    label: "TMDB API key"
-                    hint: "Optional. Improves season folders for long-running shows."
+                    label: "TMDB API key (optional)"
+                    hint: "Helps sort long-running shows into the right season folders."
 
                     StyledTextField {
                         Layout.preferredWidth: 260
@@ -304,12 +304,12 @@ Item {
             }
 
             Section {
-                title: "Integrations & diagnostics"
+                title: "Other"
                 icon: "tune"
 
                 Row {
-                    label: "Discord Rich Presence"
-                    hint: "Show what you're watching on Discord."
+                    label: "Discord status"
+                    hint: "Show what you're watching on your Discord profile."
 
                     StyledSwitch {
                         checked: root.s.discord === "true"
@@ -324,7 +324,7 @@ Item {
                 }
                 Row {
                     label: "Debug logging"
-                    hint: "Verbose logs (applies on next launch). Press Ctrl+L to view logs."
+                    hint: "Extra detail for troubleshooting, after a restart. Press Ctrl+L to see the logs."
 
                     StyledSwitch {
                         checked: root.s.debug === "true"
@@ -333,7 +333,7 @@ Item {
                 }
                 Row {
                     label: "Cached data"
-                    hint: "Anime details, episode titles and skip times are kept for a few days, so pages open instantly and still work when AniList is unreachable. Cover images have their own 256 MB cache."
+                    hint: "Anime details are kept for a few days so pages open faster, even when the info site is down."
 
                     TextButton {
                         type: TextButton.Tonal

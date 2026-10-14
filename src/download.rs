@@ -1,8 +1,7 @@
-//! Episode downloads (GonimeId internal/player/download.go + downloader/hls):
-//! a queue running 4 episodes at a time; plain files in 4 resumable Range
-//! parts; native HLS with 24 segment workers (remuxed to .mp4 by ffmpeg when
-//! present); Blogger/Wibufile through their special clients; yt-dlp as the
-//! fallback (auto-fetched). Files land in Plex/Jellyfin layout.
+//! Episode downloads, 4 at a time. Plain files download in 4 resumable parts;
+//! HLS streams in 24 parallel segments (turned into .mp4 when ffmpeg is
+//! installed); yt-dlp is the fallback and is fetched when missing. File names
+//! follow the Plex/Jellyfin convention so media servers recognize them.
 
 use crate::bridge::push;
 use crate::meta::Meta;
@@ -102,7 +101,6 @@ pub fn base_dir(setting: &str) -> PathBuf {
     dirs::video_dir().map(|d| d.join("Aikatsu")).unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join(".local/aikatsu/downloads/anime"))
 }
 
-/// Queues every episode of the request; returns the job ids.
 pub fn enqueue(req: Request, base: PathBuf) -> Result<Vec<u64>> {
     let src = SourceId::from_key(&req.source).ok_or_else(|| anyhow!("unknown source {}", req.source))?;
     let meta = req.meta.clone().unwrap_or_default();
@@ -203,7 +201,6 @@ async fn run(id: u64, src: SourceId, episode_url: &str, quality: &str, path: &Pa
     Ok(result)
 }
 
-// ---- HTTP clients
 
 enum Fetcher {
     /// Plain client with the source's Referer/Origin (pixeldrain, CDNs).
@@ -351,7 +348,6 @@ async fn part(f: &Fetcher, url: &str, dest: &Path, i: u64, from: u64, to: u64, m
     Ok(())
 }
 
-// ---- HLS
 
 #[derive(Debug, PartialEq)]
 enum Playlist {
@@ -462,7 +458,6 @@ async fn hls(url: &str, referer: &str, dest: &Path, id: u64, progress: &(impl Fn
     Ok(ts)
 }
 
-// ---- yt-dlp
 
 pub fn which(bin: &str) -> Option<PathBuf> {
     let exe = if cfg!(windows) { format!("{bin}.exe") } else { bin.to_owned() };
@@ -474,7 +469,7 @@ fn ytdlp_local() -> PathBuf {
     dirs::data_dir().unwrap_or_else(std::env::temp_dir).join("aikatsu").join("bin").join(name)
 }
 
-/// System yt-dlp, else a copy fetched from its GitHub releases (like go-ytdlp's Install).
+/// System yt-dlp, else a copy fetched from its GitHub releases.
 pub async fn ensure_ytdlp() -> Result<PathBuf> {
     if let Some(p) = which("yt-dlp") {
         return Ok(p);
@@ -547,7 +542,6 @@ async fn ytdlp(url: &str, referer: &str, dest: &Path, progress: &(impl Fn(u64, u
     Err(last_err)
 }
 
-// ---- Plex/Jellyfin naming (internal/util/util.go)
 
 pub fn sanitize(name: &str) -> String {
     let cleaned: String = name.chars().filter(|c| !matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')).collect();

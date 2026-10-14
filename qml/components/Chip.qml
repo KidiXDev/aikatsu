@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Layouts
 import Aikatsu
 
-// M3 assist/filter chip; `selected` fills it with secondaryContainer.
 StyledRect {
     id: root
 

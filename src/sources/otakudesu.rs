@@ -222,7 +222,7 @@ fn pixeldrain_file(location: &str) -> Option<String> {
 mod tests {
     use super::*;
 
-    // Fixtures mirror the live markup GonimeId captured 2026-09-18.
+    // Fixtures mirror the live markup of 2026-09-18.
     const SEARCH: &str = r#"<ul class="chivsrc"><li><img src="/p.jpg"/><h2><a href="https://otakudesu.blog/anime/borot-sub-indo/">Boruto: Naruto Next Generations Subtitle Indonesia</a></h2></li>
 <li><h2><a href="https://otakudesu.blog/genres/action/">Not an anime</a></h2></li></ul>"#;
     const ANIME: &str = r#"<div class="episodelist"><ul><li><span><a href="/batch/btr-batch-sub-indo/">Boruto [BATCH] Subtitle Indonesia</a></span></li></ul></div>

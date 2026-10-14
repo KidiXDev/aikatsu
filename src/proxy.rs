@@ -1,6 +1,5 @@
-//! Local 127.0.0.1 streaming proxy. mpv/ffmpeg speak plain HTTP/1.1, but
-//! googlevideo (Blogger) rejects non-Chrome TLS and Wibufile only streams well
-//! over HTTP/3, so those two are fetched here and relayed with Range passthrough.
+//! Local proxy for the two hosts mpv can't play directly: Blogger video only
+//! answers browser-like connections, and Wibufile only streams well over HTTP/3.
 
 use anyhow::{Result, anyhow};
 use axum::body::Body;
@@ -65,7 +64,6 @@ async fn register(up: Upstream) -> Result<String> {
     Ok(format!("http://127.0.0.1:{port}/stream/{id}"))
 }
 
-/// Forgets every registered stream (called when playback stops).
 pub fn clear() {
     ROUTES.lock().unwrap().clear();
 }

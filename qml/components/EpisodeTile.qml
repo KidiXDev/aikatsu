@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Layouts
 import Aikatsu
 
-// One episode row: big number, title, watched state / progress, filler badge.
 StyledRect {
     id: root
 

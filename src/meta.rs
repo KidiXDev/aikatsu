@@ -1,6 +1,5 @@
-//! Metadata: AniList (enrichment, season map, streaming episodes), Jikan
-//! (fallback + episode titles/filler flags), TMDB (optional season map),
-//! AniSkip (OP/ED ranges). Ported from GonimeId internal/api.
+//! Anime details: AniList first, Jikan as the fallback and for episode titles,
+//! TMDB for season splits (optional), AniSkip for opening/ending times.
 
 use crate::http::{self, API_UA};
 use anyhow::{Result, anyhow};
@@ -131,7 +130,6 @@ fn strip_html(s: &str) -> String {
     html_escape::decode_html_entities(&TAG_RE.replace_all(&s.replace("<br>", "\n"), "")).trim().to_owned()
 }
 
-// --- title cleaning + search variations (api/anime.go CleanTitle, generateSearchVariations)
 
 static NOISE_RES: LazyLock<Vec<Regex>> = LazyLock::new(|| {
     [

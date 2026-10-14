@@ -1,6 +1,5 @@
-//! Shared HTTP plumbing: a Chrome-fingerprinted client for scraping (the
-//! sources sit behind anti-bot checks that reject non-browser TLS), a plain
-//! client for APIs and file probes, retries, and challenge-page detection.
+//! HTTP helpers. Scraping uses a Chrome-like client because the sites block
+//! connections that don't look like a browser.
 
 use anyhow::{Result, anyhow, bail};
 use scraper::{Html, Selector};
@@ -9,7 +8,7 @@ use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 use wreq::redirect::Policy;
 
-/// Browser UA for plain requests to file hosts (mirrors the CLI's netx.UserAgent).
+/// Browser user agent for file hosts.
 pub const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0";
 /// AniList answers browser UAs with 403, so API calls identify as an API client.
 pub const API_UA: &str = "Aikatsu/0.1 (+https://github.com/KidiXDev/aikatsu)";
@@ -49,12 +48,10 @@ pub fn is_unavailable(err: &anyhow::Error) -> bool {
     err.downcast_ref::<Unavailable>().is_some()
 }
 
-/// GET on the Chrome client with the site's Referer.
 pub fn get(url: &str, referer: &str) -> wreq::RequestBuilder {
     CHROME.get(url).header("Referer", referer)
 }
 
-/// admin-ajax style form POST on the Chrome client.
 pub fn post_form(url: &str, referer: &str, form: &[(&str, &str)]) -> wreq::RequestBuilder {
     CHROME
         .post(url)
@@ -63,8 +60,8 @@ pub fn post_form(url: &str, referer: &str, form: &[(&str, &str)]) -> wreq::Reque
         .form(form)
 }
 
-/// Sends with the CLI's retry policy (2 retries, 300 ms apart, only on 5xx or
-/// transport errors) and returns the body, capped at 8 MiB.
+/// Retries twice, 300 ms apart, on server errors and dropped connections.
+/// Bodies over 8 MiB are rejected.
 pub async fn text(label: &str, rb: wreq::RequestBuilder) -> Result<String> {
     let mut last = anyhow!("{label}: request failed");
     for attempt in 0..3 {
@@ -176,7 +173,7 @@ pub fn first_text(doc: &Html, css: &str) -> String {
     doc.select(&sel(css)).next().map(|e| e.text().collect::<String>().trim().to_owned()).unwrap_or_default()
 }
 
-/// Resolves `raw` against `base` (like Go's url.ResolveReference); "" on failure.
+/// `raw` resolved against `base`, or "" when either is invalid.
 pub fn absolute(base: &str, raw: &str) -> String {
     let raw = raw.trim();
     if raw.is_empty() {

@@ -35,7 +35,6 @@ fn parse_search(body: &str) -> Vec<Anime> {
     let mut seen = HashSet::new();
     let mut out = Vec::new();
     for a in doc.select(&sel(r#"a[href*="series="]"#)) {
-        // Closest ancestor .card
         let Some(card) = a.ancestors().filter_map(scraper::ElementRef::wrap).find(|e| e.value().has_class("card", scraper::CaseSensitivity::CaseSensitive))
         else {
             continue;

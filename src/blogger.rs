@@ -1,5 +1,5 @@
-//! Blogger `video.g?token=` → googlevideo URL via the batchexecute RPC
-//! (WcwnYd), ported from GonimeId internal/player/scraper.go.
+//! Turns a Blogger `video.g?token=` link into a direct googlevideo URL through
+//! Google's batchexecute RPC (WcwnYd).
 
 use crate::http;
 use anyhow::{Result, anyhow, bail};

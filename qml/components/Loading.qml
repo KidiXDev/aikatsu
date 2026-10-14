@@ -1,7 +1,6 @@
 import QtQuick
 import Aikatsu
 
-// Spinning, breathing sakura blossom used as the loading indicator.
 Item {
     id: root
 

@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Layouts
 import Aikatsu
 
-// 2:3 cover with title, optional badge/progress; lifts on hover.
 Item {
     id: root
 

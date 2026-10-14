@@ -5,7 +5,6 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import Aikatsu
 
-// Download queue (4 episodes at a time) with live progress.
 Item {
     id: root
 
@@ -137,7 +136,12 @@ Item {
                         }
                         StyledText {
                             Layout.fillWidth: true
-                            text: row.modelData.state === "failed" ? row.modelData.error : row.modelData.state === "downloading" ? `${root.fmtBytes(row.modelData.bytes)} of ${root.fmtBytes(row.modelData.total)}  ·  ${root.fmtBytes(row.modelData.speed)}/s  ·  ${row.modelData.method}` : row.modelData.state === "done" ? row.modelData.path : row.modelData.state
+                            text: row.modelData.state === "failed" ? Api.describe(row.modelData.error) : row.modelData.state === "downloading" ? `${root.fmtBytes(row.modelData.bytes)} of ${root.fmtBytes(row.modelData.total)}  ·  ${root.fmtBytes(row.modelData.speed)}/s` : row.modelData.state === "done" ? row.modelData.path : ({
+                                    queued: "Waiting…",
+                                    resolving: "Finding the video…",
+                                    remuxing: "Finishing up…",
+                                    cancelled: "Cancelled"
+                                })[row.modelData.state] ?? ""
                             color: row.modelData.state === "failed" ? Theme.palette.error : Theme.palette.onSurfaceVariant
                             font: Theme.font.label.large
                             elide: Text.ElideMiddle

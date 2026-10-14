@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import Aikatsu
 
-// Ctrl+L log overlay (the CLI's log viewer): tail of this run's log file.
+// Ctrl+L: the end of this run's log file.
 Drawer {
     id: root
 

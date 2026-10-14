@@ -5,7 +5,6 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import Aikatsu
 
-// Searches every enabled source in parallel; results stream in per source.
 Item {
     id: root
 
@@ -99,7 +98,6 @@ Item {
             font: Theme.font.headline.large
         }
 
-        // M3 search bar
         StyledRect {
             Layout.fillWidth: true
             Layout.maximumWidth: 760
@@ -252,7 +250,7 @@ Item {
                 face: root.allFailed ? "(×﹏×)" : root.query ? "(╥﹏╥)" : "(◕‿◕✿)"
                 tint: root.allFailed ? Theme.palette.error : Theme.palette.primary
                 title: root.allFailed ? "Couldn't reach any source" : root.query ? `Nothing found for “${root.query}”` : "What do you want to watch?"
-                message: root.allFailed ? Api.describe(root.failures[0].error) : root.query ? "Try another spelling or the romaji title. Sources marked ! failed; hover them for details." : "Results from Otakudesu, Samehadaku, Nimegami, YLnime, Moenime and Astronime appear as each source answers."
+                message: root.allFailed ? Api.describe(root.failures[0].error) : root.query ? "Try another spelling, or the Japanese title (e.g. Shingeki no Kyojin)." : "Type a title and press Enter. Results show up as each site answers."
 
                 IconTextButton {
                     Layout.alignment: Qt.AlignHCenter

@@ -6,12 +6,8 @@ import QtQuick.Effects
 import QtQuick.Layouts
 import Aikatsu
 
-// Embedded mpv player. Opens at once; series metadata (titles, AniSkip,
-// progress keys) can land after playback starts. Flow: qualities → resolve at
-// the saved quality → play, resume prompt, progress every 5 s, complete at
-// 90 %, 5 s autoplay countdown, AniSkip OP/ED, Anime4K shaders, Discord
-// presence. Before the first frame a failing quality falls back to the others;
-// mid-episode a dropped stream reconnects at the same spot.
+// Opens immediately; the series details can arrive after playback has started.
+// An episode counts as watched at 90 %.
 FocusScope {
     id: root
 
@@ -251,14 +247,14 @@ FocusScope {
         }
         Api.call("shaders", {
             mode: anime4k
-        }, r => mpv.command(["change-list", "glsl-shaders", "set", r.list]), e => ApplicationWindow.window.toast("Anime4K: " + e));
+        }, r => mpv.command(["change-list", "glsl-shaders", "set", r.list]), e => ApplicationWindow.window.toast("Couldn't turn on sharpening: " + Api.describe(e)));
     }
 
     function setAnime4k(mode: string): void {
         anime4k = mode;
         Api.setSetting("anime4k", mode);
         applyShaders();
-        osd.show("auto_awesome", mode === "off" ? "Anime4K off" : (anime4kModes.find(m => m.key === mode)?.name ?? mode));
+        osd.show("auto_awesome", mode === "off" ? "Sharpening off" : (anime4kModes.find(m => m.key === mode)?.name ?? mode));
     }
 
     function seek(sec: real): void {
@@ -513,7 +509,7 @@ FocusScope {
         onDoubleClicked: ApplicationWindow.window.toggleFullScreen()
     }
 
-    // ---- series art behind the loading screen and the error / ended card
+    // Series art behind the loading screen and the error card
     Item {
         anchors.fill: parent
         opacity: !root.started || root.phase === "error" || root.phase === "ended" ? 1 : 0
@@ -648,7 +644,7 @@ FocusScope {
         }
     }
 
-    // ---- mid-episode buffering / quality switch / reconnect
+    // Spinner while buffering, switching quality or reconnecting
     ColumnLayout {
         anchors.centerIn: parent
         visible: root.started && (root.phase === "resolving" || (root.phase === "playing" && mpv.buffering))
@@ -676,7 +672,6 @@ FocusScope {
         }
     }
 
-    // ---- on-screen feedback for clicks and keys
     StyledRect {
         id: osd
 
@@ -746,7 +741,6 @@ FocusScope {
         }
     }
 
-    // ---- top bar
     Item {
         anchors.left: parent.left
         anchors.right: parent.right
@@ -817,7 +811,6 @@ FocusScope {
         }
     }
 
-    // ---- bottom controls
     Item {
         id: bottom
 
@@ -1049,7 +1042,7 @@ FocusScope {
                         id: a4kMenu
 
                         y: -height - 8
-                        header: "Anime4K upscaling"
+                        header: "Sharpen video"
                         model: [
                             {
                                 text: "Off",
@@ -1080,7 +1073,7 @@ FocusScope {
         }
     }
 
-    // ---- skip intro / outro, also while the controls are hidden
+    // Stays visible while the controls are hidden
     IconTextButton {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
@@ -1100,7 +1093,6 @@ FocusScope {
         }
     }
 
-    // ---- resume prompt
     StyledRect {
         anchors.left: parent.left
         anchors.bottom: bottom.top
@@ -1142,7 +1134,6 @@ FocusScope {
         }
     }
 
-    // ---- autoplay countdown
     StyledRect {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
@@ -1196,7 +1187,6 @@ FocusScope {
         }
     }
 
-    // ---- error / ended card
     StyledRect {
         anchors.centerIn: parent
         visible: root.phase === "error" || root.phase === "ended"
@@ -1303,7 +1293,6 @@ FocusScope {
         }
     }
 
-    // ---- episode picker
     Drawer {
         id: episodesDrawer
 

@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Particles
 import Aikatsu
 
-// Petals drifting down across the parent; tinted with the palette.
 ParticleSystem {
     id: root
 

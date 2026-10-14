@@ -4,7 +4,6 @@ import QtQuick
 import QtQuick.Layouts
 import Aikatsu
 
-// The CLI's download menu: this episode / a range / all, plus quality.
 StyledDialog {
     id: root
 
@@ -34,7 +33,7 @@ StyledDialog {
 
     icon: "download"
     title: "Download episodes"
-    text: `Saved to ${Api.get("downloadDir")} in a Plex/Jellyfin layout.`
+    text: `Episodes are saved to ${Api.get("downloadDir")}`
 
     RowLayout {
         spacing: Theme.spacing.small
@@ -119,7 +118,7 @@ StyledDialog {
             Chip {
                 required property string modelData
 
-                text: modelData
+                text: modelData === "best" ? "Auto" : modelData
                 selected: root.quality === modelData
                 clickable: true
                 onClicked: root.quality = modelData
@@ -148,7 +147,7 @@ StyledDialog {
                             }))
                 });
                 root.close();
-                ApplicationWindow.window.toast(`Queued ${root.selection.length} episode(s) · see Downloads`);
+                ApplicationWindow.window.toast(root.selection.length > 1 ? `Downloading ${root.selection.length} episodes` : "Download started");
             }
         }
     ]

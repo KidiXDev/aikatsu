@@ -1,5 +1,4 @@
-//! Watch history + settings in SQLite. Same shape as GonimeId's tracker
-//! (internal/tracking/local.go) plus cover/mal_id for the desktop cards.
+//! Watch history, settings and the lookup cache, stored in SQLite.
 
 use anyhow::Result;
 use rusqlite::{Connection, OptionalExtension, params};

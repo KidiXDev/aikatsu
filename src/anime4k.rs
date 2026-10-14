@@ -1,4 +1,4 @@
-//! Anime4K: the CLI's ten real-time shader modes (internal/upscaler/shaders.go).
+//! Anime4K sharpening presets for mpv, and the one-time shader download.
 
 use crate::http;
 use anyhow::{Result, anyhow};
@@ -26,32 +26,32 @@ const PRE4: &str = "Anime4K_AutoDownscalePre_x4.glsl";
 pub const MODES: &[Mode] = &[
     Mode {
         key: "fast",
-        name: "Fast (Mode A)",
-        description: "Optimized for text-heavy anime with subtitles",
+        name: "Standard",
+        description: "Good for most anime",
         files: &[CLAMP, "Anime4K_Restore_CNN_M.glsl", "Anime4K_Upscale_CNN_x2_M.glsl", PRE2, PRE4, "Anime4K_Upscale_CNN_x2_S.glsl"],
     },
     Mode {
         key: "balanced",
-        name: "Balanced (Mode B)",
-        description: "General purpose anime upscaling, good balance",
+        name: "Soft",
+        description: "Gentler, for video that already looks clean",
         files: &[CLAMP, "Anime4K_Restore_CNN_Soft_M.glsl", "Anime4K_Upscale_CNN_x2_M.glsl", PRE2, PRE4, "Anime4K_Upscale_CNN_x2_S.glsl"],
     },
     Mode {
         key: "quality",
-        name: "Quality (Mode C)",
-        description: "High quality for anime films, requires a good GPU",
+        name: "Denoise",
+        description: "Smooths grain and blocky video. Needs a good graphics card",
         files: &[CLAMP, "Anime4K_Upscale_Denoise_CNN_x2_M.glsl", PRE2, PRE4, "Anime4K_Upscale_CNN_x2_L.glsl"],
     },
     Mode {
         key: "performance",
-        name: "Performance (Low GPU)",
-        description: "Minimal shaders for weaker GPUs",
+        name: "Light",
+        description: "Smallest effect, for weaker graphics cards",
         files: &[CLAMP, "Anime4K_Upscale_CNN_x2_S.glsl"],
     },
     Mode {
         key: "ultra",
-        name: "Ultra (Max Enhancement)",
-        description: "Maximum enhancement with denoise + deblur + upscale",
+        name: "Maximum",
+        description: "Strongest clean-up and sharpening. Needs a powerful graphics card",
         files: &[
             CLAMP,
             "Anime4K_Denoise_Bilateral_Mode.glsl",
@@ -66,26 +66,26 @@ pub const MODES: &[Mode] = &[
     },
     Mode {
         key: "gan",
-        name: "GAN UUL (360p→4K)",
-        description: "Experimental SRGAN for 360p→4K, very heavy, needs a powerful GPU",
+        name: "Experimental",
+        description: "For very low quality (360p) video. Very heavy on the graphics card",
         files: &["Anime4K_Restore_GAN_UUL.glsl", "Anime4K_Upscale_GAN_x4_UUL.glsl", "Anime4K_Restore_CNN_Soft_M.glsl", "Anime4K_Upscale_CNN_x2_M.glsl"],
     },
     Mode {
         key: "aa",
-        name: "Advanced A+A (Max Perceptual)",
-        description: "Double restore pass, highest perceptual quality, may cause ringing",
+        name: "Extra sharp",
+        description: "Crispest lines, may add faint halos around them",
         files: &[CLAMP, "Anime4K_Restore_CNN_M.glsl", "Anime4K_Upscale_CNN_x2_M.glsl", "Anime4K_Restore_CNN_S.glsl", PRE2, PRE4, "Anime4K_Upscale_CNN_x2_S.glsl"],
     },
     Mode {
         key: "bb",
-        name: "Advanced B+B (720p Optimized)",
-        description: "Double soft restore, good for 720p with aliasing artifacts",
+        name: "Extra soft",
+        description: "Good for 720p video with jagged edges",
         files: &[CLAMP, "Anime4K_Restore_CNN_Soft_M.glsl", "Anime4K_Upscale_CNN_x2_M.glsl", "Anime4K_Restore_CNN_Soft_S.glsl", PRE2, PRE4, "Anime4K_Upscale_CNN_x2_S.glsl"],
     },
     Mode {
         key: "ca",
-        name: "Advanced C+A (Upscaled Content)",
-        description: "Quality + restore, good for downscaled 480p anime",
+        name: "Denoise + sharpen",
+        description: "Good for 480p video",
         files: &[CLAMP, "Anime4K_Upscale_Denoise_CNN_x2_M.glsl", "Anime4K_Restore_CNN_M.glsl", PRE2, PRE4, "Anime4K_Upscale_CNN_x2_M.glsl"],
     },
 ];
@@ -157,6 +157,6 @@ mod tests {
 
     #[test]
     fn modes() {
-        assert_eq!(MODES.len(), 9, "plus Off = the CLI's 10 modes");
+        assert_eq!(MODES.len(), 9, "nine presets plus Off");
     }
 }

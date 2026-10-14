@@ -6,7 +6,6 @@ import QtQuick.Effects
 import QtQuick.Layouts
 import Aikatsu
 
-// Watch Hub: hero for the latest unfinished series, Continue / Recent grids.
 Item {
     id: root
 
@@ -75,7 +74,6 @@ Item {
             width: flick.width
             spacing: Theme.spacing.extraLarge
 
-            // ---- hero
             Item {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 380
@@ -199,7 +197,7 @@ Item {
                         StyledText {
                             Layout.fillWidth: true
                             visible: text !== ""
-                            text: root.hero ? `Episode ${root.hero.continue_episode}` + (root.hero.total_episodes >= root.hero.continue_episode ? ` of ${root.hero.total_episodes}` : "") + (root.heroMeta?.genres?.length ? "  ·  " + root.heroMeta.genres.slice(0, 3).join(" · ") : "") : "Search Indonesian-sub anime across six sources and pick up right where you left off."
+                            text: root.hero ? `Episode ${root.hero.continue_episode}` + (root.hero.total_episodes >= root.hero.continue_episode ? ` of ${root.hero.total_episodes}` : "") + (root.heroMeta?.genres?.length ? "  ·  " + root.heroMeta.genres.slice(0, 3).join(" · ") : "") : "Watch anime with Indonesian subtitles and pick up right where you left off."
                             color: Theme.palette.onSurfaceVariant
                             wrapMode: Text.Wrap
                             font: Theme.font.body.large
@@ -229,7 +227,6 @@ Item {
                 }
             }
 
-            // ---- tabs + actions
             RowLayout {
                 Layout.fillWidth: true
                 Layout.leftMargin: Theme.padding.extraLarge
@@ -318,7 +315,7 @@ Item {
                 visible: root.shown.length === 0
                 face: root.series.length === 0 ? "(っ˘ω˘ς )" : "٩(◕‿◕｡)۶"
                 title: root.series.length === 0 ? "Nothing watched yet" : "All caught up!"
-                message: root.series.length === 0 ? "Your watch history shows up here. Search for an anime to begin." : "Every series in your history is finished. Check Recent for rewatches."
+                message: root.series.length === 0 ? "Your watch history shows up here. Search for an anime to begin." : "You've finished everything you started. Check Recent to rewatch."
             }
         }
     }
