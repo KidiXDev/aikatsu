@@ -9,7 +9,9 @@ permissions:
   contents: read
 
 env:
-  QT_VERSION: "6.11.*"
+  # Pinned to the Qt the app is developed and tested on; both packages ship this
+  # exact Qt, so users never run it against an older one.
+  QT_VERSION: "6.11.2"
 
 jobs:
   linux:
@@ -27,6 +29,7 @@ jobs:
       - uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
+          arch: linux_gcc_64
           cache: true
 
       - uses: dtolnay/rust-toolchain@stable
