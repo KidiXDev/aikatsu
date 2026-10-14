@@ -228,15 +228,11 @@ Item {
                             selected: root.s.anime4k === modelData.key
                             clickable: true
                             onClicked: root.set("anime4k", modelData.key)
-                            ToolTip.visible: hov.containsMouse
+                            ToolTip.visible: hov.hovered
                             ToolTip.text: modelData.description
 
-                            MouseArea {
+                            HoverHandler {
                                 id: hov
-
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                acceptedButtons: Qt.NoButton
                             }
                         }
                     }

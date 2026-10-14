@@ -11,8 +11,18 @@ T.Popup {
 
     property var model: []
     property string header
+    property real closedAt
 
     signal triggered(var item)
+
+    // For the button that opens the menu: a press on that button already closed
+    // the menu (press outside), so its click must not reopen it.
+    function toggle(): void {
+        if (Date.now() - closedAt > 300)
+            open();
+    }
+
+    onAboutToHide: closedAt = Date.now()
 
     padding: Theme.padding.small
     // Templates popups have no implicit size of their own (styles add it).

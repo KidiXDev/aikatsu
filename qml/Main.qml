@@ -27,9 +27,10 @@ ApplicationWindow {
         tab = i;
     }
 
-    // ctx: {anime, meta, episodes, index, episodeInfo}
-    function play(ctx: var): void {
-        playerLoader.ctx = ctx;
+    // page: the AnimePage (anime, meta, episodes, progress keys); index: episode to start
+    function play(page: var, index: int): void {
+        playerLoader.page = page;
+        playerLoader.index = index;
         playerLoader.active = true;
     }
 
@@ -184,13 +185,15 @@ ApplicationWindow {
     Loader {
         id: playerLoader
 
-        property var ctx
+        property var page
+        property int index
 
         anchors.fill: parent
         active: false
         focus: active
         sourceComponent: PlayerPage {
-            ctx: playerLoader.ctx
+            page: playerLoader.page
+            index: playerLoader.index
         }
     }
 

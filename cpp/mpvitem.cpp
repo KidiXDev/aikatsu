@@ -125,18 +125,28 @@ void MpvItem::drainEvents() {
         case MPV_EVENT_NONE:
             return;
         case MPV_EVENT_FILE_LOADED:
+            m_lastError.clear();
             emit fileLoaded();
+            break;
+        case MPV_EVENT_PLAYBACK_RESTART:
+            emit playbackRestart();
             break;
         case MPV_EVENT_END_FILE: {
             auto *ef = static_cast<mpv_event_end_file *>(ev->data);
             static const char *reasons[]{"eof", "", "stop", "quit", "error", "redirect"};
             QString reason = ef->reason >= 0 && ef->reason <= 5 ? reasons[ef->reason] : "error";
-            emit endFile(reason, ef->reason == MPV_END_FILE_REASON_ERROR ? mpv_error_string(ef->error) : "");
+            QString error;
+            if (ef->reason == MPV_END_FILE_REASON_ERROR)
+                error = m_lastError.isEmpty() ? mpv_error_string(ef->error) : QString("%1: %2").arg(mpv_error_string(ef->error), m_lastError);
+            m_lastError.clear();
+            emit endFile(reason, error);
             break;
         }
         case MPV_EVENT_LOG_MESSAGE: {
             auto *msg = static_cast<mpv_event_log_message *>(ev->data);
             qWarning("[mpv/%s] %s", msg->prefix, QByteArray(msg->text).trimmed().constData());
+            if (msg->log_level <= MPV_LOG_LEVEL_ERROR)
+                m_lastError = QString::fromUtf8(msg->text).trimmed();
             break;
         }
         case MPV_EVENT_PROPERTY_CHANGE: {

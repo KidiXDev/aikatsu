@@ -14,7 +14,7 @@ Item {
     property bool hovered: mouse.containsMouse
 
     signal clicked
-    signal rightClicked
+    signal rightClicked(real x, real y)
 
     implicitWidth: 156
     implicitHeight: cover.height + info.implicitHeight + Theme.spacing.small
@@ -161,6 +161,6 @@ Item {
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
         acceptedButtons: Qt.LeftButton | Qt.RightButton
-        onClicked: e => e.button === Qt.RightButton ? root.rightClicked() : root.clicked()
+        onClicked: e => e.button === Qt.RightButton ? root.rightClicked(e.x, e.y) : root.clicked()
     }
 }

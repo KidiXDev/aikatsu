@@ -2,32 +2,47 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Effects
 import QtQuick.Layouts
 import Aikatsu
 
-// Embedded mpv player. Mirrors the CLI flow: resolve at the saved quality → play,
-// resume prompt, progress every 5 s, complete at 90 %, 5 s autoplay countdown,
-// AniSkip OP/ED, Anime4K shaders, Discord presence.
+// Embedded mpv player. Opens at once; series metadata (titles, AniSkip,
+// progress keys) can land after playback starts. Flow: qualities → resolve at
+// the saved quality → play, resume prompt, progress every 5 s, complete at
+// 90 %, 5 s autoplay countdown, AniSkip OP/ED, Anime4K shaders, Discord
+// presence. Before the first frame a failing quality falls back to the others;
+// mid-episode a dropped stream reconnects at the same spot.
 FocusScope {
     id: root
 
-    required property var ctx // {anime, meta, episodes, index, info, seriesKey}
+    required property var page // AnimePage: anime, meta, metaLoaded, episodes, info, progress, seriesKey
+    property int index
 
-    property int index: ctx.index
-    readonly property var ep: ctx.episodes[index]
-    readonly property var meta: ctx.meta ?? {}
-    readonly property string seriesTitle: meta.title_english || meta.title_romaji || ctx.anime.name
-    readonly property string episodeTitle: ctx.info?.[ep?.num]?.title || ep?.title || ""
-    readonly property bool hasNext: index + 1 < ctx.episodes.length
+    readonly property var anime: page.anime
+    readonly property var episodes: page.episodes
+    readonly property var meta: page.meta ?? {}
+    readonly property bool metaLoaded: page.metaLoaded
+    readonly property var ep: episodes[index]
+    readonly property string seriesTitle: meta.title_english || meta.title_romaji || anime.name
+    readonly property string episodeTitle: page.info?.[ep?.num]?.title || ep?.title || ""
+    readonly property string sourceName: Api.get("sources").find(s => s.key === anime.source)?.name ?? anime.source
+    readonly property bool hasNext: index + 1 < episodes.length
     readonly property bool hasPrev: index > 0
 
     property string phase: "resolving" // resolving | playing | error | ended
+    property string status: "Starting the player…" // what the loading screen waits on
+    property bool slow // status unchanged for a while
+    property bool started // first frame of this episode is on screen
+    property bool loaded // the file from the latest loadfile is open (ignores the old file's events)
     property string errorText
     property var stream: null
     property var qualities: [] // offered for this episode, highest first
+    property var tried: [] // qualities already attempted for this episode
+    property int reconnects
     property string quality // label actually requested from the source
     property string preferredQuality: Api.setting("quality")
-    property real startAt: -1 // seek here on load without the resume prompt (quality switch)
+    property real startAt: -1 // seek here on load without the resume prompt
+    property real lastPos // last real position; mpv drops time-pos on errors
     property var skip: ({})
     property real resumeAt: 0
     property bool resumePrompt
@@ -36,12 +51,15 @@ FocusScope {
     property bool skippedEd
     property int countdownLeft: 0
     property int request: 0
+    property real unmuteVolume: 100
     property string anime4k: Api.setting("anime4k")
     property var anime4kModes: Api.get("anime4kModes")
     readonly property bool autoplay: Api.setting("autoplay") === "true"
     readonly property bool autoSkip: Api.setting("autoSkip") === "true"
     property bool controlsVisible: true
-    readonly property bool showControls: controlsVisible || mpv.paused || phase !== "playing" || speedMenu.opened || trackMenu.opened || a4kMenu.opened || qualityMenu.opened
+    readonly property bool menuOpen: speedMenu.opened || trackMenu.opened || a4kMenu.opened || qualityMenu.opened || episodesDrawer.opened
+    readonly property bool showControls: controlsVisible || mpv.paused || phase !== "playing" || !started || menuOpen
+    readonly property bool loadingScreen: !started && (phase === "resolving" || phase === "playing")
 
     readonly property bool inOp: !!skip.op && mpv.position >= skip.op[0] && mpv.position < skip.op[1] - 1
     readonly property bool inEd: !!skip.ed && mpv.position >= skip.ed[0] && mpv.position < skip.ed[1] - 1
@@ -49,14 +67,15 @@ FocusScope {
     function keysFor(num: int): var {
         return Api.get("keys", {
             anilistId: meta.anilist_id ?? 0,
-            source: ctx.anime.source,
-            url: ctx.anime.url,
+            source: anime.source,
+            url: anime.url,
             episode: num
         });
     }
 
     function save(completed: bool): void {
-        if (!ep || mpv.duration <= 0)
+        // Until metadata lands the series key can still change; the next tick saves.
+        if (!ep || mpv.duration <= 0 || !metaLoaded)
             return;
         const done = completed || completedMarked || mpv.position / mpv.duration >= 0.9;
         completedMarked = done;
@@ -64,24 +83,39 @@ FocusScope {
             episode_key: keysFor(ep.num).episode,
             anilist_id: meta.anilist_id ?? 0,
             mal_id: meta.mal_id ?? 0,
-            series_key: ctx.seriesKey,
-            series_url: ctx.anime.url,
+            series_key: page.seriesKey,
+            series_url: anime.url,
             series_title: seriesTitle,
-            source: ctx.anime.source,
+            source: anime.source,
             episode_url: ep.url,
-            total_episodes: meta.episodes || ctx.episodes.length,
+            total_episodes: meta.episodes || episodes.length,
             episode_number: ep.num,
             playback_time: Math.floor(completed ? mpv.duration : mpv.position), // time-pos is gone at end-file
             duration: Math.floor(mpv.duration),
             title: episodeTitle,
-            cover: meta.cover || ctx.anime.image || "",
+            cover: meta.cover || anime.image || "",
             completed: done,
             last_updated: 0
         });
     }
 
+    function fetchSkip(): void {
+        const num = ep?.num;
+        if (meta.mal_id && num)
+            Api.call("skipTimes", {
+                malId: meta.mal_id,
+                episode: num
+            }, s => {
+                if (root.ep?.num === num)
+                    root.skip = s;
+            });
+    }
+
+    onMetaLoadedChanged: if (metaLoaded)
+        fetchSkip()
+
     function start(i: int): void {
-        if (i < 0 || i >= ctx.episodes.length) {
+        if (i < 0 || i >= episodes.length) {
             errorText = `No episode at position ${i}`;
             phase = "error";
             return;
@@ -92,27 +126,28 @@ FocusScope {
         mpv.command(["stop"]);
         index = i;
         phase = "resolving";
+        status = `Looking up episode ${ep.num} on ${sourceName}…`;
+        started = false;
         stream = null;
         skip = {};
         completedMarked = false;
         skippedOp = skippedEd = false;
         resumePrompt = false;
         countdownLeft = 0;
+        startAt = -1;
+        lastPos = 0;
+        qualities = [];
+        tried = [];
+        quality = "";
+        reconnects = 0;
         const saved = Api.get("seriesProgress", {
-            key: ctx.seriesKey,
-            url: ctx.anime.url
+            key: page.seriesKey,
+            url: anime.url
         }).find(p => p.episode_number === ep.num);
         resumeAt = saved && !saved.completed && saved.playback_time > 30 ? saved.playback_time : 0;
-        startAt = -1;
-        qualities = [];
-        quality = "";
-        if (meta.mal_id)
-            Api.call("skipTimes", {
-                malId: meta.mal_id,
-                episode: ep.num
-            }, s => root.skip = s);
+        fetchSkip();
         request = Api.call("qualities", {
-            source: ctx.anime.source,
+            source: anime.source,
             url: ep.url
         }, list => {
             root.qualities = list;
@@ -135,9 +170,9 @@ FocusScope {
         const target = pickQuality(q);
         if (phase === "ended" || (target === quality && phase !== "error"))
             return;
-        if (phase === "playing") {
+        if (phase === "playing" && started) {
             save(false);
-            startAt = mpv.position;
+            startAt = lastPos;
             resumePrompt = false;
         }
         resolve(target);
@@ -146,28 +181,62 @@ FocusScope {
     function resolve(q: string): void {
         Api.forget(request);
         quality = q;
+        tried = tried.concat([q]);
         phase = "resolving";
+        status = started ? `Switching to ${q}…` : "Finding a working server…";
         request = Api.call("resolve", {
-            source: ctx.anime.source,
+            source: anime.source,
             url: ep.url,
             quality: q
-        }, s => root.load(s), e => {
-            root.errorText = e;
-            root.phase = "error";
-        });
+        }, s => root.load(s), e => root.fail(e));
     }
 
     function load(s: var): void {
         stream = s;
         if (startAt >= 0)
-            startAt = Math.max(startAt, mpv.position); // the old stream kept playing while resolving
+            startAt = Math.max(startAt, lastPos); // the old stream kept playing while resolving
         mpv.setProp("http-header-fields", s.referer ? "Referer: " + s.referer : "");
         mpv.setProp("demuxer-lavf-o", s.hls ? "allowed_extensions=ALL" : "");
         mpv.setProp("force-media-title", `${seriesTitle} - Episode ${ep.num}`);
         applyShaders();
+        loaded = false;
         mpv.command(["loadfile", s.url]);
         phase = "playing";
+        status = "Loading video…";
         poke();
+    }
+
+    // Before the first frame, try each other quality once; mid-episode,
+    // reconnect at the same spot up to twice. Then the error card.
+    function fail(err: string): void {
+        const next = started ? (reconnects < 2 ? quality : "") : (qualities.find(q => !tried.includes(q)) ?? "");
+        if (!next) {
+            errorText = err || "Playback failed";
+            phase = "error";
+            return;
+        }
+        console.warn("playback failed, retrying:", err);
+        const failed = quality;
+        if (started) {
+            reconnects++;
+            startAt = lastPos;
+        }
+        resolve(next);
+        status = started ? "Connection dropped, reconnecting…" : `${failed || "That stream"} didn't work, trying ${next}…`;
+    }
+
+    // From the error card: same or another quality, keeping the position.
+    function retry(q: string): void {
+        if (!started && qualities.length === 0) {
+            start(index); // the quality lookup itself failed
+            return;
+        }
+        tried = [];
+        reconnects = 0;
+        if (started)
+            startAt = lastPos;
+        resolve(q || quality);
+        status = "Retrying…";
     }
 
     function applyShaders(): void {
@@ -184,11 +253,41 @@ FocusScope {
         anime4k = mode;
         Api.setSetting("anime4k", mode);
         applyShaders();
-        ApplicationWindow.window.toast(mode === "off" ? "Anime4K off" : "Anime4K: " + (anime4kModes.find(m => m.key === mode)?.name ?? mode));
+        osd.show("auto_awesome", mode === "off" ? "Anime4K off" : (anime4kModes.find(m => m.key === mode)?.name ?? mode));
     }
 
     function seek(sec: real): void {
         mpv.command(["seek", String(sec), "absolute"]);
+    }
+
+    function seekBy(sec: real): void {
+        mpv.command(["seek", String(sec)]);
+        osd.show(sec < 0 ? "fast_rewind" : "fast_forward", `${sec < 0 ? "−" : "+"}${Math.abs(sec)}s`);
+    }
+
+    function togglePause(): void {
+        const p = !mpv.paused;
+        mpv.paused = p;
+        osd.show(p ? "pause" : "play_arrow", "");
+    }
+
+    function setVolume(v: real): void {
+        const vol = Math.max(0, Math.min(130, v));
+        mpv.volume = vol;
+        osd.show(vol === 0 ? "volume_off" : vol < 50 ? "volume_down" : "volume_up", `${Math.round(vol)}%`);
+    }
+
+    function toggleMute(): void {
+        if (mpv.volume > 0) {
+            unmuteVolume = mpv.volume;
+            setVolume(0);
+        } else
+            setVolume(unmuteVolume || 100);
+    }
+
+    function setSpeed(v: real): void {
+        mpv.speed = v;
+        osd.show("speed", v + "×");
     }
 
     function skipSegment(): void {
@@ -218,30 +317,34 @@ FocusScope {
 
     focus: true
     Component.onCompleted: forceActiveFocus()
+    onStatusChanged: {
+        slow = false;
+        slowTimer.restart();
+    }
 
     Keys.onPressed: e => {
         poke();
         switch (e.key) {
         case Qt.Key_Space:
         case Qt.Key_K:
-            mpv.paused = !mpv.paused;
+            togglePause();
             break;
         case Qt.Key_Left:
         case Qt.Key_J:
-            mpv.command(["seek", e.modifiers & Qt.ShiftModifier ? "-85" : "-5"]);
+            seekBy(e.modifiers & Qt.ShiftModifier ? -85 : -5);
             break;
         case Qt.Key_Right:
         case Qt.Key_L:
-            mpv.command(["seek", e.modifiers & Qt.ShiftModifier ? "85" : "5"]);
+            seekBy(e.modifiers & Qt.ShiftModifier ? 85 : 5);
             break;
         case Qt.Key_Up:
-            mpv.volume = Math.min(130, mpv.volume + 5);
+            setVolume(mpv.volume + 5);
             break;
         case Qt.Key_Down:
-            mpv.volume = Math.max(0, mpv.volume - 5);
+            setVolume(mpv.volume - 5);
             break;
         case Qt.Key_M:
-            mpv.command(["cycle", "mute"]);
+            toggleMute();
             break;
         case Qt.Key_F:
             ApplicationWindow.window.toggleFullScreen();
@@ -289,6 +392,8 @@ FocusScope {
         onReadyChanged: if (ready)
             root.start(root.index)
         onFileLoaded: {
+            root.loaded = true;
+            root.status = "Buffering…";
             if (root.startAt >= 0) {
                 root.seek(root.startAt);
                 root.startAt = -1;
@@ -298,6 +403,8 @@ FocusScope {
                 resumeHide.restart();
             }
         }
+        onPlaybackRestart: if (root.loaded)
+            root.started = true
         onEndFile: (reason, error) => {
             if (root.phase !== "playing")
                 return;
@@ -308,13 +415,13 @@ FocusScope {
                     root.countdownLeft = 5;
                 else
                     root.phase = "ended";
-            } else if (reason === "error") {
-                root.errorText = error || "Playback failed";
-                root.phase = "error";
-            }
+            } else if (reason === "error")
+                root.fail(error);
         }
         onVolumeChanged: volSave.restart()
         onPositionChanged: {
+            if (mpv.position > 0 && root.started)
+                root.lastPos = mpv.position;
             if (!root.autoSkip)
                 return;
             if (root.inOp && !root.skippedOp) {
@@ -353,7 +460,7 @@ FocusScope {
             duration: mpv.duration,
             paused: mpv.paused,
             speed: mpv.speed,
-            cover: root.meta.cover || root.ctx.anime.image || "",
+            cover: root.meta.cover || root.anime.image || "",
             anilistId: root.meta.anilist_id ?? 0,
             malId: root.meta.mal_id ?? 0
         })
@@ -364,6 +471,13 @@ FocusScope {
 
         interval: 2500
         onTriggered: root.controlsVisible = false
+    }
+
+    Timer {
+        id: slowTimer
+
+        interval: 12000
+        onTriggered: root.slow = true
     }
 
     Timer {
@@ -389,71 +503,240 @@ FocusScope {
         hoverEnabled: true
         cursorShape: root.showControls ? Qt.ArrowCursor : Qt.BlankCursor
         onPositionChanged: root.poke()
-        onClicked: {
-            mpv.paused = !mpv.paused;
-            flash.trigger(mpv.paused ? "pause" : "play_arrow");
-        }
+        onClicked: if (root.started && root.phase === "playing")
+            root.togglePause()
         onDoubleClicked: ApplicationWindow.window.toggleFullScreen()
     }
 
-    // ---- centre feedback
-    Loading {
+    // ---- series art behind the loading screen and the error / ended card
+    Item {
+        anchors.fill: parent
+        opacity: !root.started || root.phase === "error" || root.phase === "ended" ? 1 : 0
+        visible: opacity > 0
+
+        Behavior on opacity {
+            Anim {
+                type: Anim.SlowEffects
+            }
+        }
+
+        ClippedImage {
+            id: art
+
+            anchors.fill: parent
+            radius: 0
+            visible: false
+            source: root.meta.banner || root.meta.cover || root.anime.image || ""
+        }
+        MultiEffect {
+            anchors.fill: parent
+            source: art
+            autoPaddingEnabled: false
+            blurEnabled: true
+            blur: 1
+            blurMax: 64
+            saturation: 0.2
+            opacity: art.status === Image.Ready ? 0.55 : 0
+
+            Behavior on opacity {
+                Anim {
+                    type: Anim.SlowEffects
+                }
+            }
+        }
+        Rectangle {
+            anchors.fill: parent
+            gradient: Gradient {
+                GradientStop {
+                    position: 0
+                    color: Qt.alpha("#000000", 0.35)
+                }
+                GradientStop {
+                    position: 1
+                    color: Qt.alpha("#000000", 0.85)
+                }
+            }
+        }
+
+        // loading screen: what we're waiting on, until the first frame
+        ColumnLayout {
+            anchors.centerIn: parent
+            width: Math.min(parent.width - Theme.padding.extraLarge * 2, 560)
+            opacity: root.loadingScreen ? 1 : 0
+            visible: opacity > 0
+            spacing: Theme.spacing.small
+
+            Behavior on opacity {
+                Anim {
+                    type: Anim.DefaultEffects
+                }
+            }
+
+            ClippedImage {
+                Layout.alignment: Qt.AlignHCenter
+                Layout.preferredWidth: 132
+                Layout.preferredHeight: 190
+                Layout.bottomMargin: Theme.spacing.large
+                radius: Theme.rounding.large
+                source: root.meta.cover || root.anime.image || ""
+
+                Elevation {
+                    z: -1
+                    anchors.fill: parent
+                    radius: parent.radius
+                    level: 4
+                }
+            }
+            StyledText {
+                Layout.alignment: Qt.AlignHCenter
+                text: `EPISODE ${root.ep?.num ?? ""}`
+                font: Theme.font.label.large
+                color: Theme.palette.primary
+            }
+            StyledText {
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignHCenter
+                text: root.seriesTitle
+                font: Theme.font.headline.small
+                color: "#ffffff"
+                wrapMode: Text.Wrap
+                maximumLineCount: 2
+                elide: Text.ElideRight
+            }
+            StyledText {
+                Layout.fillWidth: true
+                visible: root.episodeTitle !== "" && !root.episodeTitle.startsWith("Episode")
+                horizontalAlignment: Text.AlignHCenter
+                text: root.episodeTitle
+                color: Qt.alpha("#ffffff", 0.7)
+                elide: Text.ElideRight
+            }
+            RowLayout {
+                Layout.alignment: Qt.AlignHCenter
+                Layout.topMargin: Theme.spacing.large
+                spacing: Theme.spacing.medium
+
+                Loading {
+                    size: 24
+                }
+                StyledText {
+                    text: root.status
+                    color: Qt.alpha("#ffffff", 0.85)
+                    font: Theme.font.body.large
+                }
+            }
+            StyledText {
+                Layout.fillWidth: true
+                opacity: root.slow ? 1 : 0
+                horizontalAlignment: Text.AlignHCenter
+                text: `This is taking a while. ${root.sourceName} can be slow, so keep waiting or go back and open the anime from another source.`
+                color: Qt.alpha("#ffffff", 0.55)
+                font: Theme.font.body.medium
+                wrapMode: Text.Wrap
+
+                Behavior on opacity {
+                    Anim {
+                        type: Anim.DefaultEffects
+                    }
+                }
+            }
+        }
+    }
+
+    // ---- mid-episode buffering / quality switch / reconnect
+    ColumnLayout {
         anchors.centerIn: parent
-        size: 64
-        visible: root.phase === "resolving" || (root.phase === "playing" && (mpv.buffering || mpv.idle))
+        visible: root.started && (root.phase === "resolving" || (root.phase === "playing" && mpv.buffering))
+        spacing: Theme.spacing.medium
+
+        Loading {
+            Layout.alignment: Qt.AlignHCenter
+            size: 56
+        }
+        StyledRect {
+            Layout.alignment: Qt.AlignHCenter
+            visible: root.phase === "resolving"
+            implicitWidth: switchText.implicitWidth + Theme.padding.large * 2
+            implicitHeight: switchText.implicitHeight + Theme.padding.small * 2
+            radius: Theme.rounding.full
+            color: Qt.alpha("#000000", 0.6)
+
+            StyledText {
+                id: switchText
+
+                anchors.centerIn: parent
+                text: root.status
+                color: "#ffffff"
+            }
+        }
     }
 
-    StyledText {
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.top: parent.verticalCenter
-        anchors.topMargin: 52
-        visible: root.phase === "resolving"
-        text: `Finding a stream for episode ${root.ep?.num ?? ""}…`
-        color: "#ffffff"
-        font: Theme.font.title.medium
-    }
-
+    // ---- on-screen feedback for clicks and keys
     StyledRect {
-        id: flash
+        id: osd
 
-        function trigger(icon: string): void {
-            flashIcon.text = icon;
-            flashAnim.restart();
+        function show(icon: string, text: string): void {
+            osdIcon.text = icon;
+            osdText.text = text;
+            osdAnim.restart();
         }
 
         anchors.centerIn: parent
-        width: 88
-        height: 88
-        radius: 44
-        color: Qt.alpha("#000000", 0.5)
+        implicitWidth: Math.max(implicitHeight, osdRow.implicitWidth + Theme.padding.large * 2)
+        implicitHeight: 72
+        radius: Theme.rounding.full
+        color: Qt.alpha("#000000", 0.55)
         opacity: 0
 
-        MaterialIcon {
-            id: flashIcon
+        RowLayout {
+            id: osdRow
 
             anchors.centerIn: parent
-            fill: 1
-            size: 32
-            color: "#ffffff"
+            spacing: Theme.spacing.small
+
+            MaterialIcon {
+                id: osdIcon
+
+                fill: 1
+                size: 26
+                color: "#ffffff"
+            }
+            StyledText {
+                id: osdText
+
+                visible: text !== ""
+                font: Theme.font.title.large
+                color: "#ffffff"
+            }
         }
 
-        ParallelAnimation {
-            id: flashAnim
+        SequentialAnimation {
+            id: osdAnim
 
-            NumberAnimation {
-                target: flash
-                property: "opacity"
-                from: 1
-                to: 0
-                duration: 600
+            ParallelAnimation {
+                NumberAnimation {
+                    target: osd
+                    property: "opacity"
+                    to: 1
+                    duration: 90
+                }
+                NumberAnimation {
+                    target: osd
+                    property: "scale"
+                    from: 0.85
+                    to: 1
+                    duration: 160
+                    easing.type: Easing.OutBack
+                }
+            }
+            PauseAnimation {
+                duration: 450
             }
             NumberAnimation {
-                target: flash
-                property: "scale"
-                from: 0.8
-                to: 1.3
-                duration: 600
-                easing.type: Easing.OutCubic
+                target: osd
+                property: "opacity"
+                to: 0
+                duration: 300
             }
         }
     }
@@ -475,6 +758,7 @@ FocusScope {
 
         Rectangle {
             anchors.fill: parent
+            visible: root.started
             gradient: Gradient {
                 GradientStop {
                     position: 0
@@ -502,6 +786,7 @@ FocusScope {
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 2
+                opacity: root.started ? 1 : 0 // the loading screen already shows these
 
                 StyledText {
                     Layout.fillWidth: true
@@ -518,7 +803,7 @@ FocusScope {
                 }
             }
             Chip {
-                text: root.ctx.anime.source + (root.quality && root.quality !== "best" ? `  ·  ${root.quality}` : "")
+                text: root.sourceName + (root.quality && root.quality !== "best" ? `  ·  ${root.quality}` : "")
                 icon: "public"
                 selected: true
                 tint: Qt.alpha("#000000", 0.45)
@@ -534,8 +819,8 @@ FocusScope {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        height: 150
-        opacity: root.showControls ? 1 : 0
+        height: 140
+        opacity: root.showControls && root.started && (root.phase === "playing" || root.phase === "resolving") ? 1 : 0
         visible: opacity > 0
 
         Behavior on opacity {
@@ -553,7 +838,7 @@ FocusScope {
                 }
                 GradientStop {
                     position: 1
-                    color: Qt.alpha("#000000", 0.8)
+                    color: Qt.alpha("#000000", 0.85)
                 }
             }
         }
@@ -569,44 +854,53 @@ FocusScope {
             anchors.right: parent.right
             anchors.bottom: parent.bottom
             anchors.margins: Theme.padding.large
-            spacing: Theme.spacing.small
+            spacing: 0
 
-            RowLayout {
+            StyledSlider {
+                id: seek
+
                 Layout.fillWidth: true
-                spacing: Theme.spacing.medium
-
-                StyledText {
-                    text: Theme.formatTime(seek.pressed ? seek.value * mpv.duration : mpv.position)
-                    color: "#ffffff"
-                    font: Theme.font.label.large
+                trackHeight: 8
+                enabled: mpv.duration > 0
+                from: 0
+                to: 1
+                value: mpv.duration > 0 ? mpv.position / mpv.duration : 0
+                buffered: mpv.duration > 0 ? mpv.cacheTime / mpv.duration : 0
+                markers: {
+                    const out = [];
+                    const d = mpv.duration;
+                    if (d > 0)
+                        for (const k of ["op", "ed"])
+                            if (root.skip[k])
+                                out.push({
+                                    from: root.skip[k][0] / d,
+                                    to: root.skip[k][1] / d
+                                });
+                    return out;
                 }
-                StyledSlider {
-                    id: seek
+                onMoved: root.seek(value * mpv.duration)
 
-                    Layout.fillWidth: true
-                    enabled: mpv.duration > 0
-                    from: 0
-                    to: 1
-                    value: mpv.duration > 0 ? mpv.position / mpv.duration : 0
-                    buffered: mpv.duration > 0 ? mpv.cacheTime / mpv.duration : 0
-                    markers: {
-                        const out = [];
-                        const d = mpv.duration;
-                        if (d > 0)
-                            for (const k of ["op", "ed"])
-                                if (root.skip[k])
-                                    out.push({
-                                        from: root.skip[k][0] / d,
-                                        to: root.skip[k][1] / d
-                                    });
-                        return out;
+                // time under the cursor
+                StyledRect {
+                    readonly property real t: Math.max(0, Math.min(1, seek.hoverX / seek.width)) * mpv.duration
+                    readonly property string segment: root.skip.op && t >= root.skip.op[0] && t < root.skip.op[1] ? "Opening" : root.skip.ed && t >= root.skip.ed[0] && t < root.skip.ed[1] ? "Ending" : ""
+
+                    visible: (seek.hovering || seek.pressed) && mpv.duration > 0
+                    x: Math.max(0, Math.min(seek.width - width, (seek.pressed ? seek.visualPosition * seek.width : seek.hoverX) - width / 2))
+                    y: -height
+                    implicitWidth: hoverText.implicitWidth + Theme.padding.medium * 2
+                    implicitHeight: hoverText.implicitHeight + Theme.padding.small
+                    radius: Theme.rounding.small
+                    color: Qt.alpha("#000000", 0.8)
+
+                    StyledText {
+                        id: hoverText
+
+                        anchors.centerIn: parent
+                        text: Theme.formatTime(seek.pressed ? seek.value * mpv.duration : parent.t) + (parent.segment && !seek.pressed ? `  ·  ${parent.segment}` : "")
+                        font: Theme.font.label.large
+                        color: "#ffffff"
                     }
-                    onMoved: root.seek(value * mpv.duration)
-                }
-                StyledText {
-                    text: Theme.formatTime(mpv.duration)
-                    color: Qt.alpha("#ffffff", 0.75)
-                    font: Theme.font.label.large
                 }
             }
 
@@ -618,43 +912,44 @@ FocusScope {
                     type: IconButton.Text
                     icon: "skip_previous"
                     disabled: !root.hasPrev
-                    label.color: "#ffffff"
+                    label.color: disabled ? Qt.alpha("#ffffff", 0.35) : "#ffffff"
                     onClicked: root.start(root.index - 1)
                 }
                 IconButton {
                     icon: mpv.paused ? "play_arrow" : "pause"
                     iconSize: 20
-                    onClicked: mpv.paused = !mpv.paused
+                    onClicked: root.togglePause()
                 }
                 IconButton {
                     type: IconButton.Text
                     icon: "skip_next"
                     disabled: !root.hasNext
-                    label.color: "#ffffff"
+                    label.color: disabled ? Qt.alpha("#ffffff", 0.35) : "#ffffff"
                     onClicked: root.start(root.index + 1)
                 }
                 IconButton {
+                    Layout.leftMargin: Theme.spacing.small
                     type: IconButton.Text
                     icon: mpv.volume === 0 ? "volume_off" : mpv.volume < 50 ? "volume_down" : "volume_up"
                     label.color: "#ffffff"
-                    onClicked: mpv.volume = mpv.volume > 0 ? 0 : 100
+                    onClicked: root.toggleMute()
                 }
                 StyledSlider {
-                    Layout.preferredWidth: 110
+                    Layout.preferredWidth: 96
                     trackHeight: 6
                     from: 0
                     to: 130
                     value: mpv.volume
                     onMoved: mpv.volume = value
                 }
+                StyledText {
+                    Layout.leftMargin: Theme.spacing.medium
+                    text: Theme.formatTime(seek.pressed ? seek.value * mpv.duration : mpv.position) + "  /  " + Theme.formatTime(mpv.duration)
+                    color: Qt.alpha("#ffffff", 0.9)
+                    font: Theme.font.label.large
+                }
                 Item {
                     Layout.fillWidth: true
-                }
-                IconTextButton {
-                    visible: root.inOp || root.inEd
-                    icon: "fast_forward"
-                    text: root.inOp ? "Skip intro" : "Skip outro"
-                    onClicked: root.skipSegment()
                 }
                 IconTextButton {
                     type: TextButton.Text
@@ -662,7 +957,7 @@ FocusScope {
                     text: root.quality && root.quality !== "best" ? root.quality : "Auto"
                     label.color: "#ffffff"
                     iconLabel.color: "#ffffff"
-                    onClicked: qualityMenu.open()
+                    onClicked: qualityMenu.toggle()
 
                     StyledMenu {
                         id: qualityMenu
@@ -686,10 +981,10 @@ FocusScope {
                 IconTextButton {
                     type: TextButton.Text
                     icon: "speed"
-                    text: mpv.speed === 1 ? "1×" : mpv.speed + "×"
+                    text: mpv.speed + "×"
                     label.color: "#ffffff"
                     iconLabel.color: "#ffffff"
-                    onClicked: speedMenu.open()
+                    onClicked: speedMenu.toggle()
 
                     StyledMenu {
                         id: speedMenu
@@ -697,18 +992,18 @@ FocusScope {
                         y: -height - 8
                         header: "Speed"
                         model: [0.5, 0.75, 1, 1.25, 1.5, 2].map(v => ({
-                                    text: v + "×",
+                                    text: v === 1 ? "Normal" : v + "×",
                                     value: v,
                                     checked: mpv.speed === v
                                 }))
-                        onTriggered: item => mpv.speed = item.value
+                        onTriggered: item => root.setSpeed(item.value)
                     }
                 }
                 IconButton {
                     type: IconButton.Text
                     icon: "subtitles"
                     label.color: "#ffffff"
-                    onClicked: trackMenu.open()
+                    onClicked: trackMenu.toggle()
 
                     StyledMenu {
                         id: trackMenu
@@ -721,13 +1016,16 @@ FocusScope {
                                 tracks = JSON.parse(mpv.trackList || "[]");
                             } catch (e) {}
                             const items = tracks.filter(t => t.type === "audio" || t.type === "sub").map(t => ({
-                                        text: (t.type === "audio" ? "🔊 " : "💬 ") + (t.title || t.lang || `Track ${t.id}`) + (t.lang && t.title ? ` (${t.lang})` : ""),
+                                        text: (t.title || t.lang || `Track ${t.id}`) + (t.lang && t.title ? ` (${t.lang})` : ""),
+                                        icon: t.type === "audio" ? "music_note" : "subtitles",
                                         checked: t.selected,
                                         type: t.type,
                                         id: t.id
                                     }));
                             items.push({
                                 text: "Subtitles off",
+                                icon: "subtitles_off",
+                                checked: !tracks.some(t => t.type === "sub" && t.selected),
                                 type: "sub",
                                 id: "no"
                             });
@@ -740,7 +1038,7 @@ FocusScope {
                     type: IconButton.Text
                     icon: "auto_awesome"
                     label.color: root.anime4k && root.anime4k !== "off" ? Theme.palette.primary : "#ffffff"
-                    onClicked: a4kMenu.open()
+                    onClicked: a4kMenu.toggle()
 
                     StyledMenu {
                         id: a4kMenu
@@ -777,13 +1075,33 @@ FocusScope {
         }
     }
 
+    // ---- skip intro / outro, also while the controls are hidden
+    IconTextButton {
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.rightMargin: Theme.padding.extraLarge
+        anchors.bottomMargin: bottom.opacity > 0 ? bottom.height + Theme.spacing.small : Theme.padding.extraLarge
+        visible: root.started && root.phase === "playing" && (root.inOp || root.inEd)
+        icon: "fast_forward"
+        text: root.inOp ? "Skip intro" : "Skip outro"
+        verticalPadding: Theme.padding.medium
+        horizontalPadding: Theme.padding.large
+        onClicked: root.skipSegment()
+
+        Behavior on anchors.bottomMargin {
+            Anim {
+                type: Anim.DefaultSpatial
+            }
+        }
+    }
+
     // ---- resume prompt
     StyledRect {
         anchors.left: parent.left
         anchors.bottom: bottom.top
         anchors.margins: Theme.padding.extraLarge
         visible: opacity > 0
-        opacity: root.resumePrompt ? 1 : 0
+        opacity: root.resumePrompt && root.started ? 1 : 0
         implicitWidth: resumeRow.implicitWidth + Theme.padding.large * 2
         implicitHeight: resumeRow.implicitHeight + Theme.padding.medium * 2
         radius: Theme.rounding.large
@@ -825,7 +1143,7 @@ FocusScope {
         anchors.bottom: parent.bottom
         anchors.margins: Theme.padding.extraLarge
         visible: root.countdownLeft > 0
-        implicitWidth: 320
+        implicitWidth: 340
         implicitHeight: countCol.implicitHeight + Theme.padding.large * 2
         radius: Theme.rounding.extraLarge
         color: Theme.palette.surfaceContainerHigh
@@ -838,14 +1156,17 @@ FocusScope {
             spacing: Theme.spacing.medium
 
             StyledText {
-                text: "UP NEXT"
+                text: `UP NEXT IN ${root.countdownLeft}`
                 font: Theme.font.label.large
                 color: Theme.palette.primary
             }
             StyledText {
+                readonly property var next: root.hasNext ? root.episodes[root.index + 1] : null
+
                 Layout.fillWidth: true
-                text: root.hasNext ? `Episode ${root.ctx.episodes[root.index + 1].num} in ${root.countdownLeft}…` : ""
+                text: next ? `Episode ${next.num}` + (root.page.info?.[next.num]?.title ? `  ·  ${root.page.info[next.num].title}` : "") : ""
                 font: Theme.font.title.medium
+                elide: Text.ElideRight
             }
             LinearProgress {
                 Layout.fillWidth: true
@@ -874,7 +1195,7 @@ FocusScope {
     StyledRect {
         anchors.centerIn: parent
         visible: root.phase === "error" || root.phase === "ended"
-        implicitWidth: 420
+        width: Math.min(parent.width - Theme.padding.extraLarge * 2, 460)
         implicitHeight: card.implicitHeight + Theme.padding.extraLarge * 2
         radius: Theme.rounding.extraLarge
         color: Theme.palette.surfaceContainerHigh
@@ -882,35 +1203,67 @@ FocusScope {
         ColumnLayout {
             id: card
 
+            readonly property bool failed: root.phase === "error"
+            readonly property var others: failed ? root.qualities.filter(q => q !== root.quality).slice(0, 4) : []
+
             anchors.fill: parent
             anchors.margins: Theme.padding.extraLarge
-            spacing: Theme.spacing.large
+            spacing: Theme.spacing.medium
 
             StyledText {
                 Layout.alignment: Qt.AlignHCenter
-                text: root.phase === "error" ? "(×﹏×)" : "(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧"
+                text: card.failed ? "(×﹏×)" : "(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧"
                 font: Theme.font.headline.large
-                color: root.phase === "error" ? Theme.palette.error : Theme.palette.primary
+                color: card.failed ? Theme.palette.error : Theme.palette.primary
             }
             StyledText {
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignHCenter
-                text: root.phase === "error" ? "Couldn't play this episode" : root.hasNext ? "Episode finished" : "You've reached the last episode!"
+                text: card.failed ? `Couldn't play episode ${root.ep?.num ?? ""}` : root.hasNext ? `Episode ${root.ep?.num} finished` : "You've reached the last episode!"
                 font: Theme.font.title.large
                 wrapMode: Text.Wrap
             }
             StyledText {
                 Layout.fillWidth: true
-                visible: root.phase === "error"
                 horizontalAlignment: Text.AlignHCenter
-                text: root.errorText
+                text: card.failed ? Api.describe(root.errorText) + (root.tried.length > 1 ? ` Tried ${root.tried.join(", ")} on ${root.sourceName}.` : "") : root.hasNext ? "Ready for the next one?" : "Thanks for watching."
                 color: Theme.palette.onSurfaceVariant
                 wrapMode: Text.Wrap
-                maximumLineCount: 6
-                elide: Text.ElideRight
+            }
+            TextEdit {
+                Layout.fillWidth: true
+                Layout.maximumHeight: 64
+                visible: card.failed && text !== ""
+                clip: true
+                text: root.errorText
+                readOnly: true
+                selectByMouse: true
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.Wrap
+                font: Theme.font.body.small
+                color: Qt.alpha(Theme.palette.onSurfaceVariant, 0.7)
+                selectionColor: Theme.palette.secondaryContainer
             }
             RowLayout {
                 Layout.alignment: Qt.AlignHCenter
+                visible: card.others.length > 0
+                spacing: Theme.spacing.small
+
+                Repeater {
+                    model: card.others
+
+                    TextButton {
+                        required property string modelData
+
+                        type: TextButton.Tonal
+                        text: `Try ${modelData}`
+                        onClicked: root.retry(modelData)
+                    }
+                }
+            }
+            RowLayout {
+                Layout.alignment: Qt.AlignHCenter
+                Layout.topMargin: Theme.spacing.small
                 spacing: Theme.spacing.small
 
                 TextButton {
@@ -918,25 +1271,28 @@ FocusScope {
                     text: "Back"
                     onClicked: root.exit()
                 }
-                TextButton {
-                    visible: root.phase === "error"
+                IconTextButton {
+                    visible: card.failed
                     type: TextButton.Tonal
+                    icon: "refresh"
                     text: "Retry"
-                    onClicked: root.start(root.index)
+                    onClicked: root.retry("")
                 }
-                TextButton {
-                    visible: root.phase === "ended" && root.hasNext
-                    text: "Next episode"
-                    onClicked: root.start(root.index + 1)
-                }
-                TextButton {
+                IconTextButton {
                     visible: root.phase === "ended"
                     type: TextButton.Tonal
+                    icon: "replay"
                     text: "Replay"
                     onClicked: {
                         root.resumeAt = 0;
                         root.start(root.index);
                     }
+                }
+                IconTextButton {
+                    visible: root.hasNext
+                    icon: "skip_next"
+                    text: "Next episode"
+                    onClicked: root.start(root.index + 1)
                 }
             }
         }
@@ -971,7 +1327,7 @@ FocusScope {
                 Layout.fillHeight: true
                 clip: true
                 spacing: Theme.spacing.small
-                model: root.ctx.episodes
+                model: root.episodes
                 currentIndex: root.index
                 ScrollBar.vertical: StyledScrollBar {}
                 Component.onCompleted: positionViewAtIndex(root.index, ListView.Center)
@@ -982,7 +1338,8 @@ FocusScope {
 
                     width: epList.width - 8
                     num: modelData.num
-                    title: root.ctx.info?.[modelData.num]?.title || modelData.title
+                    title: root.page.info?.[modelData.num]?.title || modelData.title
+                    record: root.page.progress?.[modelData.num] ?? null
                     current: index === root.index
                     onClicked: {
                         episodesDrawer.close();

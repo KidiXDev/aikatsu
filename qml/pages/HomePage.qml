@@ -301,9 +301,12 @@ Item {
                         badge: modelData.source
                         progress: modelData.finished ? -1 : root.progressOf(modelData)
                         onClicked: ApplicationWindow.window.openAnime(root.animeOf(modelData), 0)
-                        onRightClicked: {
+                        onRightClicked: (x, y) => {
                             cardMenu.target = modelData;
-                            cardMenu.popup();
+                            const p = mapToItem(root, x, y);
+                            cardMenu.x = p.x;
+                            cardMenu.y = p.y;
+                            cardMenu.open();
                         }
                     }
                 }
@@ -324,12 +327,6 @@ Item {
         id: cardMenu
 
         property var target
-
-        function popup(): void {
-            x = hover.mouseX;
-            y = hover.mouseY;
-            open();
-        }
 
         model: [
             {
@@ -358,14 +355,6 @@ Item {
                 deleteDialog.open();
             }
         }
-    }
-
-    MouseArea {
-        id: hover
-
-        anchors.fill: parent
-        acceptedButtons: Qt.NoButton
-        hoverEnabled: true
     }
 
     StyledDialog {

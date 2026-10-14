@@ -15,6 +15,8 @@ Item {
     property var status: ({}) // source key -> {name, state: loading|ok|error, count, error}
     property string filter: "" // source key or ""
     readonly property var shown: filter ? results.filter(r => r.source === filter) : results
+    readonly property var failures: Object.values(status).filter(s => s.state === "error")
+    readonly property bool allFailed: !searching && failures.length > 0 && failures.length === Object.keys(status).length
 
     function search(q: string): void {
         q = q.trim();
@@ -181,15 +183,11 @@ Item {
                     onClicked: root.filter = modelData
                     tint: st.state === "error" ? Theme.palette.errorContainer : Theme.palette.secondaryContainer
 
-                    ToolTip.visible: st.error ? hov.containsMouse : false
-                    ToolTip.text: st.error ?? ""
+                    ToolTip.visible: st.error ? hov.hovered : false
+                    ToolTip.text: st.error ? `${Api.describe(st.error)}\n${st.error}` : ""
 
-                    MouseArea {
+                    HoverHandler {
                         id: hov
-
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        acceptedButtons: Qt.NoButton
                     }
                 }
             }
@@ -251,9 +249,20 @@ Item {
             EmptyState {
                 anchors.centerIn: parent
                 visible: !root.searching
-                face: root.query ? "(╥﹏╥)" : "(◕‿◕✿)"
-                title: root.query ? `Nothing found for “${root.query}”` : "What do you want to watch?"
-                message: root.query ? "Try another spelling, the romaji title, or check the source chips above for errors." : "Results from Otakudesu, Samehadaku, Nimegami, YLnime, Moenime and Astronime appear as each source answers."
+                face: root.allFailed ? "(×﹏×)" : root.query ? "(╥﹏╥)" : "(◕‿◕✿)"
+                tint: root.allFailed ? Theme.palette.error : Theme.palette.primary
+                title: root.allFailed ? "Couldn't reach any source" : root.query ? `Nothing found for “${root.query}”` : "What do you want to watch?"
+                message: root.allFailed ? Api.describe(root.failures[0].error) : root.query ? "Try another spelling or the romaji title. Sources marked ! failed; hover them for details." : "Results from Otakudesu, Samehadaku, Nimegami, YLnime, Moenime and Astronime appear as each source answers."
+
+                IconTextButton {
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.topMargin: Theme.spacing.medium
+                    visible: root.allFailed
+                    type: TextButton.Tonal
+                    icon: "refresh"
+                    text: "Try again"
+                    onClicked: root.search(root.query)
+                }
             }
             Loading {
                 anchors.centerIn: parent

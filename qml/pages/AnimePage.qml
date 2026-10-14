@@ -14,8 +14,7 @@ Item {
     property int autoplayEpisode: 0 // episode number to start right away; -1 = latest
 
     property var meta: null
-    property bool metaLoaded: false
-    property int pendingPlay: -1 // index waiting for metadata (keeps progress keys stable)
+    property bool metaLoaded: false // the player holds progress saves until this (keeps keys stable)
     property var episodes: []
     property var info: ({}) // episode number -> {title, filler, recap}
     property var progress: ({}) // episode number -> progress row
@@ -66,22 +65,10 @@ Item {
         return episodes.findIndex(e => e.url === ep?.url);
     }
 
+    // Opens right away; the player picks up metadata when it lands.
     function play(index: int): void {
-        if (index < 0 || index >= episodes.length)
-            return;
-        if (!metaLoaded) {
-            pendingPlay = index;
-            return;
-        }
-        pendingPlay = -1;
-        ApplicationWindow.window.play({
-            anime: anime,
-            meta: meta,
-            episodes: episodes,
-            index: index,
-            info: info,
-            seriesKey: seriesKey
-        });
+        if (index >= 0 && index < episodes.length)
+            ApplicationWindow.window.play(root, index);
     }
 
     function progressRow(ep: var): var {
@@ -138,8 +125,6 @@ Item {
             root.meta = m;
             root.metaLoaded = true;
             root.refreshProgress();
-            if (root.pendingPlay >= 0)
-                root.play(root.pendingPlay);
             if (m.mal_id || m.anilist_id)
                 Api.call("episodeInfo", {
                     malId: m.mal_id,
@@ -153,8 +138,6 @@ Item {
         }, () => {
             root.meta = {};
             root.metaLoaded = true;
-            if (root.pendingPlay >= 0)
-                root.play(root.pendingPlay);
         });
     }
 
@@ -305,6 +288,7 @@ Item {
                             icon: "calendar_month"
                         }
                         Chip {
+                            visible: root.episodes.length > 0
                             text: `${root.episodes.length} episodes` + ((root.meta?.episodes ?? 0) > root.episodes.length ? ` of ${root.meta.episodes}` : "")
                             icon: "video_library"
                         }
@@ -330,8 +314,8 @@ Item {
 
                         IconTextButton {
                             disabled: root.episodes.length === 0
-                            icon: root.pendingPlay >= 0 ? "hourglass_top" : "play_arrow"
-                            text: root.episodes.length ? (Object.keys(root.progress).length ? `Continue  ·  Ep ${root.episodes[root.continueIndex].num}` : `Play  ·  Ep ${root.episodes[0].num}`) : "Play"
+                            icon: root.loading ? "hourglass_top" : "play_arrow"
+                            text: root.episodes.length ? (Object.keys(root.progress).length ? `Continue  ·  Ep ${root.episodes[root.continueIndex].num}` : `Play  ·  Ep ${root.episodes[0].num}`) : root.loading ? "Loading episodes…" : "Play"
                             verticalPadding: Theme.padding.medium
                             horizontalPadding: Theme.padding.large
                             onClicked: root.play(root.continueIndex)
@@ -443,6 +427,37 @@ Item {
                 columnSpacing: Theme.spacing.medium
                 rowSpacing: Theme.spacing.medium
 
+                // skeleton while the episode list loads
+                Repeater {
+                    model: root.loading && root.episodes.length === 0 ? 12 : 0
+
+                    StyledRect {
+                        required property int index
+
+                        Layout.fillWidth: true
+                        implicitHeight: 64
+                        radius: Theme.rounding.large
+                        color: Theme.palette.surfaceContainer
+
+                        SequentialAnimation on opacity {
+                            loops: Animation.Infinite
+                            PauseAnimation {
+                                duration: (index % 6) * 90
+                            }
+                            NumberAnimation {
+                                to: 0.45
+                                duration: 700
+                                easing.type: Easing.InOutSine
+                            }
+                            NumberAnimation {
+                                to: 1
+                                duration: 700
+                                easing.type: Easing.InOutSine
+                            }
+                        }
+                    }
+                }
+
                 Repeater {
                     model: root.shownEpisodes
 
@@ -468,20 +483,24 @@ Item {
                 }
             }
 
-            Loading {
-                Layout.alignment: Qt.AlignHCenter
-                Layout.topMargin: Theme.spacing.extraLarge
-                visible: root.loading
-                size: 56
-            }
             EmptyState {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.topMargin: Theme.spacing.extraLarge
                 visible: !root.loading && root.episodes.length === 0
                 face: "(×﹏×)"
-                title: root.error ? "Couldn't load episodes" : "No episodes"
-                message: root.error
+                title: root.error ? `Couldn't load episodes from ${root.anime.source}` : "No episodes yet"
+                message: root.error ? Api.describe(root.error) : "This source hasn't listed any episodes for this series."
+                details: root.error
                 tint: Theme.palette.error
+
+                IconTextButton {
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.topMargin: Theme.spacing.medium
+                    type: TextButton.Tonal
+                    icon: "refresh"
+                    text: "Try again"
+                    onClicked: root.load()
+                }
             }
         }
     }

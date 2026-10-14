@@ -71,12 +71,16 @@ signals:
     void trackListChanged();
     void readyChanged();
     void fileLoaded();
+    // First frame after a load or seek.
+    void playbackRestart();
     // reason: eof | stop | quit | error | redirect; error carries mpv's message
+    // plus its last error log line (e.g. "HTTP error 403 Forbidden")
     void endFile(const QString &reason, const QString &error);
     void wakeup();
 
 private:
     void drainEvents();
+    QString m_lastError;
     double m_position = 0, m_duration = 0, m_cacheTime = 0, m_volume = 100, m_speed = 1;
     bool m_paused = false, m_buffering = false, m_idle = true, m_ready = false;
     QString m_trackList;

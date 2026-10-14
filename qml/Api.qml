@@ -29,6 +29,20 @@ QtObject {
         return JSON.parse(Backend.get(method, JSON.stringify(args ?? {})));
     }
 
+    // One plain sentence for a backend/mpv error; show the raw text as details.
+    function describe(err: string): string {
+        const e = String(err ?? "").toLowerCase();
+        if (/timed? ?out|timeout/.test(e))
+            return "The site took too long to answer.";
+        if (/dns|lookup address|connect|network|unreachable|connection|offline/.test(e))
+            return "Couldn't reach the site. Check your internet connection.";
+        if (/403|forbidden|429|too many requests|cloudflare|blocked/.test(e))
+            return "The site refused the request. Try again in a minute.";
+        if (/no playable|no .*(server|stream|media|player)|404|not found|unrecognized|layout changed/.test(e))
+            return "No working stream was found for this episode.";
+        return "Something went wrong.";
+    }
+
     function setting(key: string): string {
         return get("settings")[key] ?? "";
     }

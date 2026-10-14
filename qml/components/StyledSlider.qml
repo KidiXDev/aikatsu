@@ -12,6 +12,8 @@ T.Slider {
     property real buffered
     property var markers: []
     property real trackHeight: 12
+    readonly property alias hovering: hoverArea.containsMouse
+    readonly property alias hoverX: hoverArea.mouseX
 
     implicitWidth: 200
     implicitHeight: 36
@@ -87,8 +89,11 @@ T.Slider {
     }
 
     MouseArea {
+        id: hoverArea
+
         anchors.fill: parent
         acceptedButtons: Qt.NoButton
+        hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
     }
 }
