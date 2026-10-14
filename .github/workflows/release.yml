@@ -12,6 +12,10 @@ env:
   # Pinned to the Qt the app is developed and tested on; both packages ship this
   # exact Qt, so users never run it against an older one.
   QT_VERSION: "6.11.2"
+  # Qt 6.11 moved its Windows downloads to a new folder layout that aqtinstall
+  # only understands since #1000, which isn't on PyPI yet (3.3.0 is the latest).
+  # Drop this, and the aqtsource lines, once aqtinstall 3.4 is released.
+  AQT_SOURCE: git+https://github.com/miurahr/aqtinstall.git@076e1659807d0b362a3ed684d54c2e9c775eb9c7
 
 jobs:
   linux:
@@ -30,6 +34,7 @@ jobs:
         with:
           version: ${{ env.QT_VERSION }}
           arch: linux_gcc_64
+          aqtsource: ${{ env.AQT_SOURCE }}
           cache: true
 
       - uses: dtolnay/rust-toolchain@stable
@@ -74,6 +79,7 @@ jobs:
         with:
           version: ${{ env.QT_VERSION }}
           arch: win64_msvc2022_64
+          aqtsource: ${{ env.AQT_SOURCE }}
           cache: true
 
       - uses: ilammy/msvc-dev-cmd@v1
