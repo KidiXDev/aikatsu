@@ -4,7 +4,7 @@ Fast and smooth native desktop app for watching anime with indonesian subs witho
 
 ## What it can do
 
-- **Search six sites at once.** Otakudesu, Samehadaku, Nimegami, YLnime, Moenime and Astronime. Results appear as each site answers.
+- **Search multiple sources at once.** Results appear as each source answers.
 - **Continue watching.** The home screen shows what you were watching and the episode you're up to. Click once to carry on from the exact minute.
 - **A proper video player.**
   - Picks a quality for you (or remembers the one you chose), like YouTube.
@@ -100,13 +100,13 @@ Pushing a tag like `v0.2.0` builds Windows and Linux on GitHub Actions and publi
 
 ```sh
 cargo test                                   # offline tests
-cargo test live_ -- --ignored --nocapture    # hits the real sites (LIVE_Q=<query>)
+cargo test live_ -- --ignored --nocapture    # hits the real sources (LIVE_Q=<query>)
 aikatsu --search <query> --open --play --screenshot out.png   # drive the UI and save a screenshot
 ```
 
 Set `XDG_DATA_HOME` to a scratch folder to keep test runs out of your real history.
 
-- `src/sources/`: one file per site.
+- `src/sources/`: one file per source.
 - `src/proxy.rs`: local relay for the hosts mpv can't play directly.
 - `src/bridge.rs`: the `Backend` object the UI talks to.
 - `cpp/mpvitem.*`: the video item (libmpv).
