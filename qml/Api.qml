@@ -1,0 +1,68 @@
+pragma Singleton
+
+import QtQuick
+import Aikatsu
+
+// Promise-ish wrapper over Backend.call/get: call("search", {query}, ok, err).
+QtObject {
+    id: root
+
+    property var pending: ({})
+
+    signal pushed(string kind, var data)
+
+    function call(method: string, args: var, onOk: var, onErr: var): int {
+        const id = Backend.call(method, JSON.stringify(args ?? {}));
+        pending[id] = {
+            ok: onOk,
+            err: onErr
+        };
+        return id;
+    }
+
+    // Drops a pending reply (e.g. the page that asked is gone).
+    function forget(id: int): void {
+        delete pending[id];
+    }
+
+    function get(method: string, args: var): var {
+        return JSON.parse(Backend.get(method, JSON.stringify(args ?? {})));
+    }
+
+    function setting(key: string): string {
+        return get("settings")[key] ?? "";
+    }
+
+    function setSetting(key: string, value: var): void {
+        get("setSetting", {
+            key: key,
+            value: String(value)
+        });
+        settingChanged(key, String(value));
+    }
+
+    signal settingChanged(string key, string value)
+
+    property Connections conn: Connections {
+        target: Backend
+
+        function onReply(id: int, ok: bool, json: string): void {
+            const p = root.pending[id];
+            if (!p)
+                return;
+            delete root.pending[id];
+            const data = JSON.parse(json);
+            if (ok && p.ok)
+                p.ok(data);
+            else if (!ok) {
+                console.warn("call failed:", data);
+                if (p.err)
+                    p.err(data);
+            }
+        }
+
+        function onPushed(kind: string, json: string): void {
+            root.pushed(kind, JSON.parse(json));
+        }
+    }
+}

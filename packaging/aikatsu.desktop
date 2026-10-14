@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Aikatsu
+GenericName=Anime Player
+Comment=Watch and download Indonesian-sub anime
+Exec=aikatsu
+Icon=aikatsu
+Terminal=false
+Categories=AudioVideo;Video;Player;
+Keywords=anime;stream;otakudesu;samehadaku;
+StartupWMClass=aikatsu

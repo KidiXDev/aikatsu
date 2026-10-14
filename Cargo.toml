@@ -1,0 +1,38 @@
+[package]
+name = "aikatsu"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-only"
+description = "Desktop anime streaming client (Indonesian sub sources), Qt Quick + Rust"
+
+[dependencies]
+cxx = "1"
+cxx-qt = "0.10"
+cxx-qt-lib = { version = "0.10", features = ["qt_gui", "qt_qml"] }
+anyhow = "1"
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+base64 = "0.22"
+bytes = "1"
+dirs = "6"
+discord-rich-presence = "1.1"
+futures-util = "0.3"
+html-escape = "0.2"
+regex = "1"
+rusqlite = { version = "0.40", features = ["bundled"] }
+reqwest = { version = "0.13", default-features = false, features = ["http3", "rustls", "stream"] }
+scraper = "0.27"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-appender = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "fs", "process", "io-util", "net"] }
+tokio-util = "0.7"
+url = "2"
+wreq = { version = "=6.0.0-rc.31", features = ["cookies", "form", "json", "stream", "gzip", "brotli", "deflate", "zstd"] }
+wreq-util = "=3.0.0-rc.14"
+zip = { version = "8", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+
+[build-dependencies]
+cxx-qt-build = "0.10"
+pkg-config = "0.3"

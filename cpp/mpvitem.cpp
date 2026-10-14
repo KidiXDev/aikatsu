@@ -1,0 +1,205 @@
+#include "mpvitem.h"
+
+#include <QtGui/QGuiApplication>
+#include <QtGui/QIcon>
+#include <QtGui/QOpenGLContext>
+#include <QtOpenGL/QOpenGLFramebufferObject>
+#include <QtQuick/QQuickOpenGLUtils>
+#include <QtQuick/QQuickWindow>
+#include <clocale>
+#include <stdexcept>
+
+MpvCore::~MpvCore() {
+    if (gl) mpv_render_context_free(gl);
+    if (mpv) mpv_terminate_destroy(mpv);
+}
+
+namespace {
+
+void *getProcAddress(void *, const char *name) {
+    auto *ctx = QOpenGLContext::currentContext();
+    return ctx ? reinterpret_cast<void *>(ctx->getProcAddress(QByteArray(name))) : nullptr;
+}
+
+class MpvRenderer : public QQuickFramebufferObject::Renderer {
+    const MpvItem *item;
+    std::shared_ptr<MpvCore> core;
+
+public:
+    explicit MpvRenderer(const MpvItem *i) : item(i), core(i->core) {}
+
+    ~MpvRenderer() override {
+        // Runs on the render thread with the GL context current.
+        std::lock_guard lock(core->glLock);
+        if (core->gl) {
+            mpv_render_context_free(core->gl);
+            core->gl = nullptr;
+        }
+    }
+
+    QOpenGLFramebufferObject *createFramebufferObject(const QSize &size) override {
+        if (!core->gl) {
+            std::lock_guard lock(core->glLock);
+            mpv_opengl_init_params glInit{getProcAddress, nullptr};
+            int advanced = 1;
+            mpv_render_param params[]{
+                {MPV_RENDER_PARAM_API_TYPE, const_cast<char *>(MPV_RENDER_API_TYPE_OPENGL)},
+                {MPV_RENDER_PARAM_OPENGL_INIT_PARAMS, &glInit},
+                {MPV_RENDER_PARAM_ADVANCED_CONTROL, &advanced},
+                {MPV_RENDER_PARAM_INVALID, nullptr},
+            };
+            if (mpv_render_context_create(&core->gl, core->mpv, params) < 0)
+                throw std::runtime_error("failed to initialize mpv GL context");
+            mpv_render_context_set_update_callback(
+                core->gl,
+                [](void *ctx) { QMetaObject::invokeMethod(static_cast<MpvItem *>(ctx), &QQuickItem::update, Qt::QueuedConnection); },
+                const_cast<MpvItem *>(item));
+            QMetaObject::invokeMethod(const_cast<MpvItem *>(item), &MpvItem::markReady, Qt::QueuedConnection);
+        }
+        return QQuickFramebufferObject::Renderer::createFramebufferObject(size);
+    }
+
+    void render() override {
+        QQuickOpenGLUtils::resetOpenGLState();
+        auto *fbo = framebufferObject();
+        mpv_opengl_fbo mpfbo{static_cast<int>(fbo->handle()), fbo->width(), fbo->height(), 0};
+        int flipY = 0;
+        mpv_render_param params[]{
+            {MPV_RENDER_PARAM_OPENGL_FBO, &mpfbo},
+            {MPV_RENDER_PARAM_FLIP_Y, &flipY},
+            {MPV_RENDER_PARAM_INVALID, nullptr},
+        };
+        mpv_render_context_render(core->gl, params);
+        QQuickOpenGLUtils::resetOpenGLState();
+    }
+};
+
+} // namespace
+
+MpvItem::MpvItem(QQuickItem *parent) : QQuickFramebufferObject(parent), core(std::make_shared<MpvCore>()) {
+    core->mpv = mpv_create();
+    if (!core->mpv) throw std::runtime_error("could not create mpv context");
+    auto *m = core->mpv;
+    mpv_set_option_string(m, "vo", "libmpv");
+    mpv_set_option_string(m, "idle", "yes");
+    mpv_set_option_string(m, "terminal", "no");
+    mpv_set_option_string(m, "input-default-bindings", "no");
+    mpv_set_option_string(m, "hwdec", "auto-safe");
+    if (mpv_initialize(m) < 0) throw std::runtime_error("could not initialize mpv context");
+    mpv_request_log_messages(m, "warn");
+
+    mpv_observe_property(m, 0, "time-pos", MPV_FORMAT_DOUBLE);
+    mpv_observe_property(m, 0, "duration", MPV_FORMAT_DOUBLE);
+    mpv_observe_property(m, 0, "demuxer-cache-time", MPV_FORMAT_DOUBLE);
+    mpv_observe_property(m, 0, "pause", MPV_FORMAT_FLAG);
+    mpv_observe_property(m, 0, "paused-for-cache", MPV_FORMAT_FLAG);
+    mpv_observe_property(m, 0, "idle-active", MPV_FORMAT_FLAG);
+    mpv_observe_property(m, 0, "volume", MPV_FORMAT_DOUBLE);
+    mpv_observe_property(m, 0, "speed", MPV_FORMAT_DOUBLE);
+    mpv_observe_property(m, 0, "track-list", MPV_FORMAT_STRING); // node props stringify as JSON
+
+    connect(this, &MpvItem::wakeup, this, &MpvItem::drainEvents, Qt::QueuedConnection);
+    mpv_set_wakeup_callback(m, [](void *ctx) { emit static_cast<MpvItem *>(ctx)->wakeup(); }, this);
+}
+
+MpvItem::~MpvItem() {
+    mpv_set_wakeup_callback(core->mpv, nullptr, nullptr);
+    {
+        // After this returns libmpv makes no further update callbacks into us.
+        std::lock_guard lock(core->glLock);
+        if (core->gl) mpv_render_context_set_update_callback(core->gl, nullptr, nullptr);
+    }
+    const char *stop[]{"stop", nullptr};
+    mpv_command(core->mpv, stop);
+}
+
+QQuickFramebufferObject::Renderer *MpvItem::createRenderer() const {
+    window()->setPersistentGraphics(true);
+    window()->setPersistentSceneGraph(true);
+    return new MpvRenderer(this);
+}
+
+void MpvItem::drainEvents() {
+    while (auto *ev = mpv_wait_event(core->mpv, 0)) {
+        switch (ev->event_id) {
+        case MPV_EVENT_NONE:
+            return;
+        case MPV_EVENT_FILE_LOADED:
+            emit fileLoaded();
+            break;
+        case MPV_EVENT_END_FILE: {
+            auto *ef = static_cast<mpv_event_end_file *>(ev->data);
+            static const char *reasons[]{"eof", "", "stop", "quit", "error", "redirect"};
+            QString reason = ef->reason >= 0 && ef->reason <= 5 ? reasons[ef->reason] : "error";
+            emit endFile(reason, ef->reason == MPV_END_FILE_REASON_ERROR ? mpv_error_string(ef->error) : "");
+            break;
+        }
+        case MPV_EVENT_LOG_MESSAGE: {
+            auto *msg = static_cast<mpv_event_log_message *>(ev->data);
+            qWarning("[mpv/%s] %s", msg->prefix, QByteArray(msg->text).trimmed().constData());
+            break;
+        }
+        case MPV_EVENT_PROPERTY_CHANGE: {
+            auto *p = static_cast<mpv_event_property *>(ev->data);
+            QByteArray name(p->name);
+            auto dbl = [&](double &field, void (MpvItem::*sig)()) {
+                double v = p->format == MPV_FORMAT_DOUBLE ? *static_cast<double *>(p->data) : 0;
+                if (v != field) { field = v; emit (this->*sig)(); }
+            };
+            auto flag = [&](bool &field, void (MpvItem::*sig)()) {
+                bool v = p->format == MPV_FORMAT_FLAG && *static_cast<int *>(p->data);
+                if (v != field) { field = v; emit (this->*sig)(); }
+            };
+            if (name == "time-pos") dbl(m_position, &MpvItem::positionChanged);
+            else if (name == "duration") dbl(m_duration, &MpvItem::durationChanged);
+            else if (name == "demuxer-cache-time") dbl(m_cacheTime, &MpvItem::cacheTimeChanged);
+            else if (name == "volume") dbl(m_volume, &MpvItem::volumeChanged);
+            else if (name == "speed") dbl(m_speed, &MpvItem::speedChanged);
+            else if (name == "pause") flag(m_paused, &MpvItem::pausedChanged);
+            else if (name == "paused-for-cache") flag(m_buffering, &MpvItem::bufferingChanged);
+            else if (name == "idle-active") flag(m_idle, &MpvItem::idleChanged);
+            else if (name == "track-list") {
+                m_trackList = p->format == MPV_FORMAT_STRING ? QString::fromUtf8(*static_cast<char **>(p->data)) : "[]";
+                emit trackListChanged();
+            }
+            break;
+        }
+        default:
+            break;
+        }
+    }
+}
+
+void MpvItem::command(const QStringList &args) {
+    QList<QByteArray> utf8;
+    std::vector<const char *> argv;
+    for (const auto &a : args) utf8.append(a.toUtf8());
+    for (const auto &a : utf8) argv.push_back(a.constData());
+    argv.push_back(nullptr);
+    if (int err = mpv_command(core->mpv, argv.data()); err < 0)
+        qWarning("mpv command %s failed: %s", qPrintable(args.join(' ')), mpv_error_string(err));
+}
+
+void MpvItem::setProp(const QString &name, const QString &value) {
+    if (int err = mpv_set_property_string(core->mpv, name.toUtf8().constData(), value.toUtf8().constData()); err < 0)
+        qWarning("mpv set %s failed: %s", qPrintable(name), mpv_error_string(err));
+}
+
+QString MpvItem::getProp(const QString &name) const {
+    char *v = mpv_get_property_string(core->mpv, name.toUtf8().constData());
+    QString out = v ? QString::fromUtf8(v) : QString();
+    mpv_free(v);
+    return out;
+}
+
+void MpvItem::setPaused(bool v) { setProp("pause", v ? "yes" : "no"); }
+void MpvItem::setVolume(double v) { setProp("volume", QString::number(v)); }
+void MpvItem::setSpeed(double v) { setProp("speed", QString::number(v)); }
+
+void aikatsu_init() {
+    QGuiApplication::setApplicationName("Aikatsu");
+    QGuiApplication::setDesktopFileName("aikatsu"); // Wayland app-id, matches aikatsu.desktop
+    QGuiApplication::setWindowIcon(QIcon(":/icon.svg"));
+    QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
+    std::setlocale(LC_NUMERIC, "C"); // libmpv requires the C numeric locale
+}

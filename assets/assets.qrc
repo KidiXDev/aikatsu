@@ -1,0 +1,8 @@
+<RCC>
+    <qresource prefix="/">
+        <file>fonts/GoogleSansFlex.ttf</file>
+        <file>fonts/MaterialSymbolsRounded.ttf</file>
+        <file>sakura.svg</file>
+        <file>icon.svg</file>
+    </qresource>
+</RCC>

@@ -1,0 +1,169 @@
+//! Shared HTTP plumbing: a Chrome-fingerprinted client for scraping (the
+//! sources sit behind anti-bot checks that reject non-browser TLS), a plain
+//! client for APIs and file probes, retries, and challenge-page detection.
+
+use anyhow::{Result, anyhow, bail};
+use scraper::{Html, Selector};
+use std::sync::LazyLock;
+use std::time::Duration;
+use wreq::redirect::Policy;
+
+/// Browser UA for plain requests to file hosts (mirrors the CLI's netx.UserAgent).
+pub const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0";
+/// AniList answers browser UAs with 403, so API calls identify as an API client.
+pub const API_UA: &str = "Aikatsu/0.1 (+https://github.com/KidiXDev/aikatsu)";
+const MAX_BODY: usize = 8 << 20;
+
+pub static CHROME: LazyLock<wreq::Client> = LazyLock::new(|| {
+    wreq::Client::builder()
+        .emulation(wreq_util::Emulation::Chrome149)
+        .cookie_store(true)
+        .redirect(Policy::limited(10))
+        .timeout(Duration::from_secs(8))
+        .build()
+        .expect("chrome client")
+});
+
+pub static PLAIN: LazyLock<wreq::Client> = LazyLock::new(|| {
+    wreq::Client::builder()
+        .redirect(Policy::limited(10))
+        .connect_timeout(Duration::from_secs(8))
+        .build()
+        .expect("plain client")
+});
+
+/// Provider-side failure (down, blocked, challenged). Counts toward the
+/// circuit breaker; parser errors do not.
+#[derive(Debug)]
+pub struct Unavailable(pub String);
+
+impl std::fmt::Display for Unavailable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+impl std::error::Error for Unavailable {}
+
+pub fn is_unavailable(err: &anyhow::Error) -> bool {
+    err.downcast_ref::<Unavailable>().is_some()
+}
+
+/// GET on the Chrome client with the site's Referer.
+pub fn get(url: &str, referer: &str) -> wreq::RequestBuilder {
+    CHROME.get(url).header("Referer", referer)
+}
+
+/// admin-ajax style form POST on the Chrome client.
+pub fn post_form(url: &str, referer: &str, form: &[(&str, &str)]) -> wreq::RequestBuilder {
+    CHROME
+        .post(url)
+        .header("Referer", referer)
+        .header("X-Requested-With", "XMLHttpRequest")
+        .form(form)
+}
+
+/// Sends with the CLI's retry policy (2 retries, 300 ms apart, only on 5xx or
+/// transport errors) and returns the body, capped at 8 MiB.
+pub async fn text(label: &str, rb: wreq::RequestBuilder) -> Result<String> {
+    let mut last = anyhow!("{label}: request failed");
+    for attempt in 0..3 {
+        if attempt > 0 {
+            tokio::time::sleep(Duration::from_millis(300)).await;
+        }
+        let req = rb.try_clone().ok_or_else(|| anyhow!("{label}: request not cloneable"))?;
+        match req.send().await {
+            Ok(resp) => {
+                let status = resp.status().as_u16();
+                if (200..300).contains(&status) {
+                    let body = resp.bytes().await?;
+                    if body.len() > MAX_BODY {
+                        bail!("{label}: response over 8 MiB");
+                    }
+                    return Ok(String::from_utf8_lossy(&body).into_owned());
+                }
+                let err = status_error(label, status);
+                if status < 500 {
+                    return Err(err);
+                }
+                last = err;
+            }
+            Err(e) => last = Unavailable(format!("{label}: {e}")).into(),
+        }
+    }
+    Err(last)
+}
+
+fn status_error(label: &str, status: u16) -> anyhow::Error {
+    match status {
+        403 | 429 => Unavailable(format!("{label} blocked the request: HTTP {status}/challenge")).into(),
+        s if s >= 500 => Unavailable(format!("{label} temporarily unavailable: HTTP {s}")).into(),
+        s => anyhow!("{label}: HTTP {s}"),
+    }
+}
+
+/// Fetches an HTML page, rejecting Cloudflare-style challenge pages. Returns
+/// the body rather than `Html` because `Html` is !Send and can't cross awaits.
+pub async fn page(label: &str, rb: wreq::RequestBuilder) -> Result<String> {
+    let body = text(label, rb).await?;
+    check_challenge(&Html::parse_document(&body), label)?;
+    Ok(body)
+}
+
+const CHALLENGE_PHRASES: [&str; 8] = [
+    "cf-error",
+    "checking your browser before accessing",
+    "ddos protection by cloudflare",
+    "please enable cookies and reload",
+    "performance & security by cloudflare",
+    "ray id:",
+    "please complete the security check to access",
+    "attention required! | cloudflare",
+];
+
+pub fn check_challenge(doc: &Html, label: &str) -> Result<()> {
+    let title = first_text(doc, "title").to_lowercase();
+    let blocked = ["just a moment", "attention required", "access denied"].iter().any(|p| title.contains(p))
+        || ["#cf-wrapper", "#challenge-form", "#cf-error-details", ".cf-browser-verification"]
+            .iter()
+            .any(|s| doc.select(&sel(s)).next().is_some())
+        || {
+            let body = doc.root_element().text().collect::<String>().to_lowercase();
+            CHALLENGE_PHRASES.iter().any(|p| body.contains(p))
+        };
+    if blocked {
+        Err(Unavailable(format!("{label} blocked the request: captcha/challenge")).into())
+    } else {
+        Ok(())
+    }
+}
+
+/// Asks for one byte; true when the host serves the file (200/206). Uses the
+/// plain client: file hosts (pixeldrain, googlevideo) don't negotiate h2 ALPN.
+pub async fn playable(url: &str, referer: Option<&str>) -> bool {
+    let mut rb = PLAIN.get(url).header("User-Agent", UA).header("Range", "bytes=0-0").timeout(Duration::from_secs(10));
+    if let Some(r) = referer {
+        rb = rb.header("Referer", r);
+    }
+    matches!(rb.send().await.map(|r| r.status().as_u16()), Ok(200 | 206))
+}
+
+pub fn sel(css: &str) -> Selector {
+    Selector::parse(css).unwrap_or_else(|e| panic!("bad selector {css}: {e}"))
+}
+
+pub fn first_text(doc: &Html, css: &str) -> String {
+    doc.select(&sel(css)).next().map(|e| e.text().collect::<String>().trim().to_owned()).unwrap_or_default()
+}
+
+/// Resolves `raw` against `base` (like Go's url.ResolveReference); "" on failure.
+pub fn absolute(base: &str, raw: &str) -> String {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return String::new();
+    }
+    url::Url::parse(base).and_then(|b| b.join(raw)).map(String::from).unwrap_or_default()
+}
+
+pub fn query_escape(s: &str) -> String {
+    url::form_urlencoded::byte_serialize(s.as_bytes()).collect()
+}

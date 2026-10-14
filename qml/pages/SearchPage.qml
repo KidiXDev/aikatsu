@@ -1,0 +1,265 @@
+pragma ComponentBehavior: Bound
+
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+import Aikatsu
+
+// Searches every enabled source in parallel; results stream in per source.
+Item {
+    id: root
+
+    property string query
+    property bool searching
+    property var results: []
+    property var status: ({}) // source key -> {name, state: loading|ok|error, count, error}
+    property string filter: "" // source key or ""
+    readonly property var shown: filter ? results.filter(r => r.source === filter) : results
+
+    function search(q: string): void {
+        q = q.trim();
+        if (q.length < 2)
+            return;
+        query = q;
+        results = [];
+        const st = {};
+        for (const s of Api.get("sources")) {
+            const disabled = (Api.setting("disabledSources") || "").split(",").map(x => x.trim());
+            if (!disabled.includes(s.key))
+                st[s.key] = {
+                    name: s.name,
+                    state: "loading",
+                    count: 0
+                };
+        }
+        status = st;
+        filter = "";
+        searching = true;
+        Api.call("search", {
+            query: q
+        }, () => {
+            root.searching = false;
+            for (const k in root.status)
+                if (root.status[k].state === "loading")
+                    root.status[k].state = "error";
+            root.status = Object.assign({}, root.status);
+        }, () => root.searching = false);
+    }
+
+    // Dev aid: `--search <q> [--open]` searches on launch and opens the first hit.
+    readonly property var devArgs: Qt.application.arguments
+    Component.onCompleted: {
+        const i = devArgs.indexOf("--search");
+        if (i > 0) {
+            ApplicationWindow.window.tab = 1;
+            search(devArgs[i + 1]);
+        }
+    }
+    onResultsChanged: if (results.length > 0 && devArgs.includes("--open") && !opened) {
+        opened = true;
+        ApplicationWindow.window.openAnime(results[0], devArgs.includes("--play") ? -1 : 0);
+    }
+    property bool opened
+
+    Connections {
+        target: Api
+
+        function onPushed(kind: string, data: var): void {
+            if (kind !== "searchResult" || !root.status[data.source])
+                return;
+            const st = Object.assign({}, root.status);
+            if (data.error)
+                st[data.source] = {
+                    name: data.name,
+                    state: "error",
+                    count: 0,
+                    error: data.error
+                };
+            else {
+                st[data.source] = {
+                    name: data.name,
+                    state: "ok",
+                    count: data.items.length
+                };
+                root.results = root.results.concat(data.items);
+            }
+            root.status = st;
+        }
+    }
+
+    ColumnLayout {
+        anchors.fill: parent
+        anchors.margins: Theme.padding.extraLarge
+        spacing: Theme.spacing.large
+
+        StyledText {
+            text: "Search"
+            font: Theme.font.headline.large
+        }
+
+        // M3 search bar
+        StyledRect {
+            Layout.fillWidth: true
+            Layout.maximumWidth: 760
+            implicitHeight: 56
+            radius: Theme.rounding.full
+            color: Theme.palette.surfaceContainerHigh
+            border.width: field.activeFocus ? 2 : 0
+            border.color: Theme.palette.primary
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: Theme.padding.large
+                anchors.rightMargin: Theme.padding.small
+                spacing: Theme.spacing.medium
+
+                MaterialIcon {
+                    text: "search"
+                    size: 16
+                    color: Theme.palette.onSurfaceVariant
+                }
+                TextFieldBase {
+                    id: field
+
+                    Layout.fillWidth: true
+                    placeholderText: "Search anime… (e.g. Frieren, One Piece)"
+                    focus: true
+                    onAccepted: root.search(text)
+
+                    StyledText {
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: !field.text
+                        text: field.placeholderText
+                        color: Theme.palette.onSurfaceVariant
+                        font: field.font
+                    }
+                }
+                Loading {
+                    visible: root.searching
+                    size: 24
+                }
+                IconButton {
+                    visible: field.text !== ""
+                    type: IconButton.Text
+                    icon: "close"
+                    onClicked: {
+                        field.text = "";
+                        field.forceActiveFocus();
+                    }
+                }
+                IconButton {
+                    icon: "arrow_forward"
+                    onClicked: root.search(field.text)
+                }
+            }
+        }
+
+        // per-source status, doubles as a filter
+        Flow {
+            Layout.fillWidth: true
+            spacing: Theme.spacing.small
+            visible: Object.keys(root.status).length > 0
+
+            Chip {
+                text: `All  ${root.results.length}`
+                selected: root.filter === ""
+                clickable: true
+                onClicked: root.filter = ""
+            }
+
+            Repeater {
+                model: Object.keys(root.status)
+
+                Chip {
+                    required property string modelData
+                    readonly property var st: root.status[modelData]
+
+                    text: st.state === "loading" ? `${st.name}  …` : st.state === "error" ? `${st.name}  !` : `${st.name}  ${st.count}`
+                    icon: st.state === "error" ? "error" : st.state === "loading" ? "hourglass_top" : ""
+                    selected: root.filter === modelData
+                    clickable: st.state === "ok" && st.count > 0
+                    onClicked: root.filter = modelData
+                    tint: st.state === "error" ? Theme.palette.errorContainer : Theme.palette.secondaryContainer
+
+                    ToolTip.visible: st.error ? hov.containsMouse : false
+                    ToolTip.text: st.error ?? ""
+
+                    MouseArea {
+                        id: hov
+
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        acceptedButtons: Qt.NoButton
+                    }
+                }
+            }
+        }
+
+        GridView {
+            id: grid
+
+            readonly property int columns: Math.max(2, Math.floor(width / 176))
+
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            visible: root.shown.length > 0
+            clip: true
+            cellWidth: width / columns
+            cellHeight: (cellWidth - Theme.spacing.large) * 1.45 + 80
+            model: root.shown
+            ScrollBar.vertical: StyledScrollBar {}
+
+            add: Transition {
+                Anim {
+                    property: "opacity"
+                    from: 0
+                    to: 1
+                    type: Anim.DefaultEffects
+                }
+                Anim {
+                    property: "scale"
+                    from: 0.9
+                    to: 1
+                    type: Anim.FastSpatial
+                }
+            }
+
+            delegate: Item {
+                id: cell
+
+                required property var modelData
+
+                width: grid.cellWidth
+                height: grid.cellHeight
+
+                PosterCard {
+                    anchors.fill: parent
+                    anchors.margins: Theme.spacing.large / 2
+                    title: cell.modelData.name
+                    image: cell.modelData.image
+                    badge: root.status[cell.modelData.source]?.name ?? cell.modelData.source
+                    onClicked: ApplicationWindow.window.openAnime(cell.modelData, 0)
+                }
+            }
+        }
+
+        Item {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            visible: root.shown.length === 0
+
+            EmptyState {
+                anchors.centerIn: parent
+                visible: !root.searching
+                face: root.query ? "(╥﹏╥)" : "(◕‿◕✿)"
+                title: root.query ? `Nothing found for “${root.query}”` : "What do you want to watch?"
+                message: root.query ? "Try another spelling, the romaji title, or check the source chips above for errors." : "Results from Otakudesu, Samehadaku, Nimegami, YLnime, Moenime and Astronime appear as each source answers."
+            }
+            Loading {
+                anchors.centerIn: parent
+                visible: root.searching
+                size: 56
+            }
+        }
+    }
+}
