@@ -1,0 +1,134 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: # test the builds without tagging; only tags publish a release
+
+permissions:
+  contents: read
+
+env:
+  QT_VERSION: "6.11.*"
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libmpv-dev libgl1-mesa-dev libegl1-mesa-dev libxkbcommon-dev libxkbcommon-x11-0 \
+            libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
+            libxcb-shape0 libxcb-xinerama0
+
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          cache: true
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --release --locked
+        env:
+          QMAKE: ${{ env.QT_ROOT_DIR }}/bin/qmake
+
+      - name: AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
+          QMAKE: ${{ env.QT_ROOT_DIR }}/bin/qmake
+          QML_SOURCES_PATHS: ${{ github.workspace }}/qml
+          EXTRA_QT_MODULES: svg # icons are SVG, but nothing links Qt Svg directly
+        run: |
+          for tool in linuxdeploy linuxdeploy-plugin-qt; do
+            curl -fsSLO "https://github.com/linuxdeploy/$tool/releases/download/continuous/$tool-x86_64.AppImage"
+          done
+          chmod +x linuxdeploy*.AppImage
+          cp assets/icon.svg aikatsu.svg
+          ./linuxdeploy-x86_64.AppImage --appdir AppDir -e target/release/aikatsu \
+            -d packaging/aikatsu.desktop -i aikatsu.svg --plugin qt --output appimage
+          mv Aikatsu*-x86_64.AppImage "Aikatsu-${{ github.ref_name }}-x86_64.AppImage"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: Aikatsu-*.AppImage
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: win64_msvc2022_64
+          cache: true
+
+      - uses: ilammy/msvc-dev-cmd@v1
+      - uses: ilammy/setup-nasm@v1 # BoringSSL
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: libmpv
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download --repo shinchiro/mpv-winbuild-cmake --pattern "mpv-dev-x86_64-20*.7z" --dir mpv
+          7z x (Get-ChildItem mpv\*.7z)[0].FullName -ompv-dev | Out-Null
+          Set-Location mpv-dev
+          # The archive has no MSVC import library, so build one from the DLL's exports.
+          $exports = dumpbin /exports libmpv-2.dll |
+            Select-String '^\s+\d+\s+[0-9A-F]+\s+[0-9A-F]{8}\s+(\w+)' |
+            ForEach-Object { $_.Matches[0].Groups[1].Value }
+          Set-Content mpv.def (@("EXPORTS") + $exports)
+          lib /nologo /def:mpv.def /name:libmpv-2.dll /out:mpv.lib /machine:x64
+          "MPV_DIR=$PWD" | Out-File $env:GITHUB_ENV -Append
+
+      - name: Build
+        run: cargo build --release --locked
+        env:
+          QMAKE: ${{ env.QT_ROOT_DIR }}\bin\qmake.exe
+
+      - name: Package
+        run: |
+          New-Item -ItemType Directory dist | Out-Null
+          Copy-Item target\release\aikatsu.exe, "$env:MPV_DIR\libmpv-2.dll" dist
+          windeployqt --release --compiler-runtime --qmldir qml dist\aikatsu.exe
+          # Icons are SVG, but nothing links Qt Svg directly, so windeployqt skips it.
+          New-Item -ItemType Directory -Force dist\imageformats | Out-Null
+          Copy-Item "$env:QT_ROOT_DIR\bin\Qt6Svg.dll" dist
+          Copy-Item "$env:QT_ROOT_DIR\plugins\imageformats\qsvg.dll" dist\imageformats
+          Compress-Archive dist\* "Aikatsu-${{ github.ref_name }}-windows-x64.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: Aikatsu-*.zip
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [linux, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }} # e.g. v0.2.0-beta.1
