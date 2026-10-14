@@ -15,6 +15,8 @@ ApplicationWindow {
     property int historyRevision: 0
 
     function openAnime(anime: var, autoplayEpisode: int): void {
+        if (stack.currentItem?.anime?.url === anime.url)
+            return; // double-click on a card
         stack.push(animePage, {
             anime: anime,
             autoplayEpisode: autoplayEpisode ?? 0

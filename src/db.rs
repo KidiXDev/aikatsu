@@ -3,9 +3,11 @@
 
 use anyhow::Result;
 use rusqlite::{Connection, OptionalExtension, params};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
+use std::time::Duration;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Progress {
@@ -86,8 +88,59 @@ fn init(c: &Connection) -> rusqlite::Result<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_recent ON media_progress(last_updated DESC);
         CREATE INDEX IF NOT EXISTS idx_series ON media_progress(series_key, episode_number);
-        CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);",
+        CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS cache (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL, expires INTEGER NOT NULL);
+        DELETE FROM cache WHERE expires < strftime('%s', 'now') - 30 * 86400;",
     )
+}
+
+/// Remote lookups (AniList, Jikan, AniSkip) kept across restarts. A fresh entry
+/// is returned as is; otherwise `fetch` runs and is stored for `ttl` (`refresh`
+/// skips the read). When `fetch` fails, an expired entry (kept up to 30 days)
+/// beats an error on a flaky connection.
+pub async fn cached<T: Serialize + DeserializeOwned>(key: &str, ttl: Duration, refresh: bool, fetch: impl Future<Output = Result<T>>) -> Result<T> {
+    cached_on(&DB, key, ttl, refresh, fetch).await
+}
+
+async fn cached_on<T: Serialize + DeserializeOwned>(
+    db: &Mutex<Connection>,
+    key: &str,
+    ttl: Duration,
+    refresh: bool,
+    fetch: impl Future<Output = Result<T>>,
+) -> Result<T> {
+    let stored: Option<(String, i64)> =
+        db.lock().unwrap().query_row("SELECT value, expires FROM cache WHERE key = ?1", [key], |r| Ok((r.get(0)?, r.get(1)?))).optional().ok().flatten();
+    if let Some((v, expires)) = &stored
+        && !refresh
+        && *expires > now()
+        && let Ok(t) = serde_json::from_str(v)
+    {
+        return Ok(t);
+    }
+    match fetch.await {
+        Ok(t) => {
+            if let Ok(v) = serde_json::to_string(&t) {
+                let _ = db.lock().unwrap().execute(
+                    "INSERT OR REPLACE INTO cache (key, value, expires) VALUES (?1, ?2, ?3)",
+                    params![key, v, now() + ttl.as_secs() as i64],
+                );
+            }
+            Ok(t)
+        }
+        Err(e) => match stored.and_then(|(v, _)| serde_json::from_str(&v).ok()) {
+            Some(t) => {
+                tracing::warn!("{key}: refresh failed, using cached copy ({e:#})");
+                Ok(t)
+            }
+            None => Err(e),
+        },
+    }
+}
+
+pub fn clear_cache() -> Result<()> {
+    DB.lock().unwrap().execute("DELETE FROM cache", [])?;
+    Ok(())
 }
 
 fn now() -> i64 {
@@ -254,6 +307,20 @@ pub fn group_series(entries: &[Progress]) -> Vec<Series> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn cache_fresh_refresh_and_stale() {
+        let db = Mutex::new(Connection::open_in_memory().unwrap());
+        init(&db.lock().unwrap()).unwrap();
+        let ttl = Duration::from_secs(60);
+        let offline = || async { Err::<i32, _>(anyhow::anyhow!("offline")) };
+        assert_eq!(cached_on(&db, "k", ttl, false, async { Ok(1) }).await.unwrap(), 1);
+        assert_eq!(cached_on(&db, "k", ttl, false, async { Ok(2) }).await.unwrap(), 1, "fresh entry is reused");
+        assert_eq!(cached_on(&db, "k", ttl, true, async { Ok(3) }).await.unwrap(), 3, "refresh refetches");
+        db.lock().unwrap().execute("UPDATE cache SET expires = 0", []).unwrap();
+        assert_eq!(cached_on(&db, "k", ttl, false, offline()).await.unwrap(), 3, "expired copy beats an error");
+        assert!(cached_on(&db, "missing", ttl, false, offline()).await.is_err());
+    }
 
     fn ep(n: i64, pos: i64, done: bool, at: i64) -> Progress {
         let key = series_key(0, "Otakudesu", "https://o/anime/x/");

@@ -4,8 +4,9 @@
 
 use anyhow::{Result, anyhow, bail};
 use scraper::{Html, Selector};
-use std::sync::LazyLock;
-use std::time::Duration;
+use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex};
+use std::time::{Duration, Instant};
 use wreq::redirect::Policy;
 
 /// Browser UA for plain requests to file hosts (mirrors the CLI's netx.UserAgent).
@@ -101,11 +102,31 @@ fn status_error(label: &str, status: u16) -> anyhow::Error {
     }
 }
 
+/// GET pages from the last 10 minutes: the player reads an episode page twice
+/// (qualities, then resolve), and reopening a series or repeating a search
+/// shouldn't refetch. Only challenge-free pages are kept.
+static PAGES: LazyLock<Mutex<HashMap<String, (String, Instant)>>> = LazyLock::new(Default::default);
+const PAGE_TTL: Duration = Duration::from_secs(600);
+
+pub fn clear_pages() {
+    PAGES.lock().unwrap().clear();
+}
+
 /// Fetches an HTML page, rejecting Cloudflare-style challenge pages. Returns
 /// the body rather than `Html` because `Html` is !Send and can't cross awaits.
 pub async fn page(label: &str, rb: wreq::RequestBuilder) -> Result<String> {
+    let key = rb.try_clone().and_then(|r| r.build().ok()).filter(|r| r.method().as_str() == "GET").map(|r| r.uri().to_string());
+    let hit = key.as_ref().and_then(|k| PAGES.lock().unwrap().get(k).filter(|(_, at)| at.elapsed() < PAGE_TTL).map(|(b, _)| b.clone()));
+    if let Some(body) = hit {
+        return Ok(body);
+    }
     let body = text(label, rb).await?;
     check_challenge(&Html::parse_document(&body), label)?;
+    if let Some(k) = key {
+        let mut pages = PAGES.lock().unwrap();
+        pages.retain(|_, (_, at)| at.elapsed() < PAGE_TTL);
+        pages.insert(k, (body.clone(), Instant::now()));
+    }
     Ok(body)
 }
 

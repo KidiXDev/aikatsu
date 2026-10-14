@@ -15,8 +15,11 @@ pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
+        include!("cxx-qt-lib/qqmlapplicationengine.h");
+        type QQmlApplicationEngine = cxx_qt_lib::QQmlApplicationEngine;
         include!("aikatsu/cpp/mpvitem.h");
         fn aikatsu_init();
+        fn aikatsu_engine_init(engine: Pin<&mut QQmlApplicationEngine>);
     }
 
     extern "RustQt" {

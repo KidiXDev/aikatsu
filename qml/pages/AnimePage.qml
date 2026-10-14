@@ -97,12 +97,14 @@ Item {
         };
     }
 
-    function load(): void {
+    // refresh: the refresh/retry buttons skip the page and metadata caches.
+    function load(refresh: bool): void {
         loading = true;
         error = "";
         Api.call("episodes", {
             source: anime.source,
-            url: anime.url
+            url: anime.url,
+            refresh: refresh
         }, eps => {
             root.episodes = eps;
             root.loading = false;
@@ -120,7 +122,8 @@ Item {
         Api.call("enrich", {
             name: anime.name,
             url: anime.url,
-            anilistId: anime.anilistId ?? 0
+            anilistId: anime.anilistId ?? 0,
+            refresh: refresh
         }, m => {
             root.meta = m;
             root.metaLoaded = true;
@@ -128,7 +131,8 @@ Item {
             if (m.mal_id || m.anilist_id)
                 Api.call("episodeInfo", {
                     malId: m.mal_id,
-                    anilistId: m.anilist_id
+                    anilistId: m.anilist_id,
+                    refresh: refresh
                 }, list => {
                     const map = {};
                     for (const e of list)
@@ -141,7 +145,7 @@ Item {
         });
     }
 
-    Component.onCompleted: load()
+    Component.onCompleted: load(false)
 
     Connections {
         target: ApplicationWindow.window
@@ -332,7 +336,7 @@ Item {
                         IconButton {
                             type: IconButton.Text
                             icon: "refresh"
-                            onClicked: root.load()
+                            onClicked: root.load(true)
                         }
                     }
                 }
@@ -499,7 +503,7 @@ Item {
                     type: TextButton.Tonal
                     icon: "refresh"
                     text: "Try again"
-                    onClicked: root.load()
+                    onClicked: root.load(true)
                 }
             }
         }

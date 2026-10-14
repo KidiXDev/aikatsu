@@ -119,7 +119,7 @@ pub async fn heights(episode_url: &str) -> Result<Vec<u32>> {
 }
 
 pub async fn stream(episode_url: &str, quality: &str) -> Result<Stream> {
-    let page = http::text(LABEL, http::get(episode_url, &referer())).await?;
+    let page = http::page(LABEL, http::get(episode_url, &referer())).await?; // shared with heights()
     let (mut downloads, mut mirrors) = {
         let doc = Html::parse_document(&page);
         (parse_downloads(&doc), parse_mirrors(&doc))

@@ -68,11 +68,8 @@ QtObject {
             const data = JSON.parse(json);
             if (ok && p.ok)
                 p.ok(data);
-            else if (!ok) {
-                console.warn("call failed:", data);
-                if (p.err)
-                    p.err(data);
-            }
+            else if (!ok && p.err)
+                p.err(data);
         }
 
         function onPushed(kind: string, json: string): void {

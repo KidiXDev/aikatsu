@@ -1,6 +1,7 @@
 #ifndef AIKATSU_MPVITEM_H
 #define AIKATSU_MPVITEM_H
 
+#include <QtQml/QQmlApplicationEngine>
 #include <QtQml/qqmlregistration.h>
 #include <QtQuick/QQuickFramebufferObject>
 #include <memory>
@@ -88,4 +89,6 @@ private:
 
 // Must run after QGuiApplication exists and before any window is created.
 void aikatsu_init();
+// Before the engine loads anything: covers and banners go through a disk cache.
+void aikatsu_engine_init(QQmlApplicationEngine &engine);
 #endif

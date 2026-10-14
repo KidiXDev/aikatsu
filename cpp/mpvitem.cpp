@@ -2,7 +2,11 @@
 
 #include <QtGui/QGuiApplication>
 #include <QtGui/QIcon>
+#include <QtCore/QStandardPaths>
 #include <QtGui/QOpenGLContext>
+#include <QtNetwork/QNetworkAccessManager>
+#include <QtNetwork/QNetworkDiskCache>
+#include <QtQml/QQmlNetworkAccessManagerFactory>
 #include <QtOpenGL/QOpenGLFramebufferObject>
 #include <QtQuick/QQuickOpenGLUtils>
 #include <QtQuick/QQuickWindow>
@@ -86,7 +90,8 @@ MpvItem::MpvItem(QQuickItem *parent) : QQuickFramebufferObject(parent), core(std
     mpv_set_option_string(m, "input-default-bindings", "no");
     mpv_set_option_string(m, "hwdec", "auto-safe");
     if (mpv_initialize(m) < 0) throw std::runtime_error("could not initialize mpv context");
-    mpv_request_log_messages(m, "warn");
+    // Errors are always collected for endFile; warnings only when debugging.
+    mpv_request_log_messages(m, qEnvironmentVariableIsSet("AIKATSU_MPV_LOG") ? "warn" : "error");
 
     mpv_observe_property(m, 0, "time-pos", MPV_FORMAT_DOUBLE);
     mpv_observe_property(m, 0, "duration", MPV_FORMAT_DOUBLE);
@@ -129,6 +134,7 @@ void MpvItem::drainEvents() {
             emit fileLoaded();
             break;
         case MPV_EVENT_PLAYBACK_RESTART:
+            m_lastError.clear(); // decoder probing (e.g. a failed Vulkan hwdec) is behind us
             emit playbackRestart();
             break;
         case MPV_EVENT_END_FILE: {
@@ -144,7 +150,9 @@ void MpvItem::drainEvents() {
         }
         case MPV_EVENT_LOG_MESSAGE: {
             auto *msg = static_cast<mpv_event_log_message *>(ev->data);
-            qWarning("[mpv/%s] %s", msg->prefix, QByteArray(msg->text).trimmed().constData());
+            static const bool verbose = qEnvironmentVariableIsSet("AIKATSU_MPV_LOG");
+            if (verbose)
+                qWarning("[mpv/%s] %s", msg->prefix, QByteArray(msg->text).trimmed().constData());
             if (msg->log_level <= MPV_LOG_LEVEL_ERROR)
                 m_lastError = QString::fromUtf8(msg->text).trimmed();
             break;
@@ -205,6 +213,29 @@ QString MpvItem::getProp(const QString &name) const {
 void MpvItem::setPaused(bool v) { setProp("pause", v ? "yes" : "no"); }
 void MpvItem::setVolume(double v) { setProp("volume", QString::number(v)); }
 void MpvItem::setSpeed(double v) { setProp("speed", QString::number(v)); }
+
+namespace {
+
+// QML creates one manager per loading thread; each gets the same on-disk cache,
+// so images survive restarts and show up when the network is flaky.
+class CachingNamFactory : public QQmlNetworkAccessManagerFactory {
+public:
+    QNetworkAccessManager *create(QObject *parent) override {
+        auto *nam = new QNetworkAccessManager(parent);
+        auto *cache = new QNetworkDiskCache(nam);
+        cache->setCacheDirectory(QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/images");
+        cache->setMaximumCacheSize(qint64(256) << 20);
+        nam->setCache(cache);
+        return nam;
+    }
+};
+
+} // namespace
+
+void aikatsu_engine_init(QQmlApplicationEngine &engine) {
+    static CachingNamFactory factory;
+    engine.setNetworkAccessManagerFactory(&factory);
+}
 
 void aikatsu_init() {
     QGuiApplication::setApplicationName("Aikatsu");

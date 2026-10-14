@@ -78,6 +78,11 @@ FocusScope {
         if (!ep || mpv.duration <= 0 || !metaLoaded)
             return;
         const done = completed || completedMarked || mpv.position / mpv.duration >= 0.9;
+        if (done && !completedMarked && hasNext) // warm the page cache so the next episode starts fast
+            Api.call("qualities", {
+                source: anime.source,
+                url: episodes[index + 1].url
+            });
         completedMarked = done;
         Api.get("saveProgress", {
             episode_key: keysFor(ep.num).episode,

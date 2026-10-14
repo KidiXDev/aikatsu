@@ -130,14 +130,18 @@ pub async fn qualities(src: SourceId, episode_url: &str) -> Result<Vec<String>> 
 
 /// Resolves an episode to a playable URL. `quality` is "best"/"" or e.g. "720p".
 pub async fn stream(src: SourceId, episode_url: &str, quality: &str) -> Result<Stream> {
-    match src {
+    let res = match src {
         SourceId::Otakudesu => otakudesu::stream(episode_url, quality).await,
         SourceId::Samehadaku => samehadaku::stream(episode_url, quality).await,
         SourceId::Nimegami => nimegami::stream(episode_url, quality).await,
         SourceId::Ylnime => ylnime::stream(episode_url, quality).await,
         SourceId::Moenime => moenime::stream(episode_url, quality).await,
         SourceId::Astronime => astronime::stream(episode_url, quality).await,
+    };
+    if res.is_err() {
+        crate::http::clear_pages(); // the retry should not read a possibly stale page
     }
+    res
 }
 
 // --- search fan-out with per-source circuit breaker (dispatch.go / netx/circuit.go)

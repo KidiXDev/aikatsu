@@ -7,9 +7,8 @@ use anyhow::{Result, anyhow};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::HashMap;
-use std::sync::{LazyLock, Mutex};
-use std::time::{Duration, Instant};
+use std::sync::LazyLock;
+use std::time::Duration;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct SeasonRange {
@@ -69,7 +68,8 @@ async fn anilist(query: &str, variables: Value) -> Result<Value> {
         .await?;
     let status = resp.status();
     let body: Value = resp.json().await?;
-    anyhow::ensure!(status.is_success(), "AniList returned {status}");
+    // A search with no match is 404 + `Media: null`: try the next term, not an outage.
+    anyhow::ensure!(status.is_success() || status.as_u16() == 404, "AniList returned {status}");
     Ok(body)
 }
 
@@ -158,6 +158,7 @@ pub fn clean_title(title: &str) -> String {
 
 static ROMAN_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+(?:II|III|IV|V|VI|VII|VIII|IX|X)\s*$").unwrap());
 static TRAILING_NUM_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+\d+\s*$").unwrap());
+static SEASON_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^(.+?)\s+(?:s|season\s*)(\d{1,2})$").unwrap());
 static SLUG_NOISE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)(?:-(?:sub-indo|subtitle-indonesia|episode-\d+|eps?-\d+|batch))+$").unwrap());
 
@@ -180,6 +181,20 @@ fn variations(name: &str, url: &str) -> Vec<String> {
         }
     };
     add(name.to_owned());
+    // "Title S2" → AniList's "Title Season 2" / "Title 2nd Season", ahead of the
+    // shortened variations below that would match season 1.
+    if let Some(c) = SEASON_RE.captures(name) {
+        let n: u32 = c[2].parse().unwrap_or(0);
+        let suffix = match n % 10 {
+            _ if (11..=13).contains(&(n % 100)) => "th",
+            1 => "st",
+            2 => "nd",
+            3 => "rd",
+            _ => "th",
+        };
+        add(format!("{} Season {n}", &c[1]));
+        add(format!("{} {n}{suffix} Season", &c[1]));
+    }
     // URL slug romaji, e.g. /anime/kimetsu-no-yaiba-sub-indo/ → "kimetsu no yaiba"
     if let Some(slug) = url::Url::parse(url).ok().and_then(|u| u.path_segments()?.rev().find(|s| !s.is_empty()).map(str::to_owned))
         && slug != "anime"
@@ -208,25 +223,16 @@ fn variations(name: &str, url: &str) -> Vec<String> {
     out
 }
 
-static CACHE: LazyLock<Mutex<HashMap<String, (Meta, Instant)>>> = LazyLock::new(Default::default);
-
 /// AniList lookup by name (trying search variations), falling back to Jikan
-/// when AniList is down. Cached 10 minutes.
+/// when AniList is down or has no match.
 pub async fn enrich(name: &str, source_url: &str) -> Result<Meta> {
     let clean = clean_title(name);
-    let key = clean.to_lowercase();
-    if let Some((m, at)) = CACHE.lock().unwrap().get(&key)
-        && at.elapsed() < Duration::from_secs(600)
-    {
-        return Ok(m.clone());
-    }
     let query = format!("query ($search: String) {{ Media(search: $search, type: ANIME) {{ {MEDIA_FIELDS} }} }}");
     let mut last = anyhow!("no matching anime found on AniList");
     for term in variations(&clean, source_url) {
         match anilist(&query, json!({ "search": term })).await {
             Ok(v) => {
                 if let Some(m) = parse_media(&v["data"]["Media"]) {
-                    CACHE.lock().unwrap().insert(key, (m.clone(), Instant::now()));
                     return Ok(m);
                 }
             }
@@ -237,9 +243,7 @@ pub async fn enrich(name: &str, source_url: &str) -> Result<Meta> {
         }
     }
     tracing::debug!("AniList enrichment failed ({last}); trying Jikan");
-    let m = jikan_search(&clean).await?;
-    CACHE.lock().unwrap().insert(key, (m.clone(), Instant::now()));
-    Ok(m)
+    jikan_search(&clean).await
 }
 
 pub async fn by_anilist_id(id: i64) -> Result<Meta> {
@@ -273,7 +277,7 @@ async fn jikan_search(name: &str) -> Result<Meta> {
     })
 }
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct EpisodeInfo {
     pub num: u32,
     pub title: String,
@@ -322,7 +326,7 @@ pub async fn episode_info(mal_id: i64, anilist_id: i64) -> Vec<EpisodeInfo> {
     Vec::new()
 }
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SkipTimes {
     pub op: Option<(u32, u32)>,
     pub ed: Option<(u32, u32)>,
@@ -407,6 +411,8 @@ mod tests {
         assert_eq!(v[0], "Shingeki no Kyojin: The Final Season");
         assert!(v.contains(&"snk final".to_owned()));
         assert!(v.contains(&"Shingeki no Kyojin".to_owned()));
+        let v = variations("Tantei wa Mou, Shindeiru S2", "");
+        assert_eq!(v[1..3], ["Tantei wa Mou, Shindeiru Season 2", "Tantei wa Mou, Shindeiru 2nd Season"]);
     }
 
     #[test]
@@ -421,7 +427,6 @@ mod tests {
     #[ignore]
     async fn live_anilist() {
         for name in ["Sousou no Frieren", "One Piece", "Toumei na Yoru ni Kakeru"] {
-            CACHE.lock().unwrap().clear();
             let m = enrich(name, "").await.unwrap();
             println!("{name} -> {} anilist={} mal={} banner={}", m.title(), m.anilist_id, m.mal_id, !m.banner.is_empty());
             assert!(m.anilist_id > 0, "AniList (not the Jikan fallback) should answer");

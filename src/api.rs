@@ -15,6 +15,13 @@ fn i(args: &Value, key: &str) -> i64 {
     args[key].as_i64().unwrap_or(0)
 }
 
+/// The page's refresh button: bypass caches.
+fn refresh(args: &Value) -> bool {
+    args["refresh"].as_bool().unwrap_or(false)
+}
+
+const DAY: std::time::Duration = std::time::Duration::from_secs(86400);
+
 fn source(args: &Value) -> Result<SourceId> {
     SourceId::from_key(s(args, "source")).ok_or_else(|| anyhow!("unknown source {:?}", args["source"]))
 }
@@ -60,19 +67,37 @@ pub async fn call(method: &str, args: Value) -> Result<Value> {
             Ok(json!({ "done": true }))
         }
         "enrich" => {
-            let mut m = if i(&args, "anilistId") > 0 {
-                meta::by_anilist_id(i(&args, "anilistId")).await?
-            } else {
-                meta::enrich(s(&args, "name"), s(&args, "url")).await?
-            };
-            let key = setting("tmdbKey");
-            if m.season_map.is_empty() && m.episodes > 13 && m.mal_id > 0 && !key.is_empty() {
-                m.season_map = meta::tmdb_season_map(m.mal_id, &key).await;
-            }
+            let id = i(&args, "anilistId");
+            let key = if id > 0 { format!("meta:anilist:{id}") } else { format!("meta:{}", meta::clean_title(s(&args, "name")).to_lowercase()) };
+            let m = db::cached(&key, DAY * 3, refresh(&args), async {
+                let mut m = if id > 0 { meta::by_anilist_id(id).await? } else { meta::enrich(s(&args, "name"), s(&args, "url")).await? };
+                let tmdb = setting("tmdbKey");
+                if m.season_map.is_empty() && m.episodes > 13 && m.mal_id > 0 && !tmdb.is_empty() {
+                    m.season_map = meta::tmdb_season_map(m.mal_id, &tmdb).await;
+                }
+                Ok(m)
+            })
+            .await?;
             Ok(serde_json::to_value(m)?)
         }
-        "episodes" => Ok(serde_json::to_value(sources::episodes(source(&args)?, s(&args, "url")).await?)?),
-        "episodeInfo" => Ok(serde_json::to_value(meta::episode_info(i(&args, "malId"), i(&args, "anilistId")).await)?),
+        "episodes" => {
+            if refresh(&args) {
+                crate::http::clear_pages();
+            }
+            Ok(serde_json::to_value(sources::episodes(source(&args)?, s(&args, "url")).await?)?)
+        }
+        "episodeInfo" => {
+            let (mal, al) = (i(&args, "malId"), i(&args, "anilistId"));
+            // Up to 30 Jikan pages, so it's worth keeping; a day lets airing shows catch up.
+            let list = db::cached(&format!("epinfo:{mal}:{al}"), DAY, refresh(&args), async {
+                let list = meta::episode_info(mal, al).await;
+                anyhow::ensure!(!list.is_empty(), "no episode info");
+                Ok(list)
+            })
+            .await
+            .unwrap_or_default();
+            Ok(serde_json::to_value(list)?)
+        }
         "qualities" => Ok(serde_json::to_value(sources::qualities(source(&args)?, s(&args, "url")).await?)?),
         "resolve" => resolve(source(&args)?, s(&args, "url"), s(&args, "quality")).await,
         "shaders" => {
@@ -83,7 +108,11 @@ pub async fn call(method: &str, args: Value) -> Result<Value> {
             anime4k::install(args["gan"].as_bool().unwrap_or(false)).await?;
             Ok(json!({ "dir": anime4k::shader_dir() }))
         }
-        "skipTimes" => Ok(serde_json::to_value(meta::skip_times(i(&args, "malId"), i(&args, "episode") as u32).await?)?),
+        "skipTimes" => {
+            let (mal, ep) = (i(&args, "malId"), i(&args, "episode") as u32);
+            let skip = db::cached(&format!("skip:{mal}:{ep}"), DAY * 7, false, meta::skip_times(mal, ep)).await?;
+            Ok(serde_json::to_value(skip)?)
+        }
         _ => bail!("unknown method {method}"),
     }
 }
@@ -159,6 +188,11 @@ pub fn get(method: &str, args: Value) -> Result<Value> {
         })),
         "presence" => {
             discord::update(serde_json::from_value(args)?);
+            Ok(Value::Null)
+        }
+        "clearCache" => {
+            db::clear_cache()?;
+            crate::http::clear_pages();
             Ok(Value::Null)
         }
         "anime4kModes" => Ok(serde_json::to_value(anime4k::MODES)?),

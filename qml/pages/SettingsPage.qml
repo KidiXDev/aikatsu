@@ -331,6 +331,19 @@ Item {
                         onToggled: root.set("debug", checked)
                     }
                 }
+                Row {
+                    label: "Cached data"
+                    hint: "Anime details, episode titles and skip times are kept for a few days, so pages open instantly and still work when AniList is unreachable. Cover images have their own 256 MB cache."
+
+                    TextButton {
+                        type: TextButton.Tonal
+                        text: "Clear"
+                        onClicked: {
+                            Api.get("clearCache");
+                            ApplicationWindow.window.toast("Cache cleared");
+                        }
+                    }
+                }
             }
 
             StyledText {

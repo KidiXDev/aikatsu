@@ -22,14 +22,17 @@ fn log_path() -> PathBuf {
 }
 
 /// One log file per run (like the CLI), mirrored to stderr.
+fn debug_enabled() -> bool {
+    std::env::args().any(|a| a == "--debug") || api::setting("debug") == "true"
+}
+
 fn init_logging() -> tracing_appender::non_blocking::WorkerGuard {
     use tracing_subscriber::{EnvFilter, fmt, prelude::*};
     let path = log_path();
     let _ = std::fs::create_dir_all(path.parent().unwrap());
     let _ = std::fs::remove_file(&path);
     let (file, guard) = tracing_appender::non_blocking(tracing_appender::rolling::never(path.parent().unwrap(), "aikatsu.log"));
-    let debug = std::env::args().any(|a| a == "--debug") || api::setting("debug") == "true";
-    let filter = EnvFilter::new(if debug { "aikatsu=debug,warn" } else { "aikatsu=info,warn" });
+    let filter = EnvFilter::new(if debug_enabled() { "aikatsu=debug,warn" } else { "aikatsu=info,warn" });
     tracing_subscriber::registry()
         .with(filter)
         .with(fmt::layer().with_ansi(false).with_writer(file))
@@ -53,11 +56,16 @@ fn main() {
         if std::env::var_os("QT_LOGGING_RULES").is_none() {
             std::env::set_var("QT_LOGGING_RULES", "qt.network.http2*=false");
         }
+        // mpv's console chatter (hwdec probing, audio underruns) only with debug logging.
+        if debug_enabled() {
+            std::env::set_var("AIKATSU_MPV_LOG", "1");
+        }
     }
     let mut app = QGuiApplication::new();
     bridge::ffi::aikatsu_init();
     let mut engine = QQmlApplicationEngine::new();
-    if let Some(engine) = engine.as_mut() {
+    if let Some(mut engine) = engine.as_mut() {
+        bridge::ffi::aikatsu_engine_init(engine.as_mut());
         engine.load(&QUrl::from("qrc:/qt/qml/Aikatsu/qml/Main.qml"));
     }
     if let Some(app) = app.as_mut() {

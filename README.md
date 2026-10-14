@@ -1,6 +1,6 @@
 # Aikatsu 🌸
 
-A desktop anime player for Indonesian-sub sources: Rust + Qt 6 Quick, with a Material 3 look (adapted from [caelestia](https://github.com/caelestia-dots/shell)) and an embedded mpv player. It is the desktop counterpart of the GonimeId CLI and offers the same features.
+A desktop anime player for Indonesian-sub sources: Rust + Qt 6 Quick, with a Material 3 look and an embedded mpv player.
 
 - **Search** across Otakudesu, Samehadaku, Nimegami, YLnime, Moenime and Astronime in parallel.
   - Results stream in per source.
@@ -25,12 +25,14 @@ A desktop anime player for Indonesian-sub sources: Rust + Qt 6 Quick, with a Mat
 ## Build (Linux)
 
 Requirements:
+
 - Rust ≥ 1.88
 - Qt ≥ 6.7: `qt6-base qt6-declarative qt6-svg`
 - libmpv: `mpv`, with headers available through pkg-config
 - cmake and a C compiler (wreq builds BoringSSL)
 
 Optional:
+
 - `ffmpeg`
 - `yt-dlp`
 
@@ -71,12 +73,12 @@ If more than one Qt is installed, point at Qt 6 with `QMAKE=/usr/bin/qmake6`.
 
 ## Data locations
 
-| | Linux | Windows |
-|---|---|---|
-| History & settings | `~/.local/share/aikatsu/progress.db` | `%APPDATA%\aikatsu\progress.db` |
-| Logs | `~/.local/share/aikatsu/logs/aikatsu.log` | `%APPDATA%\aikatsu\logs\` |
-| Anime4K shaders | `~/.config/aikatsu/anime4k-shaders` | `%APPDATA%\aikatsu\anime4k-shaders` |
-| Downloads (default) | `~/Videos/Aikatsu` | `%USERPROFILE%\Videos\Aikatsu` |
+|                     | Linux                                     | Windows                             |
+| ------------------- | ----------------------------------------- | ----------------------------------- |
+| History & settings  | `~/.local/share/aikatsu/progress.db`      | `%APPDATA%\aikatsu\progress.db`     |
+| Logs                | `~/.local/share/aikatsu/logs/aikatsu.log` | `%APPDATA%\aikatsu\logs\`           |
+| Anime4K shaders     | `~/.config/aikatsu/anime4k-shaders`       | `%APPDATA%\aikatsu\anime4k-shaders` |
+| Downloads (default) | `~/Videos/Aikatsu`                        | `%USERPROFILE%\Videos\Aikatsu`      |
 
 ## Development
 
@@ -86,10 +88,12 @@ cargo test live_ -- --ignored --nocapture    # hits the real sites (LIVE_Q=<quer
 ```
 
 Dev flags for driving the UI headlessly:
+
 - `aikatsu --search <query> [--open [--play]] --screenshot out.png [--delay ms] [--tab N]`
 - Set `XDG_DATA_HOME` to a scratch directory to keep test runs out of your real history.
 
 Layout:
+
 - `src/sources/`: the six scrapers (ported from GonimeId).
 - `src/proxy.rs`: local Chrome-TLS / HTTP/3 stream relay for mpv.
 - `src/bridge.rs`: the `Backend` QObject (`call`/`get`/`pushed`).
@@ -98,9 +102,10 @@ Layout:
 
 ## License
 
-GPL-3.0 (the QML components are adapted from caelestia, which is GPL-3.0).
+[GPL-3.0](./LICENSE)
 
 Bundled fonts:
+
 - Google Sans Flex: SIL OFL 1.1
 - Material Symbols Rounded: Apache-2.0
 
