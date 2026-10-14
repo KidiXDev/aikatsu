@@ -80,6 +80,7 @@ fn should_update(last: Option<&(State, Instant)>, s: &State) -> bool {
 fn activity(s: &State) -> Activity<'_> {
     let now_ms = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
     let mut a = Activity::new()
+        .name("Aikatsu") // the client ID's registered app name is "GoAnime"
         .activity_type(ActivityType::Watching)
         .details(s.title.as_str())
         .state(format!("Episode {}", s.episode))

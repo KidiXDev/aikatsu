@@ -46,7 +46,28 @@ fn write_compile_commands(mpv_include: &Path) {
     }
 }
 
+/// The app icon on aikatsu.exe (Explorer, shortcuts). rc.exe comes with the
+/// Windows SDK and is on PATH in a VS developer prompt.
+fn embed_windows_icon() {
+    println!("cargo::rerun-if-changed=assets/icon.ico");
+    let out = PathBuf::from(std::env::var("OUT_DIR").unwrap());
+    let icon = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("assets").join("icon.ico");
+    let rc = out.join("aikatsu.rc");
+    std::fs::write(&rc, format!("1 ICON \"{}\"\n", icon.display().to_string().replace('\\', "\\\\"))).unwrap();
+    let res = out.join("aikatsu.res");
+    let ok = std::process::Command::new("rc").arg("/nologo").arg("/fo").arg(&res).arg(&rc).status().is_ok_and(|s| s.success());
+    if ok {
+        println!("cargo::rustc-link-arg-bins={}", res.display());
+    } else {
+        println!("cargo::warning=rc.exe failed or is not on PATH (build from a VS developer prompt); aikatsu.exe gets no icon");
+    }
+}
+
 fn main() {
+    if std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
+        embed_windows_icon();
+    }
+
     let mut files = Vec::new();
     qml_files(Path::new("qml"), &mut files);
     files.sort();

@@ -35,8 +35,10 @@ static CHROME_H1: LazyLock<wreq::Client> = LazyLock::new(|| {
 static H3: LazyLock<reqwest::Client> = LazyLock::new(|| {
     reqwest::Client::builder()
         .http3_prior_knowledge()
-        .http3_stream_receive_window(64 << 20)
-        .http3_conn_receive_window(128 << 20)
+        // Unread data up to the window sits in RAM once mpv's cache is full;
+        // 16 MiB still covers hundreds of Mbit/s at high RTT.
+        .http3_stream_receive_window(16 << 20)
+        .http3_conn_receive_window(32 << 20)
         .build()
         .expect("h3 client")
 });

@@ -1,3 +1,6 @@
+// Release builds start without a console window; debug builds keep it for logs.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 mod anime4k;
 mod api;
 mod blogger;
@@ -14,8 +17,12 @@ use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QUrl};
 use std::path::PathBuf;
 use std::sync::LazyLock;
 
-pub static RT: LazyLock<tokio::runtime::Runtime> =
-    LazyLock::new(|| tokio::runtime::Builder::new_multi_thread().enable_all().build().expect("tokio runtime"));
+/// The work is mostly network I/O, so a few workers do; one per core just adds
+/// thread stacks and allocator arenas.
+pub static RT: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
+    let workers = std::thread::available_parallelism().map_or(2, |n| n.get().min(4));
+    tokio::runtime::Builder::new_multi_thread().worker_threads(workers).enable_all().build().expect("tokio runtime")
+});
 
 fn log_path() -> PathBuf {
     dirs::data_dir().unwrap_or_else(std::env::temp_dir).join("aikatsu").join("logs").join("aikatsu.log")
