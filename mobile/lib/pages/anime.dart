@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../api.dart';
+import '../theme.dart';
 import '../widgets.dart';
 import 'player.dart';
 
@@ -216,12 +217,13 @@ class _AnimePageState extends State<AnimePage> {
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final c = t.colorScheme;
+    final aikatsu = context.aikatsu;
     final d = _data, meta = d.meta;
     var eps = d.episodes.where((e) => _jump.isEmpty || '${e['num']}'.startsWith(_jump)).toList();
     if (_descending) eps = eps.reversed.toList();
     final current = d.progress.isNotEmpty && d.episodes.isNotEmpty ? d.episodes[d.continueIndex]['num'] : null;
     final banner = text([meta?['banner'], meta?['cover'], widget.anime['image']]);
-    final blur = text([meta?['banner']]).isEmpty ? 24.0 : 2.0;
+    final blur = text([meta?['banner']]).isEmpty ? 24.0 : 3.0;
     final subtitles = [
       meta?['title_romaji'],
       meta?['title_native'],
@@ -232,8 +234,13 @@ class _AnimePageState extends State<AnimePage> {
         slivers: [
           SliverAppBar(
             pinned: true,
-            expandedHeight: 200,
-            title: Text(d.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+            expandedHeight: 220,
+            title: Text(
+              d.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
             actions: [IconButton(icon: const Icon(Icons.refresh_rounded), onPressed: () => d.load(refresh: true))],
             flexibleSpace: FlexibleSpaceBar(
               background: Stack(
@@ -245,7 +252,8 @@ class _AnimePageState extends State<AnimePage> {
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
-                        colors: [c.surface.withValues(alpha: 0.2), c.surface],
+                        colors: [c.surface.withValues(alpha: 0.25), c.surface.withValues(alpha: 0.75), c.surface],
+                        stops: const [0.0, 0.65, 1.0],
                       ),
                     ),
                   ),
@@ -254,43 +262,55 @@ class _AnimePageState extends State<AnimePage> {
             ),
           ),
           SliverPadding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
             sliver: SliverList.list(
               children: [
+                // Anime Header Block
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    SizedBox(width: 110, height: 160, child: Cover(d.cover)),
+                    SizedBox(width: 110, height: 160, child: Cover(d.cover, radius: 18)),
                     const SizedBox(width: 16),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(d.title, maxLines: 3, overflow: TextOverflow.ellipsis, style: t.textTheme.titleLarge),
-                          if (subtitles.isNotEmpty)
+                          Text(
+                            d.title,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700, height: 1.25),
+                          ),
+                          if (subtitles.isNotEmpty) ...[
+                            const SizedBox(height: 4),
                             Text(
                               subtitles.join('  ·  '),
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
-                              style: t.textTheme.bodyMedium?.copyWith(color: c.onSurfaceVariant),
+                              style: t.textTheme.bodyMedium?.copyWith(color: c.onSurfaceVariant, fontSize: 13),
                             ),
-                          const SizedBox(height: 8),
+                          ],
+                          const SizedBox(height: 10),
                           Wrap(
                             spacing: 6,
                             runSpacing: 6,
                             children: [
-                              _chip(context, widget.anime['source'], Icons.public_rounded),
-                              if (toInt(meta?['score']) > 0) _chip(context, '★ ${(toInt(meta?['score']) / 10).toStringAsFixed(1)}', null),
-                              if (toInt(meta?['year']) > 0) _chip(context, '${meta?['year']}', Icons.calendar_month_rounded),
+                              PillBadge(label: widget.anime['source'], icon: Icons.public_rounded),
+                              if (toInt(meta?['score']) > 0)
+                                PillBadge(label: '★ ${(toInt(meta?['score']) / 10).toStringAsFixed(1)}', color: const Color(0xffffb84d)),
+                              if (toInt(meta?['year']) > 0) PillBadge(label: '${meta?['year']}', icon: Icons.calendar_month_rounded),
                               if (d.episodes.isNotEmpty)
-                                _chip(
-                                  context,
-                                  '${d.episodes.length} episodes${toInt(meta?['episodes']) > d.episodes.length ? ' of ${meta?['episodes']}' : ''}',
-                                  Icons.video_library_rounded,
+                                PillBadge(
+                                  label:
+                                      '${d.episodes.length} eps${toInt(meta?['episodes']) > d.episodes.length ? ' / ${meta?['episodes']}' : ''}',
+                                  icon: Icons.video_library_rounded,
                                 ),
                               if (text([meta?['status']]).isNotEmpty)
-                                _chip(context, '${meta?['status']}'.replaceAll('_', ' ').toLowerCase(), Icons.radio_button_checked_rounded),
-                              for (final g in (meta?['genres'] as List?) ?? []) _chip(context, '$g', null),
+                                PillBadge(
+                                  label: '${meta?['status']}'.replaceAll('_', ' ').toLowerCase(),
+                                  icon: Icons.radio_button_checked_rounded,
+                                ),
+                              for (final g in (meta?['genres'] as List?) ?? []) PillBadge(label: '$g'),
                             ],
                           ),
                         ],
@@ -298,61 +318,184 @@ class _AnimePageState extends State<AnimePage> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 18),
+
+                // Primary Action Bar
                 Row(
                   children: [
                     Expanded(
-                      child: FilledButton.icon(
-                        icon: Icon(d.loading ? Icons.hourglass_top_rounded : Icons.play_arrow_rounded),
-                        label: Text(
-                          d.episodes.isEmpty
-                              ? (d.loading ? 'Loading episodes…' : 'Play')
-                              : d.progress.isNotEmpty
-                              ? 'Continue  ·  Ep ${d.episodes[d.continueIndex]['num']}'
-                              : 'Play  ·  Ep ${d.episodes.first['num']}',
+                      child: BouncyTap(
+                        borderRadius: BorderRadius.circular(999),
+                        onTap: d.episodes.isEmpty ? null : () => _play(d.continueIndex),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 18),
+                          decoration: BoxDecoration(
+                            color: d.episodes.isEmpty ? c.surfaceContainerHighest : c.primary,
+                            borderRadius: BorderRadius.circular(999),
+                            boxShadow: d.episodes.isEmpty ? null : aikatsu.softShadow,
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                d.loading ? Icons.hourglass_top_rounded : Icons.play_arrow_rounded,
+                                color: d.episodes.isEmpty ? c.onSurfaceVariant : c.onPrimary,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                d.episodes.isEmpty
+                                    ? (d.loading ? 'Loading episodes…' : 'Play')
+                                    : d.progress.isNotEmpty
+                                    ? 'Continue  ·  Ep ${d.episodes[d.continueIndex]['num']}'
+                                    : 'Play  ·  Ep ${d.episodes.first['num']}',
+                                style: TextStyle(
+                                  fontFamily: 'GoogleSansFlex',
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                  color: d.episodes.isEmpty ? c.onSurfaceVariant : c.onPrimary,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                        onPressed: d.episodes.isEmpty ? null : () => _play(d.continueIndex),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    FilledButton.tonalIcon(
-                      icon: const Icon(Icons.download_rounded),
-                      label: const Text('Download…'),
-                      onPressed: d.episodes.isEmpty ? null : () => showDownloadSheet(context, d),
+                    const SizedBox(width: 10),
+                    BouncyTap(
+                      borderRadius: BorderRadius.circular(999),
+                      onTap: d.episodes.isEmpty ? null : () => showDownloadSheet(context, d),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 18),
+                        decoration: BoxDecoration(
+                          color: c.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(color: c.outlineVariant.withValues(alpha: 0.5)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.download_rounded, color: c.onSurface, size: 20),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Download…',
+                              style: TextStyle(
+                                fontFamily: 'GoogleSansFlex',
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13.5,
+                                color: c.onSurface,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ],
                 ),
+
+                // Synopsis Card
                 if (text([meta?['description']]).isNotEmpty) ...[
-                  const SizedBox(height: 16),
-                  InkWell(
+                  const SizedBox(height: 18),
+                  BouncyTap(
+                    borderRadius: BorderRadius.circular(18),
                     onTap: () => setState(() => _synopsisOpen = !_synopsisOpen),
-                    child: Text(
-                      meta!['description'],
-                      maxLines: _synopsisOpen ? null : 4,
-                      overflow: _synopsisOpen ? null : TextOverflow.ellipsis,
-                      style: t.textTheme.bodyMedium?.copyWith(color: c.onSurfaceVariant),
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: c.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: c.outlineVariant.withValues(alpha: 0.45)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                'SYNOPSIS',
+                                style: TextStyle(
+                                  fontFamily: 'GoogleSansFlex',
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.8,
+                                  color: c.primary,
+                                ),
+                              ),
+                              const Spacer(),
+                              Icon(
+                                _synopsisOpen ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                                size: 18,
+                                color: c.onSurfaceVariant,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            meta!['description'],
+                            maxLines: _synopsisOpen ? null : 4,
+                            overflow: _synopsisOpen ? null : TextOverflow.ellipsis,
+                            style: t.textTheme.bodyMedium?.copyWith(color: c.onSurfaceVariant, height: 1.45),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],
-                const SizedBox(height: 16),
+                const SizedBox(height: 22),
+
+                // Episodes Section Header
                 Row(
                   children: [
-                    Expanded(child: Text('Episodes', style: t.textTheme.titleLarge)),
+                    Text('Episodes', style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700, fontSize: 18)),
+                    if (d.episodes.isNotEmpty) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(color: c.surfaceContainerHighest, borderRadius: BorderRadius.circular(999)),
+                        child: Text(
+                          '${d.episodes.length}',
+                          style: TextStyle(
+                            fontFamily: 'GoogleSansFlex',
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: c.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ],
+                    const Spacer(),
                     SizedBox(
-                      width: 120,
+                      width: 125,
+                      height: 38,
                       child: TextField(
                         keyboardType: TextInputType.number,
                         inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                        decoration: const InputDecoration(
+                        style: const TextStyle(fontSize: 13),
+                        decoration: InputDecoration(
                           isDense: true,
-                          prefixIcon: Icon(Icons.tag_rounded, size: 18),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          prefixIcon: const Icon(Icons.tag_rounded, size: 16),
                           hintText: 'Jump to…',
+                          hintStyle: TextStyle(fontSize: 12, color: c.onSurfaceVariant.withValues(alpha: 0.6)),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(999),
+                            borderSide: BorderSide(color: c.outlineVariant.withValues(alpha: 0.5)),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(999),
+                            borderSide: BorderSide(color: c.outlineVariant.withValues(alpha: 0.5)),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(999),
+                            borderSide: BorderSide(color: c.primary, width: 1.2),
+                          ),
                         ),
                         onChanged: (v) => setState(() => _jump = v),
                       ),
                     ),
+                    const SizedBox(width: 6),
                     IconButton(
-                      icon: Icon(_descending ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded),
+                      icon: Icon(_descending ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded, size: 20),
                       onPressed: () => setState(() => _descending = !_descending),
                     ),
                   ],
@@ -361,7 +504,12 @@ class _AnimePageState extends State<AnimePage> {
             ),
           ),
           if (d.loading && d.episodes.isEmpty)
-            const SliverToBoxAdapter(child: Center(child: CircularProgressIndicator()))
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.all(48),
+                child: Center(child: CircularProgressIndicator()),
+              ),
+            )
           else if (d.episodes.isEmpty)
             SliverToBoxAdapter(
               child: EmptyState(
@@ -379,13 +527,13 @@ class _AnimePageState extends State<AnimePage> {
             )
           else
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
               sliver: SliverGrid.builder(
                 gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                   maxCrossAxisExtent: 480,
-                  mainAxisExtent: 76,
-                  crossAxisSpacing: 8,
-                  mainAxisSpacing: 8,
+                  mainAxisExtent: 78,
+                  crossAxisSpacing: 10,
+                  mainAxisSpacing: 10,
                 ),
                 itemCount: eps.length,
                 itemBuilder: (context, i) {
@@ -407,9 +555,6 @@ class _AnimePageState extends State<AnimePage> {
       ),
     );
   }
-
-  static Widget _chip(BuildContext context, String label, IconData? icon) =>
-      Chip(avatar: icon == null ? null : Icon(icon, size: 16), label: Text(label), visualDensity: VisualDensity.compact);
 }
 
 /// The desktop's Download dialog: one episode, a range, or all, at a quality.
@@ -435,18 +580,21 @@ Future<void> showDownloadSheet(BuildContext context, AnimeData data, {Map<String
     builder: (context) => StatefulBuilder(
       builder: (context, setState) {
         final t = Theme.of(context);
+        final c = t.colorScheme;
         final chosen = selection();
+
         ChoiceChip choice(String label, String value) =>
             ChoiceChip(label: Text(label), selected: mode == value, onSelected: (_) => setState(() => mode = value));
+
         return Padding(
-          padding: EdgeInsets.fromLTRB(24, 0, 24, 24 + MediaQuery.viewInsetsOf(context).bottom),
+          padding: EdgeInsets.fromLTRB(24, 0, 24, 28 + MediaQuery.viewInsetsOf(context).bottom),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             spacing: 12,
             children: [
-              Text('Download episodes', style: t.textTheme.titleLarge),
-              Text('Episodes are saved to ${Api.get('downloadDir')}', style: t.textTheme.bodySmall),
+              Text('Download episodes', style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+              Text('Episodes are saved to ${Api.get('downloadDir')}', style: t.textTheme.bodySmall?.copyWith(color: c.onSurfaceVariant)),
               Wrap(
                 spacing: 8,
                 children: [
@@ -471,7 +619,7 @@ Future<void> showDownloadSheet(BuildContext context, AnimeData data, {Map<String
                       ),
                   ],
                 ),
-              Text('Quality', style: t.textTheme.labelLarge),
+              Text('Quality', style: t.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700)),
               Wrap(
                 spacing: 8,
                 children: [
@@ -483,10 +631,12 @@ Future<void> showDownloadSheet(BuildContext context, AnimeData data, {Map<String
                     ),
                 ],
               ),
+              const SizedBox(height: 6),
               Align(
                 alignment: Alignment.centerRight,
-                child: FilledButton(
-                  onPressed: chosen.isEmpty
+                child: BouncyTap(
+                  borderRadius: BorderRadius.circular(999),
+                  onTap: chosen.isEmpty
                       ? null
                       : () {
                           Api.get('download', {
@@ -501,7 +651,21 @@ Future<void> showDownloadSheet(BuildContext context, AnimeData data, {Map<String
                           Navigator.pop(context);
                           toast(chosen.length > 1 ? 'Downloading ${chosen.length} episodes' : 'Download started');
                         },
-                  child: Text(chosen.length > 1 ? 'Download ${chosen.length} episodes' : 'Download'),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: chosen.isEmpty ? c.surfaceContainerHighest : c.primary,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      chosen.length > 1 ? 'Download ${chosen.length} episodes' : 'Download',
+                      style: TextStyle(
+                        fontFamily: 'GoogleSansFlex',
+                        fontWeight: FontWeight.w700,
+                        color: chosen.isEmpty ? c.onSurfaceVariant : c.onPrimary,
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ],

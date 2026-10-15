@@ -1,83 +1,278 @@
 import 'package:flutter/material.dart';
 
-// Material 3 tokens and the sakura palette (generated from #ff7aa8), same as desktop/qml/Theme.qml.
+// Warm Japanese Anime & Sakura blossom palette.
+// Soft pastel tones, cozy layered surfaces, and luminous cherry-blossom accents.
 const _dark = ColorScheme(
   brightness: Brightness.dark,
-  primary: Color(0xffff89b0),
-  onPrimary: Color(0xff610030),
-  primaryContainer: Color(0xffff6fa3),
-  onPrimaryContainer: Color(0xff4c0024),
+  primary: Color(0xffff8eb3),
+  onPrimary: Color(0xff57002b),
+  primaryContainer: Color(0xff771741),
+  onPrimaryContainer: Color(0xffffd9e4),
   inversePrimary: Color(0xffb22161),
-  secondary: Color(0xffff8ed2),
-  onSecondary: Color(0xff63054a),
-  secondaryContainer: Color(0xff7d2160),
-  onSecondaryContainer: Color(0xffffbde0),
-  tertiary: Color(0xffa39eff),
-  onTertiary: Color(0xff201083),
-  tertiaryContainer: Color(0xff958efb),
-  onTertiaryContainer: Color(0xff14006d),
-  error: Color(0xffff6e84),
-  onError: Color(0xff490013),
-  errorContainer: Color(0xffa70138),
-  onErrorContainer: Color(0xffffb2b9),
-  surface: Color(0xff130d0e),
-  surfaceDim: Color(0xff130d0e),
-  surfaceBright: Color(0xff36292c),
-  surfaceContainerLowest: Color(0xff000000),
-  surfaceContainerLow: Color(0xff191113),
-  surfaceContainer: Color(0xff211719),
-  surfaceContainerHigh: Color(0xff271d1f),
-  surfaceContainerHighest: Color(0xff2f2226),
-  onSurface: Color(0xfff6e0e4),
-  onSurfaceVariant: Color(0xffbaa6aa),
-  inverseSurface: Color(0xfffff8f8),
-  onInverseSurface: Color(0xff5c5354),
-  outline: Color(0xff827175),
-  outlineVariant: Color(0xff534448),
+  secondary: Color(0xfff2a2cd),
+  onSecondary: Color(0xff520e3a),
+  secondaryContainer: Color(0xff6e1e50),
+  onSecondaryContainer: Color(0xffffd8eb),
+  tertiary: Color(0xffaba5ff),
+  onTertiary: Color(0xff23157e),
+  tertiaryContainer: Color(0xff392b8d),
+  onTertiaryContainer: Color(0xffe2e0ff),
+  error: Color(0xffff7187),
+  onError: Color(0xff540018),
+  errorContainer: Color(0xff8f0b32),
+  onErrorContainer: Color(0xffffb3be),
+  surface: Color(0xff161113),
+  surfaceDim: Color(0xff161113),
+  surfaceBright: Color(0xff37292f),
+  surfaceContainerLowest: Color(0xff0d090b),
+  surfaceContainerLow: Color(0xff1d1619),
+  surfaceContainer: Color(0xff251c20),
+  surfaceContainerHigh: Color(0xff2e2227),
+  surfaceContainerHighest: Color(0xff37292f),
+  onSurface: Color(0xfffaedf0),
+  onSurfaceVariant: Color(0xffcbb7bd),
+  inverseSurface: Color(0xfffff7f8),
+  onInverseSurface: Color(0xff5a4f52),
+  outline: Color(0xff8c7980),
+  outlineVariant: Color(0xff4c3b42),
   shadow: Color(0xff000000),
   scrim: Color(0xff000000),
 );
 
 const _light = ColorScheme(
   brightness: Brightness.light,
-  primary: Color(0xffad1c5e),
-  onPrimary: Color(0xffffeff1),
-  primaryContainer: Color(0xffff6fa3),
-  onPrimaryContainer: Color(0xff4c0024),
+  primary: Color(0xffb22466),
+  onPrimary: Color(0xfffff0f3),
+  primaryContainer: Color(0xffffdbe5),
+  onPrimaryContainer: Color(0xff450020),
   inversePrimary: Color(0xfffe5f9b),
-  secondary: Color(0xff963776),
-  onSecondary: Color(0xffffeef4),
-  secondaryContainer: Color(0xffffbfe1),
-  onSecondaryContainer: Color(0xff7d2160),
-  tertiary: Color(0xff544db6),
-  onTertiary: Color(0xfff5f1ff),
-  tertiaryContainer: Color(0xffaca7ff),
-  onTertiaryContainer: Color(0xff281b89),
-  error: Color(0xffb41340),
-  onError: Color(0xffffefef),
-  errorContainer: Color(0xfff74b6d),
-  onErrorContainer: Color(0xff510017),
-  surface: Color(0xfffff8f8),
-  surfaceDim: Color(0xffead5d9),
-  surfaceBright: Color(0xfffff8f8),
+  secondary: Color(0xff993b77),
+  onSecondary: Color(0xfffff0f6),
+  secondaryContainer: Color(0xffffd8eb),
+  onSecondaryContainer: Color(0xff591341),
+  tertiary: Color(0xff5750b9),
+  onTertiary: Color(0xfff7f4ff),
+  tertiaryContainer: Color(0xffe1deff),
+  onTertiaryContainer: Color(0xff1c1274),
+  error: Color(0xffb81944),
+  onError: Color(0xfffff0f1),
+  errorContainer: Color(0xffffdadf),
+  onErrorContainer: Color(0xff410012),
+  surface: Color(0xfffff7f8),
+  surfaceDim: Color(0xffeae0e2),
+  surfaceBright: Color(0xfffff7f8),
   surfaceContainerLowest: Color(0xffffffff),
-  surfaceContainerLow: Color(0xfffff0f2),
-  surfaceContainer: Color(0xfffce9ed),
-  surfaceContainerHigh: Color(0xfff7e3e7),
-  surfaceContainerHighest: Color(0xfff3dde1),
-  onSurface: Color(0xff3c2f32),
-  onSurfaceVariant: Color(0xff6b5b5f),
-  inverseSurface: Color(0xff130d0e),
-  onInverseSurface: Color(0xffa69a9c),
-  outline: Color(0xff88767a),
-  outlineVariant: Color(0xffc1adb1),
+  surfaceContainerLow: Color(0xfffaf0f2),
+  surfaceContainer: Color(0xfff5e9ec),
+  surfaceContainerHigh: Color(0xffefe2e6),
+  surfaceContainerHighest: Color(0xffe9dce0),
+  onSurface: Color(0xff362b2e),
+  onSurfaceVariant: Color(0xff67565b),
+  inverseSurface: Color(0xff161113),
+  onInverseSurface: Color(0xffa8999d),
+  outline: Color(0xff88747a),
+  outlineVariant: Color(0xffdac5cb),
   shadow: Color(0xff000000),
   scrim: Color(0xff000000),
 );
 
+/// Custom styling tokens for the Warm Sakura & Japanese Anime theme.
+class AikatsuTheme extends ThemeExtension<AikatsuTheme> {
+  const AikatsuTheme({
+    required this.sakuraGlow,
+    required this.sakuraGradient,
+    required this.heroGradient,
+    required this.cardBorder,
+    required this.cardShadow,
+    required this.softShadow,
+    required this.cardRadius,
+    required this.pillRadius,
+  });
+
+  final Color sakuraGlow;
+  final LinearGradient sakuraGradient;
+  final LinearGradient heroGradient;
+  final BorderSide cardBorder;
+  final List<BoxShadow> cardShadow;
+  final List<BoxShadow> softShadow;
+  final BorderRadius cardRadius;
+  final BorderRadius pillRadius;
+
+  @override
+  AikatsuTheme copyWith({
+    Color? sakuraGlow,
+    LinearGradient? sakuraGradient,
+    LinearGradient? heroGradient,
+    BorderSide? cardBorder,
+    List<BoxShadow>? cardShadow,
+    List<BoxShadow>? softShadow,
+    BorderRadius? cardRadius,
+    BorderRadius? pillRadius,
+  }) {
+    return AikatsuTheme(
+      sakuraGlow: sakuraGlow ?? this.sakuraGlow,
+      sakuraGradient: sakuraGradient ?? this.sakuraGradient,
+      heroGradient: heroGradient ?? this.heroGradient,
+      cardBorder: cardBorder ?? this.cardBorder,
+      cardShadow: cardShadow ?? this.cardShadow,
+      softShadow: softShadow ?? this.softShadow,
+      cardRadius: cardRadius ?? this.cardRadius,
+      pillRadius: pillRadius ?? this.pillRadius,
+    );
+  }
+
+  @override
+  AikatsuTheme lerp(ThemeExtension<AikatsuTheme>? other, double t) {
+    if (other is! AikatsuTheme) return this;
+    return AikatsuTheme(
+      sakuraGlow: Color.lerp(sakuraGlow, other.sakuraGlow, t) ?? sakuraGlow,
+      sakuraGradient: LinearGradient.lerp(sakuraGradient, other.sakuraGradient, t) ?? sakuraGradient,
+      heroGradient: LinearGradient.lerp(heroGradient, other.heroGradient, t) ?? heroGradient,
+      cardBorder: BorderSide.lerp(cardBorder, other.cardBorder, t),
+      cardShadow: BoxShadow.lerpList(cardShadow, other.cardShadow, t) ?? cardShadow,
+      softShadow: BoxShadow.lerpList(softShadow, other.softShadow, t) ?? softShadow,
+      cardRadius: BorderRadius.lerp(cardRadius, other.cardRadius, t) ?? cardRadius,
+      pillRadius: BorderRadius.lerp(pillRadius, other.pillRadius, t) ?? pillRadius,
+    );
+  }
+}
+
+extension AikatsuThemeContext on BuildContext {
+  AikatsuTheme get aikatsu => Theme.of(this).extension<AikatsuTheme>()!;
+}
+
 ThemeData buildTheme(Brightness brightness) {
-  final scheme = brightness == Brightness.dark ? _dark : _light;
-  return ThemeData(colorScheme: scheme, fontFamily: 'GoogleSansFlex', scaffoldBackgroundColor: scheme.surface);
+  final isDark = brightness == Brightness.dark;
+  final scheme = isDark ? _dark : _light;
+
+  final cardRadius = BorderRadius.circular(20);
+  final pillRadius = BorderRadius.circular(999);
+  final cardBorder = BorderSide(color: scheme.outlineVariant.withValues(alpha: isDark ? 0.45 : 0.6), width: 1);
+
+  final cardShadow = [
+    BoxShadow(
+      color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.05),
+      blurRadius: 18,
+      offset: const Offset(0, 6),
+      spreadRadius: -2,
+    ),
+  ];
+
+  final softShadow = [
+    BoxShadow(
+      color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.03),
+      blurRadius: 10,
+      offset: const Offset(0, 3),
+    ),
+  ];
+
+  final customTheme = AikatsuTheme(
+    sakuraGlow: isDark ? const Color(0xffff8eb3) : const Color(0xffb22466),
+    sakuraGradient: LinearGradient(
+      colors: isDark ? const [Color(0xffff8eb3), Color(0xfff2a2cd)] : const [Color(0xffb22466), Color(0xffd44a8b)],
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+    ),
+    heroGradient: LinearGradient(
+      colors: [scheme.surface.withValues(alpha: 0.1), scheme.surface.withValues(alpha: 0.75), scheme.surface],
+      stops: const [0.0, 0.6, 1.0],
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+    ),
+    cardBorder: cardBorder,
+    cardShadow: cardShadow,
+    softShadow: softShadow,
+    cardRadius: cardRadius,
+    pillRadius: pillRadius,
+  );
+
+  return ThemeData(
+    useMaterial3: true,
+    colorScheme: scheme,
+    fontFamily: 'GoogleSansFlex',
+    scaffoldBackgroundColor: scheme.surface,
+    extensions: [customTheme],
+
+    cardTheme: CardThemeData(
+      color: scheme.surfaceContainer,
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: cardRadius, side: cardBorder),
+      margin: EdgeInsets.zero,
+    ),
+
+    appBarTheme: AppBarTheme(
+      backgroundColor: scheme.surface,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      centerTitle: false,
+      iconTheme: IconThemeData(color: scheme.onSurface),
+      titleTextStyle: TextStyle(fontFamily: 'GoogleSansFlex', fontSize: 20, fontWeight: FontWeight.w600, color: scheme.onSurface),
+    ),
+
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        shape: const StadiumBorder(),
+        elevation: 0,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        textStyle: const TextStyle(fontFamily: 'GoogleSansFlex', fontWeight: FontWeight.w600, fontSize: 14),
+      ),
+    ),
+
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        shape: const StadiumBorder(),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        textStyle: const TextStyle(fontFamily: 'GoogleSansFlex', fontWeight: FontWeight.w600, fontSize: 13),
+      ),
+    ),
+
+    chipTheme: ChipThemeData(
+      shape: const StadiumBorder(),
+      side: cardBorder,
+      backgroundColor: scheme.surfaceContainer,
+      selectedColor: scheme.primaryContainer,
+      labelStyle: TextStyle(fontFamily: 'GoogleSansFlex', fontSize: 13, fontWeight: FontWeight.w500, color: scheme.onSurface),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      elevation: 0,
+    ),
+
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: scheme.surfaceContainerHigh,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: cardBorder),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: cardBorder),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: BorderSide(color: scheme.primary, width: 1.5),
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      hintStyle: TextStyle(color: scheme.onSurfaceVariant.withValues(alpha: 0.65), fontSize: 14),
+    ),
+
+    dialogTheme: DialogThemeData(
+      backgroundColor: scheme.surfaceContainerHigh,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: cardBorder),
+      elevation: 6,
+    ),
+
+    bottomSheetTheme: const BottomSheetThemeData(
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+      dragHandleColor: null,
+      elevation: 8,
+    ),
+
+    snackBarTheme: SnackBarThemeData(
+      backgroundColor: scheme.surfaceContainerHighest,
+      contentTextStyle: TextStyle(fontFamily: 'GoogleSansFlex', color: scheme.onSurface),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: cardBorder),
+      behavior: SnackBarBehavior.floating,
+      elevation: 4,
+    ),
+
+    dividerTheme: DividerThemeData(color: scheme.outlineVariant.withValues(alpha: 0.35), thickness: 1, space: 1),
+  );
 }
 
 ThemeMode themeModeOf(String setting) => switch (setting) {

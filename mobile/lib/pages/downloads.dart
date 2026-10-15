@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../theme.dart';
 import '../widgets.dart';
 import 'anime.dart';
 import 'player.dart';
@@ -48,39 +49,64 @@ class _DownloadsPageState extends State<DownloadsPage> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
+    final c = t.colorScheme;
     final jobs = _jobs.values.toList()..sort((a, b) => b['id'] - a['id']);
+    final hasFinished = jobs.any((j) => j['state'] == 'done' || j['state'] == 'failed' || j['state'] == 'cancelled');
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 8, 4),
+          padding: const EdgeInsets.fromLTRB(20, 14, 16, 8),
           child: Row(
             children: [
-              Expanded(child: Text('Downloads', style: t.textTheme.headlineSmall)),
-              TextButton.icon(
-                icon: const Icon(Icons.clear_all_rounded),
-                label: const Text('Clear finished'),
-                onPressed: () {
-                  Api.get('clearDownloads');
-                  _reload();
-                },
+              Expanded(
+                child: Text('Downloads', style: t.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700)),
               ),
+              if (hasFinished)
+                BouncyTap(
+                  borderRadius: BorderRadius.circular(999),
+                  onTap: () {
+                    Api.get('clearDownloads');
+                    _reload();
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: c.surfaceContainerHigh,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: c.outlineVariant.withValues(alpha: 0.5)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.clear_all_rounded, size: 16, color: c.primary),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Clear finished',
+                          style: TextStyle(fontFamily: 'GoogleSansFlex', fontSize: 12.5, fontWeight: FontWeight.w600, color: c.onSurface),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
         Expanded(
           child: jobs.isEmpty
               ? const SingleChildScrollView(
+                  padding: EdgeInsets.only(bottom: 110),
                   child: EmptyState(
                     face: '( ˘▽˘)っ♨',
                     title: 'No downloads yet',
-                    message: 'Open an anime and use Download… to save single episodes, a range, or the whole series.',
+                    message: 'Open an anime and use Download… to save single episodes, a range, or the whole series for offline watching.',
                   ),
                 )
               : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 110), // clearance for bottom nav
                   itemCount: jobs.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 8),
+                  separatorBuilder: (_, _) => const SizedBox(height: 10),
                   itemBuilder: (context, i) => _tile(context, jobs[i]),
                 ),
         ),
@@ -90,21 +116,25 @@ class _DownloadsPageState extends State<DownloadsPage> {
 
   Widget _tile(BuildContext context, Map<String, dynamic> j) {
     final t = Theme.of(context);
+    final c = t.colorScheme;
+    final aikatsu = context.aikatsu;
     final state = j['state'] as String;
     final active = _active.contains(state);
     final downloading = state == 'downloading' && toInt(j['total']) > 0;
+
     final detail = switch (state) {
       'failed' => Api.describe(j['error']),
       'downloading' => '${_bytes(j['bytes'])} of ${_bytes(j['total'])}  ·  ${_bytes(j['speed'])}/s',
-      'done' => 'Tap to play',
-      'queued' => 'Waiting…',
-      'resolving' => 'Finding the video…',
-      'remuxing' => 'Finishing up…',
-      'cancelled' => 'Cancelled',
+      'done' => 'Ready to watch · Tap to play',
+      'queued' => 'Waiting in queue…',
+      'resolving' => 'Finding the video stream…',
+      'remuxing' => 'Finishing and packing file…',
+      'cancelled' => 'Download cancelled',
       _ => '',
     };
+
     final icon = switch (state) {
-      'done' => Icons.check_rounded,
+      'done' => Icons.play_arrow_rounded,
       'failed' => Icons.error_outline_rounded,
       'cancelled' => Icons.block_rounded,
       'queued' => Icons.schedule_rounded,
@@ -112,27 +142,80 @@ class _DownloadsPageState extends State<DownloadsPage> {
       'remuxing' => Icons.movie_edit,
       _ => Icons.download_rounded,
     };
-    return Material(
-      color: t.colorScheme.surfaceContainer,
-      borderRadius: BorderRadius.circular(16),
-      child: ListTile(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        leading: Icon(icon, color: state == 'failed' ? t.colorScheme.error : t.colorScheme.primary),
-        title: Text('${j['title']}  ·  Episode ${j['episode']}', maxLines: 1, overflow: TextOverflow.ellipsis),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+
+    final statusColor = switch (state) {
+      'done' => c.primary,
+      'failed' => c.error,
+      'cancelled' => c.outline,
+      _ => c.primary,
+    };
+
+    final r = BorderRadius.circular(18);
+
+    return BouncyTap(
+      borderRadius: r,
+      onTap: state == 'done' ? () => _play(j) : (state == 'failed' ? () => toast('${j['error']}') : null),
+      child: Container(
+        decoration: BoxDecoration(
+          color: c.surfaceContainer,
+          borderRadius: r,
+          border: Border.all(color: state == 'done' ? c.primary.withValues(alpha: 0.4) : c.outlineVariant.withValues(alpha: 0.5), width: 1),
+          boxShadow: state == 'done' ? aikatsu.softShadow : null,
+        ),
+        padding: const EdgeInsets.all(14),
+        child: Row(
           children: [
-            Text(detail, maxLines: 2, overflow: TextOverflow.ellipsis),
+            // Status avatar
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: statusColor.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+                border: Border.all(color: statusColor.withValues(alpha: 0.35)),
+              ),
+              child: Icon(icon, color: statusColor, size: 22),
+            ),
+            const SizedBox(width: 14),
+            // Info & Progress
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${j['title']}  ·  Episode ${j['episode']}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    detail,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.textTheme.bodySmall?.copyWith(color: state == 'failed' ? c.error : c.onSurfaceVariant, fontSize: 12),
+                  ),
+                  if (active) ...[
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: LinearProgressIndicator(
+                        value: downloading ? toDouble(j['progress']) : null,
+                        minHeight: 5,
+                        backgroundColor: c.surfaceContainerHighest,
+                        valueColor: AlwaysStoppedAnimation<Color>(aikatsu.sakuraGlow),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
             if (active) ...[
-              const SizedBox(height: 6),
-              LinearProgressIndicator(value: downloading ? toDouble(j['progress']) : null, borderRadius: BorderRadius.circular(4)),
+              const SizedBox(width: 10),
+              IconButton(icon: const Icon(Icons.close_rounded, size: 20), onPressed: () => Api.get('cancelDownload', {'id': j['id']})),
             ],
           ],
         ),
-        trailing: active
-            ? IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Api.get('cancelDownload', {'id': j['id']}))
-            : null,
-        onTap: state == 'done' ? () => _play(j) : (state == 'failed' ? () => toast('${j['error']}') : null),
       ),
     );
   }

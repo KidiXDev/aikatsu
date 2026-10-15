@@ -72,34 +72,109 @@ class _ShellState extends State<Shell> {
   int _tab = 0;
 
   void _go(int tab) {
-    // Home and Downloads read local state that other tabs change.
     if (tab == 0) Api.historyRevision.value++;
     setState(() => _tab = tab);
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    body: SafeArea(
-      bottom: false,
-      child: IndexedStack(
-        index: _tab,
-        children: [
-          HomePage(onFindSomething: () => _go(1)),
-          const SearchPage(),
-          const DownloadsPage(),
-          const SettingsPage(),
-        ],
+  Widget build(BuildContext context) {
+    return Scaffold(
+      extendBody: true,
+      body: SafeArea(
+        bottom: false,
+        child: IndexedStack(
+          index: _tab,
+          children: [
+            HomePage(onFindSomething: () => _go(1)),
+            const SearchPage(),
+            const DownloadsPage(),
+            const SettingsPage(),
+          ],
+        ),
       ),
-    ),
-    bottomNavigationBar: NavigationBar(
-      selectedIndex: _tab,
-      onDestinationSelected: _go,
-      destinations: const [
-        NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home_rounded), label: 'Home'),
-        NavigationDestination(icon: Icon(Icons.search_rounded), label: 'Search'),
-        NavigationDestination(icon: Icon(Icons.download_outlined), selectedIcon: Icon(Icons.download_rounded), label: 'Downloads'),
-        NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings_rounded), label: 'Settings'),
-      ],
-    ),
-  );
+      bottomNavigationBar: _WarmCapsuleNavBar(selectedIndex: _tab, onSelected: _go),
+    );
+  }
+}
+
+/// A bespoke warm Japanese anime navigation capsule.
+/// Solid tactile pill with smooth animated expanding tabs on selection.
+class _WarmCapsuleNavBar extends StatelessWidget {
+  const _WarmCapsuleNavBar({required this.selectedIndex, required this.onSelected});
+
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+
+  static const _items = [
+    (icon: Icons.home_outlined, activeIcon: Icons.home_rounded, label: 'Home'),
+    (icon: Icons.search_rounded, activeIcon: Icons.search_rounded, label: 'Search'),
+    (icon: Icons.download_outlined, activeIcon: Icons.download_rounded, label: 'Downloads'),
+    (icon: Icons.tune_rounded, activeIcon: Icons.tune_rounded, label: 'Settings'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final c = Theme.of(context).colorScheme;
+    final aikatsu = context.aikatsu;
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, 0, 16, bottomInset > 0 ? bottomInset + 4 : 14),
+      child: Container(
+        height: 64,
+        decoration: BoxDecoration(
+          color: c.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: c.outlineVariant.withValues(alpha: 0.55), width: 1),
+          boxShadow: aikatsu.cardShadow,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            for (var i = 0; i < _items.length; i++)
+              _NavItem(index: i, item: _items[i], selected: selectedIndex == i, onTap: () => onSelected(i)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NavItem extends StatelessWidget {
+  const _NavItem({required this.index, required this.item, required this.selected, required this.onTap});
+
+  final int index;
+  final ({IconData icon, IconData activeIcon, String label}) item;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = Theme.of(context).colorScheme;
+
+    return BouncyTap(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+        padding: EdgeInsets.symmetric(horizontal: selected ? 16 : 14, vertical: 8),
+        decoration: BoxDecoration(color: selected ? c.primary : Colors.transparent, borderRadius: BorderRadius.circular(999)),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(selected ? item.activeIcon : item.icon, size: 22, color: selected ? c.onPrimary : c.onSurfaceVariant),
+            if (selected) ...[
+              const SizedBox(width: 8),
+              Text(
+                item.label,
+                style: TextStyle(fontFamily: 'GoogleSansFlex', fontWeight: FontWeight.w700, fontSize: 13, color: c.onPrimary),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../theme.dart';
 import '../widgets.dart';
 import 'anime.dart';
 
@@ -87,7 +88,7 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _menu(Map<String, dynamic> s) async {
     final choice = await pickFrom(context, s['title'], [
-      ('Open', 'open', false),
+      ('Open details', 'open', false),
       ('Continue episode', 'play', false),
       ('Remove from history', 'delete', false),
     ]);
@@ -110,53 +111,54 @@ class _HomePageState extends State<HomePage> {
     final shown = _recent ? _series : _continuing;
     return CustomScrollView(
       slivers: [
-        SliverToBoxAdapter(child: _heroBanner(context)),
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          sliver: SliverToBoxAdapter(child: _heroBanner(context)),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
           sliver: SliverToBoxAdapter(
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                ChoiceChip(
-                  avatar: const Icon(Icons.play_circle_outline_rounded),
-                  label: Text('Continue  ${_continuing.length}'),
-                  selected: !_recent,
-                  showCheckmark: false,
-                  onSelected: (_) => setState(() => _recent = false),
-                ),
-                ChoiceChip(
-                  avatar: const Icon(Icons.history_rounded),
-                  label: Text('Recent  ${_series.length}'),
-                  selected: _recent,
-                  showCheckmark: false,
-                  onSelected: (_) => setState(() => _recent = true),
-                ),
-                FilterChip(
-                  label: const Text('Autoplay'),
-                  selected: _autoplay,
-                  onSelected: (v) {
-                    Api.setSetting('autoplay', v);
-                    setState(() => _autoplay = v);
-                  },
-                ),
-                if (_series.isNotEmpty)
-                  TextButton.icon(
-                    icon: const Icon(Icons.delete_sweep_rounded),
-                    label: const Text('Clear all'),
-                    onPressed: () async {
-                      if (await _confirm(
-                        'Clear all history?',
-                        "Every series and its progress will be removed. This can't be undone.",
-                        'Clear all',
-                      )) {
-                        Api.get('clearHistory');
-                        _refresh();
-                      }
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  // Animated pill segment for Continue / Recent
+                  _HistorySegmentedControl(
+                    recent: _recent,
+                    continueCount: _continuing.length,
+                    recentCount: _series.length,
+                    onChanged: (isRecent) => setState(() => _recent = isRecent),
+                  ),
+                  const SizedBox(width: 10),
+                  // Autoplay pill switch
+                  FilterChip(
+                    avatar: Icon(_autoplay ? Icons.bolt_rounded : Icons.pause_circle_outline_rounded, size: 16),
+                    label: const Text('Autoplay'),
+                    selected: _autoplay,
+                    onSelected: (v) {
+                      Api.setSetting('autoplay', v);
+                      setState(() => _autoplay = v);
                     },
                   ),
-              ],
+                  if (_series.isNotEmpty) ...[
+                    const SizedBox(width: 8),
+                    TextButton.icon(
+                      icon: const Icon(Icons.delete_sweep_rounded, size: 18),
+                      label: const Text('Clear all'),
+                      onPressed: () async {
+                        if (await _confirm(
+                          'Clear all history?',
+                          "Every series and its progress will be removed. This can't be undone.",
+                          'Clear all',
+                        )) {
+                          Api.get('clearHistory');
+                          _refresh();
+                        }
+                      },
+                    ),
+                  ],
+                ],
+              ),
             ),
           ),
         ),
@@ -176,7 +178,7 @@ class _HomePageState extends State<HomePage> {
           )
         else
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 110), // comfortable bottom clearance for nav capsule
             sliver: SliverGrid.builder(
               gridDelegate: posterGrid(),
               itemCount: shown.length,
@@ -202,79 +204,142 @@ class _HomePageState extends State<HomePage> {
   Widget _heroBanner(BuildContext context) {
     final t = Theme.of(context);
     final c = t.colorScheme;
+    final aikatsu = context.aikatsu;
     final hero = _hero, meta = _heroMeta;
     final banner = text([meta?['banner'], meta?['cover'], hero?['cover']]);
     final genres = (meta?['genres'] as List?)?.take(3).join(' · ') ?? '';
-    final blur = text([meta?['banner']]).isEmpty ? 20.0 : 3.0; // covers stretched to a banner need more
-    return SizedBox(
-      height: 300,
+    final r = BorderRadius.circular(24);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: c.surfaceContainer,
+        borderRadius: r,
+        border: Border.all(color: c.outlineVariant.withValues(alpha: 0.5), width: 1),
+        boxShadow: aikatsu.cardShadow,
+      ),
+      clipBehavior: Clip.antiAlias,
       child: Stack(
-        fit: StackFit.expand,
         children: [
-          if (banner.isEmpty)
-            DecoratedBox(
-              decoration: BoxDecoration(gradient: LinearGradient(colors: [c.secondaryContainer, c.surfaceContainer])),
-            )
-          else
-            BlurredArt(banner, sigma: blur),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [c.surface.withValues(alpha: 0.15), c.surface.withValues(alpha: 0.6), c.surface],
-                stops: const [0, 0.55, 1],
+          // Background artwork
+          if (banner.isNotEmpty) Positioned.fill(child: BlurredArt(banner, sigma: text([meta?['banner']]).isEmpty ? 22.0 : 4.0)),
+          // Warm solid gradient overlay to maintain absolute readability
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [c.surfaceContainer.withValues(alpha: 0.3), c.surfaceContainer.withValues(alpha: 0.85), c.surfaceContainer],
+                  stops: const [0.0, 0.55, 1.0],
+                ),
               ),
             ),
           ),
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(20),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 if (hero != null) ...[
-                  SizedBox(width: 110, height: 160, child: Cover(text([meta?['cover'], hero['cover']]))),
-                  const SizedBox(width: 16),
+                  SizedBox(width: 104, height: 154, child: Cover(text([meta?['cover'], hero['cover']]), radius: 16)),
+                  const SizedBox(width: 18),
                 ],
                 Expanded(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        hero != null ? 'CONTINUE WATCHING' : 'おかえり · WELCOME',
-                        style: t.textTheme.labelLarge?.copyWith(color: c.primary),
+                      // Tag header with mini sakura blossom
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SakuraBlossom(size: 16, petalColor: c.primary, centerColor: c.secondary),
+                          const SizedBox(width: 6),
+                          Text(
+                            hero != null ? 'CONTINUE WATCHING' : 'おかえり · WELCOME',
+                            style: t.textTheme.labelMedium?.copyWith(color: c.primary, fontWeight: FontWeight.w700, letterSpacing: 0.8),
+                          ),
+                        ],
                       ),
+                      const SizedBox(height: 6),
                       Text(
                         hero != null ? text([meta?['title_english'], hero['title']]) : 'Aikatsu',
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: t.textTheme.headlineSmall,
+                        style: t.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700, height: 1.2),
                       ),
+                      const SizedBox(height: 4),
                       Text(
                         hero != null
                             ? _episodeOf(hero, ' of ') + (genres.isEmpty ? '' : '  ·  $genres')
                             : 'Watch anime with Indonesian subtitles and pick up right where you left off.',
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: t.textTheme.bodyMedium?.copyWith(color: c.onSurfaceVariant),
+                        style: t.textTheme.bodyMedium?.copyWith(color: c.onSurfaceVariant, fontSize: 13),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 14),
                       Wrap(
-                        spacing: 8,
+                        spacing: 10,
+                        runSpacing: 8,
                         children: [
-                          FilledButton.icon(
-                            icon: Icon(hero != null ? Icons.play_arrow_rounded : Icons.search_rounded),
-                            label: Text(hero != null ? 'Continue  ·  Ep ${hero['continue_episode']}' : 'Find something to watch'),
-                            onPressed: hero != null
+                          BouncyTap(
+                            borderRadius: BorderRadius.circular(999),
+                            onTap: hero != null
                                 ? () => openAnime(context, _animeOf(hero), autoplayEpisode: toInt(hero['continue_episode']))
                                 : widget.onFindSomething,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+                              decoration: BoxDecoration(
+                                color: c.primary,
+                                borderRadius: BorderRadius.circular(999),
+                                boxShadow: aikatsu.softShadow,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(hero != null ? Icons.play_arrow_rounded : Icons.search_rounded, size: 18, color: c.onPrimary),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    hero != null ? 'Continue  ·  Ep ${hero['continue_episode']}' : 'Find something to watch',
+                                    style: TextStyle(
+                                      fontFamily: 'GoogleSansFlex',
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 13,
+                                      color: c.onPrimary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
                           if (hero != null)
-                            FilledButton.tonalIcon(
-                              icon: const Icon(Icons.info_outline_rounded),
-                              label: const Text('Details'),
-                              onPressed: () => openAnime(context, _animeOf(hero)),
+                            BouncyTap(
+                              borderRadius: BorderRadius.circular(999),
+                              onTap: () => openAnime(context, _animeOf(hero)),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+                                decoration: BoxDecoration(
+                                  color: c.surfaceContainerHighest,
+                                  borderRadius: BorderRadius.circular(999),
+                                  border: Border.all(color: c.outlineVariant.withValues(alpha: 0.5)),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.info_outline_rounded, size: 18, color: c.onSurface),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      'Details',
+                                      style: TextStyle(
+                                        fontFamily: 'GoogleSansFlex',
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 13,
+                                        color: c.onSurface,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
                         ],
                       ),
@@ -285,6 +350,83 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Custom segmented pill control for switching between Continue and Recent history.
+class _HistorySegmentedControl extends StatelessWidget {
+  const _HistorySegmentedControl({required this.recent, required this.continueCount, required this.recentCount, required this.onChanged});
+
+  final bool recent;
+  final int continueCount;
+  final int recentCount;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: c.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: c.outlineVariant.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _Tab(
+            label: 'Continue  $continueCount',
+            icon: Icons.play_circle_outline_rounded,
+            selected: !recent,
+            onTap: () => onChanged(false),
+          ),
+          _Tab(label: 'Recent  $recentCount', icon: Icons.history_rounded, selected: recent, onTap: () => onChanged(true)),
+        ],
+      ),
+    );
+  }
+}
+
+class _Tab extends StatelessWidget {
+  const _Tab({required this.label, required this.icon, required this.selected, required this.onTap});
+
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = Theme.of(context).colorScheme;
+
+    return BouncyTap(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(color: selected ? c.primaryContainer : Colors.transparent, borderRadius: BorderRadius.circular(999)),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: selected ? c.onPrimaryContainer : c.onSurfaceVariant),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontFamily: 'GoogleSansFlex',
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                fontSize: 12.5,
+                color: selected ? c.onPrimaryContainer : c.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
