@@ -5,6 +5,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'api.dart';
+import 'download_notifications.dart';
 import 'pages/downloads.dart';
 import 'pages/home.dart';
 import 'pages/search.dart';
@@ -21,6 +22,7 @@ Future<void> main() async {
   // App-specific external storage: no permission needed, removed with the app.
   final videos = await getExternalStorageDirectory() ?? data;
   Api.init(data.path, '${videos.path}/Anime');
+  await DownloadNotifications.init();
   runApp(const AikatsuApp());
 }
 
@@ -70,10 +72,29 @@ class Shell extends StatefulWidget {
 
 class _ShellState extends State<Shell> {
   int _tab = 0;
+  final _searchKey = GlobalKey<SearchPageState>();
+
+  @override
+  void initState() {
+    super.initState();
+    DownloadNotifications.tapped.addListener(_showDownloads);
+  }
+
+  @override
+  void dispose() {
+    DownloadNotifications.tapped.removeListener(_showDownloads);
+    super.dispose();
+  }
 
   void _go(int tab) {
     if (tab == 0) Api.historyRevision.value++;
     setState(() => _tab = tab);
+  }
+
+  /// A tapped download notification: back out of any anime page or player.
+  void _showDownloads() {
+    Navigator.popUntil(context, (route) => route.isFirst);
+    _go(2);
   }
 
   @override
@@ -85,8 +106,13 @@ class _ShellState extends State<Shell> {
         child: IndexedStack(
           index: _tab,
           children: [
-            HomePage(onFindSomething: () => _go(1)),
-            const SearchPage(),
+            HomePage(
+              onSearch: (q) {
+                _go(1);
+                if (q.isNotEmpty) _searchKey.currentState?.search(q);
+              },
+            ),
+            SearchPage(key: _searchKey),
             const DownloadsPage(),
             const SettingsPage(),
           ],

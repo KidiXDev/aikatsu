@@ -108,6 +108,11 @@ pub async fn call(method: &str, args: Value) -> Result<Value> {
             anime4k::install(args["gan"].as_bool().unwrap_or(false)).await?;
             Ok(json!({ "dir": anime4k::shader_dir() }))
         }
+        "discover" => {
+            // Short-lived: the schedule moves. Stale copies still show when AniList is down.
+            let d = db::cached("discover", std::time::Duration::from_secs(30 * 60), refresh(&args), meta::discover()).await?;
+            Ok(serde_json::to_value(d)?)
+        }
         "skipTimes" => {
             let (mal, ep) = (i(&args, "malId"), i(&args, "episode") as u32);
             let skip = db::cached(&format!("skip:{mal}:{ep}"), DAY * 7, false, meta::skip_times(mal, ep)).await?;

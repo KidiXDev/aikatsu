@@ -11,10 +11,10 @@ class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
 
   @override
-  State<SearchPage> createState() => _SearchPageState();
+  State<SearchPage> createState() => SearchPageState();
 }
 
-class _SearchPageState extends State<SearchPage> {
+class SearchPageState extends State<SearchPage> {
   final _field = TextEditingController();
   late final StreamSubscription<(String, dynamic)> _sub;
   String _query = '';
@@ -52,6 +52,9 @@ class _SearchPageState extends State<SearchPage> {
     _field.dispose();
     super.dispose();
   }
+
+  /// From Home's info sheets: fills the field and searches every source.
+  void search(String q) => _search(q);
 
   Future<void> _search(String q) async {
     q = q.trim();

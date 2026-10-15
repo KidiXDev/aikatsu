@@ -18,6 +18,16 @@ void main() {
     expect(Api.describe(null), 'Something went wrong.');
   });
 
+  test('airingLabel', () {
+    final now = DateTime(2026, 10, 15, 20, 0);
+    int at(DateTime t) => t.millisecondsSinceEpoch ~/ 1000;
+    expect(airingLabel(at(DateTime(2026, 10, 15, 19, 15)), now), '45m ago');
+    expect(airingLabel(at(DateTime(2026, 10, 15, 19, 59, 50)), now), '1m ago');
+    expect(airingLabel(at(DateTime(2026, 10, 15, 17, 0)), now), '3h ago');
+    expect(airingLabel(at(DateTime(2026, 10, 15, 21, 30)), now), '21:30');
+    expect(airingLabel(at(DateTime(2026, 10, 16, 8, 5)), now), 'Tomorrow 08:05');
+  });
+
   test('text picks the first non-empty string', () {
     expect(text([null, '', 'b', 'c']), 'b');
     expect(text([null, 3]), '');

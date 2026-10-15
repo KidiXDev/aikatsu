@@ -8,7 +8,21 @@ import '../widgets.dart';
 import 'anime.dart';
 import 'player.dart';
 
-const _active = {'queued', 'resolving', 'downloading', 'remuxing'};
+const activeDownloadStates = {'queued', 'resolving', 'downloading', 'remuxing'};
+
+String _bytes(num n) => n > 1073741824 ? '${(n / 1073741824).toStringAsFixed(2)} GB' : '${(n / 1048576).toStringAsFixed(1)} MB';
+
+/// One line on where a download is, shared by this page and the notification.
+String downloadStatus(Map<String, dynamic> j) => switch (j['state']) {
+  'failed' => Api.describe(j['error']),
+  'downloading' => '${_bytes(j['bytes'])} of ${_bytes(j['total'])}  ·  ${_bytes(j['speed'])}/s',
+  'done' => 'Ready to watch · Tap to play',
+  'queued' => 'Waiting in queue…',
+  'resolving' => 'Finding the video stream…',
+  'remuxing' => 'Finishing and packing file…',
+  'cancelled' => 'Download cancelled',
+  _ => '',
+};
 
 class DownloadsPage extends StatefulWidget {
   const DownloadsPage({super.key});
@@ -38,8 +52,6 @@ class _DownloadsPageState extends State<DownloadsPage> {
   }
 
   void _reload() => setState(() => _jobs = {for (final j in Api.get('downloads') as List) j['id'] as int: j});
-
-  static String _bytes(num n) => n > 1073741824 ? '${(n / 1073741824).toStringAsFixed(2)} GB' : '${(n / 1048576).toStringAsFixed(1)} MB';
 
   void _play(Map<String, dynamic> job) {
     final data = AnimeData.local(title: job['title'], episode: job['episode'], path: job['path']);
@@ -119,19 +131,10 @@ class _DownloadsPageState extends State<DownloadsPage> {
     final c = t.colorScheme;
     final aikatsu = context.aikatsu;
     final state = j['state'] as String;
-    final active = _active.contains(state);
+    final active = activeDownloadStates.contains(state);
     final downloading = state == 'downloading' && toInt(j['total']) > 0;
 
-    final detail = switch (state) {
-      'failed' => Api.describe(j['error']),
-      'downloading' => '${_bytes(j['bytes'])} of ${_bytes(j['total'])}  ·  ${_bytes(j['speed'])}/s',
-      'done' => 'Ready to watch · Tap to play',
-      'queued' => 'Waiting in queue…',
-      'resolving' => 'Finding the video stream…',
-      'remuxing' => 'Finishing and packing file…',
-      'cancelled' => 'Download cancelled',
-      _ => '',
-    };
+    final detail = downloadStatus(j);
 
     final icon = switch (state) {
       'done' => Icons.play_arrow_rounded,

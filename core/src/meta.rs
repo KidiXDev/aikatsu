@@ -7,7 +7,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::sync::LazyLock;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct SeasonRange {
@@ -249,6 +249,57 @@ pub async fn by_anilist_id(id: i64) -> Result<Meta> {
     parse_media(&anilist(&query, json!({ "id": id })).await?["data"]["Media"]).ok_or_else(|| anyhow!("no AniList result for ID {id}"))
 }
 
+/// A scheduled episode from AniList's airing calendar.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct Airing {
+    pub episode: i64,
+    pub airing_at: i64, // unix seconds
+    pub anime: Meta,
+}
+
+/// What's going on in anime, for a Home that isn't empty on a fresh install.
+/// Information only: the sources may not carry a show, so the user still searches.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct Discover {
+    /// The last and the next 24 hours, oldest first; the UI splits aired from upcoming.
+    pub schedule: Vec<Airing>,
+    pub trending: Vec<Meta>,
+    /// Not yet released, most anticipated first.
+    pub coming_soon: Vec<Meta>,
+}
+
+/// MEDIA_FIELDS without relations (lists don't need season maps), plus isAdult:
+/// the airing calendar has no filter for it.
+const LIST_FIELDS: &str = "id idMal title { romaji english native } coverImage { extraLarge large color } bannerImage
+    description(asHtml: false) genres averageScore episodes status startDate { year month } isAdult";
+
+pub async fn discover() -> Result<Discover> {
+    let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as i64;
+    let query = format!(
+        "query ($dayAgo: Int, $now: Int, $dayAhead: Int) {{
+            aired: Page(perPage: 50) {{ airingSchedules(airingAt_greater: $dayAgo, airingAt_lesser: $now, sort: TIME_DESC) {{ episode airingAt media {{ {LIST_FIELDS} }} }} }}
+            next: Page(perPage: 50) {{ airingSchedules(airingAt_greater: $now, airingAt_lesser: $dayAhead, sort: TIME) {{ episode airingAt media {{ {LIST_FIELDS} }} }} }}
+            trending: Page(perPage: 20) {{ media(type: ANIME, sort: TRENDING_DESC, isAdult: false) {{ {LIST_FIELDS} }} }}
+            comingSoon: Page(perPage: 20) {{ media(type: ANIME, status: NOT_YET_RELEASED, sort: POPULARITY_DESC, isAdult: false) {{ {LIST_FIELDS} }} }}
+        }}"
+    );
+    let v = anilist(&query, json!({ "dayAgo": now - 86400, "now": now, "dayAhead": now + 86400 })).await?;
+    anyhow::ensure!(v["data"].is_object(), "AniList returned no data: {}", v["errors"]);
+    Ok(parse_discover(&v["data"]))
+}
+
+fn parse_discover(d: &Value) -> Discover {
+    let media = |page: &Value| -> Vec<Meta> { page["media"].as_array().into_iter().flatten().filter_map(parse_media).collect() };
+    let mut schedule: Vec<Airing> = ["aired", "next"]
+        .iter()
+        .flat_map(|k| d[k]["airingSchedules"].as_array().into_iter().flatten())
+        .filter(|s| s["media"]["isAdult"].as_bool() != Some(true))
+        .filter_map(|s| Some(Airing { episode: s["episode"].as_i64()?, airing_at: s["airingAt"].as_i64()?, anime: parse_media(&s["media"])? }))
+        .collect();
+    schedule.sort_by_key(|a| a.airing_at);
+    Discover { schedule, trending: media(&d["trending"]), coming_soon: media(&d["comingSoon"]) }
+}
+
 async fn jikan(path: &str) -> Result<Value> {
     let resp = http::PLAIN.get(format!("https://api.jikan.moe/v4{path}")).header("User-Agent", API_UA).timeout(Duration::from_secs(15)).send().await?;
     anyhow::ensure!(resp.status().is_success(), "Jikan returned {}", resp.status());
@@ -418,6 +469,36 @@ mod tests {
         let s = parse_skip(&json!({"found":true,"results":[{"interval":{"start_time":89.6,"end_time":179.4},"skip_type":"op"},{"interval":{"start_time":1300.0,"end_time":1390.0},"skip_type":"ed"}]}));
         assert_eq!((s.op, s.ed), (Some((90, 179)), Some((1300, 1390))));
         assert!(parse_skip(&json!({"found":false})).op.is_none());
+    }
+
+    #[test]
+    fn discover_parse() {
+        let show = |id: i64, adult: bool| json!({"id": id, "title": {"romaji": format!("Show {id}")}, "isAdult": adult});
+        let d = parse_discover(&json!({
+            "aired": {"airingSchedules": [
+                {"episode": 5, "airingAt": 200, "media": show(1, false)},
+                {"episode": 9, "airingAt": 100, "media": show(2, true)}
+            ]},
+            "next": {"airingSchedules": [{"episode": 3, "airingAt": 300, "media": show(3, false)}, {"episode": 1, "airingAt": 250, "media": {"id": 0}}]},
+            "trending": {"media": [show(4, false)]},
+            "comingSoon": null
+        }));
+        let sched: Vec<(i64, i64)> = d.schedule.iter().map(|a| (a.anime.anilist_id, a.episode)).collect();
+        assert_eq!(sched, [(1, 5), (3, 3)], "adult and id-less entries dropped, oldest first");
+        assert_eq!(d.trending[0].title_romaji, "Show 4");
+        assert!(d.coming_soon.is_empty());
+    }
+
+    /// `cargo test live_discover -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn live_discover() {
+        let d = discover().await.unwrap();
+        println!("schedule {} trending {} coming soon {}", d.schedule.len(), d.trending.len(), d.coming_soon.len());
+        for a in d.schedule.iter().take(3) {
+            println!("  ep {} at {}: {}", a.episode, a.airing_at, a.anime.title());
+        }
+        assert!(!d.schedule.is_empty() && !d.trending.is_empty() && !d.coming_soon.is_empty());
     }
 
     /// `cargo test live_anilist -- --ignored --nocapture`

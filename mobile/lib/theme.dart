@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 
 // Warm Japanese Anime & Sakura blossom palette.
@@ -288,4 +290,18 @@ String formatTime(num seconds) {
   final h = sec ~/ 3600, m = sec % 3600 ~/ 60, s = sec % 60;
   final mm = h > 0 ? '$m'.padLeft(2, '0') : '$m';
   return '${h > 0 ? '$h:' : ''}$mm:${'$s'.padLeft(2, '0')}';
+}
+
+/// When a scheduled episode airs, relative to [now]: "45m ago", "3h ago",
+/// "21:30" later today, "Tomorrow 08:00".
+String airingLabel(int airingAt, DateTime now) {
+  final t = DateTime.fromMillisecondsSinceEpoch(airingAt * 1000);
+  final diff = t.difference(now);
+  if (diff.isNegative) {
+    final ago = -diff.inMinutes;
+    return ago < 60 ? '${max(ago, 1)}m ago' : '${ago ~/ 60}h ago';
+  }
+  final hhmm = '${'${t.hour}'.padLeft(2, '0')}:${'${t.minute}'.padLeft(2, '0')}';
+  final sameDay = t.year == now.year && t.month == now.month && t.day == now.day;
+  return sameDay ? hhmm : 'Tomorrow $hhmm';
 }
