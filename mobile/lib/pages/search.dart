@@ -123,6 +123,7 @@ class _SearchPageState extends State<SearchPage> {
                       _ => '${s['name']}  ${s['count']}',
                     }),
                     selected: _filter == key,
+                    showCheckmark: s['state'] == 'ok',
                     onSelected: s['state'] == 'error'
                         ? (_) =>
                               toast('${Api.describe(s['error'])}\n${s['error']}') // the desktop shows it as a tooltip

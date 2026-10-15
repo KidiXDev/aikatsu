@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 
 import 'api.dart';
@@ -37,6 +39,23 @@ class Cover extends StatelessWidget {
   }
 }
 
+/// Blurred cover or banner behind a header. Clamped edges and a clip, else the
+/// blur fades to transparent at the border and shows as a dark line.
+class BlurredArt extends StatelessWidget {
+  const BlurredArt(this.url, {super.key, required this.sigma});
+
+  final String url;
+  final double sigma;
+
+  @override
+  Widget build(BuildContext context) => ClipRect(
+    child: ImageFiltered(
+      imageFilter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma, tileMode: TileMode.clamp),
+      child: Cover(url, radius: 0),
+    ),
+  );
+}
+
 class PosterCard extends StatelessWidget {
   const PosterCard({
     super.key,
@@ -65,8 +84,7 @@ class PosterCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          AspectRatio(
-            aspectRatio: 1 / 1.45,
+          Expanded(
             child: Stack(
               fit: StackFit.expand,
               children: [

@@ -33,12 +33,6 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        // The Rust core is built for arm64 only; media_kit would also pack libmpv for other
-        // ABIs, which would install on those devices and then fail to start.
-        ndk {
-            abiFilters.clear() // Flutter pre-fills all its ABIs
-            abiFilters += "arm64-v8a"
-        }
     }
 
     signingConfigs {

@@ -166,8 +166,10 @@ jobs:
           # versionCode must grow with every release so installs update in place.
           args=(--build-number "${{ github.run_number }}")
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then args+=(--build-name "${GITHUB_REF_NAME#v}"); fi
-          flutter build apk --release --target-platform android-arm64 "${args[@]}"
-          mv build/app/outputs/flutter-apk/app-release.apk "../Aikatsu-${{ github.ref_name }}-android-arm64.apk"
+          # --split-per-abi keeps every native lib to arm64; a plain --target-platform build
+          # would still pack media_kit's libmpv for other ABIs, without the Rust core.
+          flutter build apk --release --split-per-abi --target-platform android-arm64 "${args[@]}"
+          mv build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "../Aikatsu-${{ github.ref_name }}-android-arm64.apk"
 
       - uses: actions/upload-artifact@v4
         with:

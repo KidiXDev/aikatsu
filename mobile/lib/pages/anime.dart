@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -241,10 +239,7 @@ class _AnimePageState extends State<AnimePage> {
               background: Stack(
                 fit: StackFit.expand,
                 children: [
-                  ImageFiltered(
-                    imageFilter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-                    child: Cover(banner, radius: 0),
-                  ),
+                  BlurredArt(banner, sigma: blur),
                   DecoratedBox(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(

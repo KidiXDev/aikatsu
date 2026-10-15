@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
 import '../api.dart';
@@ -125,12 +123,14 @@ class _HomePageState extends State<HomePage> {
                   avatar: const Icon(Icons.play_circle_outline_rounded),
                   label: Text('Continue  ${_continuing.length}'),
                   selected: !_recent,
+                  showCheckmark: false,
                   onSelected: (_) => setState(() => _recent = false),
                 ),
                 ChoiceChip(
                   avatar: const Icon(Icons.history_rounded),
                   label: Text('Recent  ${_series.length}'),
                   selected: _recent,
+                  showCheckmark: false,
                   onSelected: (_) => setState(() => _recent = true),
                 ),
                 FilterChip(
@@ -216,10 +216,7 @@ class _HomePageState extends State<HomePage> {
               decoration: BoxDecoration(gradient: LinearGradient(colors: [c.secondaryContainer, c.surfaceContainer])),
             )
           else
-            ImageFiltered(
-              imageFilter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-              child: Cover(banner, radius: 0),
-            ),
+            BlurredArt(banner, sigma: blur),
           DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(

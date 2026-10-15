@@ -91,9 +91,11 @@ You need Flutter 3.47+, Rust through rustup with the Android target (`rustup tar
 
 ```sh
 cd mobile
-flutter run                                                        # on a connected phone
-flutter build apk --release --target-platform android-arm64       # build/app/outputs/flutter-apk/app-release.apk
+flutter run                                                                     # on a connected phone or an emulator
+flutter build apk --release --split-per-abi --target-platform android-arm64     # build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
 ```
+
+Keep `--split-per-abi` on release builds: without it, media_kit's video library for other ABIs ends up in the APK without the Rust core, and the app installs on those devices but can't start.
 
 Release builds are signed with `mobile/android/key.properties` (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`) when it exists, else with the debug key.
 

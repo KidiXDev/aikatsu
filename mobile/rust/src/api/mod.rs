@@ -16,11 +16,6 @@ static EVENTS: Mutex<Option<StreamSink<Event>>> = Mutex::new(None);
 static INIT: Once = Once::new();
 static LOG: OnceLock<aikatsu_core::WorkerGuard> = OnceLock::new();
 
-#[frb(init)]
-pub fn init_app() {
-    flutter_rust_bridge::setup_default_user_utils();
-}
-
 /// `data_dir`: app-private storage (history, logs, Anime4K shaders);
 /// `videos_dir`: the default download folder. A Flutter hot restart calls
 /// this again with a fresh stream; the core itself starts once.

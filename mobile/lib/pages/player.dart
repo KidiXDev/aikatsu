@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:math';
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -32,7 +31,7 @@ class PlayerPage extends StatefulWidget {
 class _PlayerPageState extends State<PlayerPage> {
   // Desktop uses 300 MiB; phones have less memory to spare.
   final _player = Player(configuration: const PlayerConfiguration(bufferSize: 150 << 20));
-  late final VideoController _video;
+  VideoController? _video; // after the emulator check in _setup
   final _scaffold = GlobalKey<ScaffoldState>();
   final _subs = <StreamSubscription<Object?>>[];
 
@@ -93,7 +92,6 @@ class _PlayerPageState extends State<PlayerPage> {
   @override
   void initState() {
     super.initState();
-    _video = VideoController(_player);
     WakelockPlus.enable();
     SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
@@ -110,6 +108,8 @@ class _PlayerPageState extends State<PlayerPage> {
         _lastError = e;
         _checkFailed();
       }),
+      // mpv's errors (media_kit's default log level) in logcat, like the desktop's console.
+      s.log.listen((l) => debugPrint('mpv ${l.level} [${l.prefix}] ${l.text}')),
       s.buffering.listen(_refresh),
       s.playing.listen(_refresh),
       s.tracks.listen(_refresh),
@@ -123,6 +123,20 @@ class _PlayerPageState extends State<PlayerPage> {
   }
 
   Future<void> _setup() async {
+    // Emulators' EGL rejects mpv's GL context (EGL_BAD_ATTRIBUTE), so there mpv draws
+    // through the decoder instead: video shows, Anime4K can't. Same check media_kit uses.
+    final emulator = await const MethodChannel('com.alexmercerind/media_kit_video')
+        .invokeMethod<bool>('Utils.IsEmulator')
+        .catchError((_) => false);
+    if (!mounted) return;
+    setState(() {
+      _video = VideoController(
+        _player,
+        configuration: emulator == true
+            ? const VideoControllerConfiguration(vo: 'mediacodec_embed', hwdec: 'mediacodec')
+            : const VideoControllerConfiguration(),
+      );
+    });
     final mpv = _player.platform as NativePlayer;
     await mpv.setProperty('demuxer-readahead-secs', '20');
     await mpv.setProperty('audio-display', 'no');
@@ -532,7 +546,7 @@ class _PlayerPageState extends State<PlayerPage> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          Video(controller: _video, controls: NoVideoControls),
+          if (_video case final video?) Video(controller: video, controls: NoVideoControls),
           // Series art behind the loading screen and the end/error card.
           if (!_started || card) _backdrop(),
           GestureDetector(
@@ -605,13 +619,7 @@ class _PlayerPageState extends State<PlayerPage> {
   Widget _backdrop() => Stack(
     fit: StackFit.expand,
     children: [
-      Opacity(
-        opacity: 0.55,
-        child: ImageFiltered(
-          imageFilter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-          child: Cover(text([_meta['banner'], _meta['cover'], d.anime['image']]), radius: 0),
-        ),
-      ),
+      Opacity(opacity: 0.55, child: BlurredArt(text([_meta['banner'], _meta['cover'], d.anime['image']]), sigma: 30)),
       const ColoredBox(color: Colors.black45),
     ],
   );

@@ -165,6 +165,9 @@ class AndroidEnvironment {
       'CARGOKIT_TOOL_TEMP_DIR': toolTempDir,
       // aikatsu: BoringSSL (wreq) finds the NDK's cmake toolchain through this.
       'ANDROID_NDK_HOME': ndkPath,
+      // aikatsu: and links the C++ runtime statically (plus libc++abi below), as the APK
+      // has no libc++_shared.so to load.
+      'BORING_BSSL_RUST_CPPLIB': 'c++_static',
     };
   }
 
@@ -193,7 +196,7 @@ class AndroidEnvironment {
     }
     // aikatsu: this variable overrides .cargo/config.toml's rustflags, so
     // repeat its cfg here (reqwest's HTTP/3 client needs it).
-    rustFlags = '$rustFlags--cfg\x1freqwest_unstable\x1f';
+    rustFlags = '$rustFlags--cfg\x1freqwest_unstable\x1f-C\x1flink-arg=-lc++abi\x1f';
     if (["arm64-v8a", "x86_64"].contains(target.android)) {
       rustFlags = '$rustFlags-L\x1f$workaroundDir\x1f';
 

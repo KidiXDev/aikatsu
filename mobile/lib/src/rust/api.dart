@@ -17,11 +17,9 @@ Stream<Event> init({required String dataDir, required String videosDir}) =>
 
 /// Runs on the core runtime: the stream proxy and downloads spawn onto it.
 /// Errors reach Dart as a thrown String.
-Future<String> call({required String method, required String args}) =>
-    RustLib.instance.api.crateApiCall(method: method, args: args);
+Future<String> call({required String method, required String args}) => RustLib.instance.api.crateApiCall(method: method, args: args);
 
-String get_({required String method, required String args}) =>
-    RustLib.instance.api.crateApiGet(method: method, args: args);
+String get_({required String method, required String args}) => RustLib.instance.api.crateApiGet(method: method, args: args);
 
 class Event {
   final String kind;
@@ -34,9 +32,5 @@ class Event {
 
   @override
   bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is Event &&
-          runtimeType == other.runtimeType &&
-          kind == other.kind &&
-          json == other.json;
+      identical(this, other) || other is Event && runtimeType == other.runtimeType && kind == other.kind && json == other.json;
 }
