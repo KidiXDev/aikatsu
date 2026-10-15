@@ -29,6 +29,14 @@ ApplicationWindow {
         tab = i;
     }
 
+    signal searchRequested(string query)
+
+    // Search tab, running `query` (Home's discover cards).
+    function searchFor(query: string): void {
+        goTab(1);
+        searchRequested(query);
+    }
+
     // page: the AnimePage (anime, meta, episodes, progress keys); index: episode to start
     function play(page: var, index: int): void {
         playerLoader.page = page;

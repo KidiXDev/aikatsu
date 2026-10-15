@@ -63,6 +63,15 @@ Item {
     property bool opened
 
     Connections {
+        target: root.ApplicationWindow.window // via root: attached to a Connections it is null
+
+        function onSearchRequested(q: string): void {
+            field.text = q;
+            root.search(q);
+        }
+    }
+
+    Connections {
         target: Api
 
         function onPushed(kind: string, data: var): void {

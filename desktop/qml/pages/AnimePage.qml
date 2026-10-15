@@ -147,7 +147,7 @@ Item {
     Component.onCompleted: load(false)
 
     Connections {
-        target: ApplicationWindow.window
+        target: root.ApplicationWindow.window
 
         function onHistoryRevisionChanged(): void {
             root.refreshProgress();

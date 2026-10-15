@@ -16,9 +16,86 @@ Item {
     readonly property var hero: continuing.length > 0 ? continuing[0] : null
     property var heroMeta: null
     property bool autoplay: Api.setting("autoplay") === "true"
+    property var discover: null // AniList schedule, trending and upcoming (see core meta::discover)
+    property bool discoverFailed
+    property real discoverAt // ms; Home re-reads it when shown 10 min later so "Up next" moves on
+    readonly property var shelves: discover ? shelvesOf(discover) : []
 
     function refresh(): void {
         series = Api.get("history");
+    }
+
+    function show(): void {
+        refresh();
+        if (Date.now() - discoverAt > 10 * 60000)
+            loadDiscover(false);
+    }
+
+    function loadDiscover(refresh: bool): void {
+        discoverAt = Date.now();
+        discoverFailed = false;
+        Api.call("discover", {
+            refresh: refresh
+        }, d => root.discover = d, () => {
+            root.discoverAt = 0;
+            root.discoverFailed = true;
+        });
+    }
+
+    // When a scheduled episode airs: "45m ago", "3h ago", "21:30" later today, "Tomorrow 08:00".
+    function airingLabel(at: real, now: date): string {
+        const ago = Math.floor((now.getTime() - at * 1000) / 60000);
+        if (ago >= 0)
+            return ago < 60 ? `${Math.max(ago, 1)}m ago` : `${Math.floor(ago / 60)}h ago`;
+        const t = new Date(at * 1000);
+        const hhmm = Qt.formatTime(t, "hh:mm");
+        return t.toDateString() === now.toDateString() ? hhmm : `Tomorrow ${hhmm}`;
+    }
+
+    function shelvesOf(d: var): var {
+        const now = new Date();
+        const genre = m => m.genres.slice(0, 2).join(" · ");
+        const airing = a => {
+            const label = airingLabel(a.airing_at, now);
+            return {
+                meta: a.anime,
+                badge: `Ep ${a.episode}`,
+                subtitle: label,
+                note: `Episode ${a.episode} · ${label.endsWith("ago") ? "aired" : "airs"} ${label}`
+            };
+        };
+        return [
+            {
+                title: "Out today",
+                icon: "new_releases",
+                items: d.schedule.filter(a => a.airing_at * 1000 <= now.getTime()).reverse().map(airing) // newest first
+            },
+            {
+                title: "Up next",
+                icon: "schedule",
+                items: d.schedule.filter(a => a.airing_at * 1000 > now.getTime()).map(airing)
+            },
+            {
+                title: "Trending now",
+                icon: "local_fire_department",
+                items: d.trending.map(m => ({
+                            meta: m,
+                            badge: m.score > 0 ? `★ ${(m.score / 10).toFixed(1)}` : "",
+                            subtitle: genre(m),
+                            note: ""
+                        }))
+            },
+            {
+                title: "Coming soon",
+                icon: "event",
+                items: d.coming_soon.map(m => ({
+                            meta: m,
+                            badge: m.year > 0 ? `${m.year}` : "",
+                            subtitle: genre(m),
+                            note: "Not out yet"
+                        }))
+            }
+        ];
     }
 
     function animeOf(s: var): var {
@@ -36,9 +113,9 @@ Item {
         return ep && ep.duration > 0 ? ep.playback_time / ep.duration : 0;
     }
 
-    Component.onCompleted: refresh()
+    Component.onCompleted: show()
     onVisibleChanged: if (visible)
-        refresh()
+        show()
     onHeroChanged: {
         heroMeta = null;
         if (hero && hero.anilist_id > 0) {
@@ -53,7 +130,7 @@ Item {
     }
 
     Connections {
-        target: ApplicationWindow.window
+        target: root.ApplicationWindow.window
 
         function onHistoryRevisionChanged(): void {
             root.refresh();
@@ -309,15 +386,252 @@ Item {
                 }
             }
 
+            // A fresh install has no history: the shelves below fill Home instead.
             EmptyState {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.topMargin: Theme.spacing.extraLarge
-                visible: root.shown.length === 0
-                face: root.series.length === 0 ? "(っ˘ω˘ς )" : "٩(◕‿◕｡)۶"
-                title: root.series.length === 0 ? "Nothing watched yet" : "All caught up!"
-                message: root.series.length === 0 ? "Your watch history shows up here. Search for an anime to begin." : "You've finished everything you started. Check Recent to rewatch."
+                visible: root.shown.length === 0 && root.series.length > 0
+                face: "٩(◕‿◕｡)۶"
+                title: "All caught up!"
+                message: "You've finished everything you started. Check Recent to rewatch."
+            }
+
+            Repeater {
+                model: root.shelves
+
+                Shelf {
+                    onOpened: item => {
+                        infoDialog.item = item;
+                        infoDialog.open();
+                    }
+                }
+            }
+
+            ColumnLayout {
+                Layout.alignment: Qt.AlignHCenter
+                Layout.topMargin: Theme.spacing.extraLarge
+                visible: root.discover === null
+                spacing: Theme.spacing.medium
+
+                Loading {
+                    Layout.alignment: Qt.AlignHCenter
+                    visible: !root.discoverFailed
+                }
+                StyledText {
+                    visible: root.discoverFailed
+                    text: "Couldn't load what's airing."
+                    color: Theme.palette.onSurfaceVariant
+                }
+                TextButton {
+                    Layout.alignment: Qt.AlignHCenter
+                    visible: root.discoverFailed
+                    type: TextButton.Tonal
+                    text: "Try again"
+                    onClicked: root.loadDiscover(true)
+                }
             }
         }
+    }
+
+    // A titled row of AniList posters, hidden when empty. The wheel scrolls the
+    // page, so ‹ › page it sideways (drag and touchpad swipes work too).
+    component Shelf: ColumnLayout {
+        id: shelf
+
+        required property var modelData // {title, icon, items: [{meta, badge, subtitle, note}]}
+
+        signal opened(var item)
+
+        Layout.fillWidth: true
+        visible: modelData.items.length > 0
+        spacing: Theme.spacing.medium
+
+        RowLayout {
+            Layout.leftMargin: Theme.padding.extraLarge
+            Layout.rightMargin: Theme.padding.extraLarge
+            spacing: Theme.spacing.small
+
+            MaterialIcon {
+                text: shelf.modelData.icon
+                fill: 1
+                color: Theme.palette.primary
+            }
+            StyledText {
+                Layout.fillWidth: true
+                text: shelf.modelData.title
+                font: Theme.font.title.large
+            }
+            IconButton {
+                type: IconButton.Text
+                icon: "chevron_left"
+                disabled: list.atXBeginning
+                onClicked: list.page(-1)
+            }
+            IconButton {
+                type: IconButton.Text
+                icon: "chevron_right"
+                disabled: list.atXEnd
+                onClicked: list.page(1)
+            }
+        }
+
+        ListView {
+            id: list
+
+            function page(dir: int): void {
+                const min = originX - leftMargin, max = originX + contentWidth + rightMargin - width;
+                scroll.to = Math.max(min, Math.min(max, contentX + dir * width * 0.8));
+                scroll.restart();
+            }
+
+            Layout.fillWidth: true
+            Layout.preferredHeight: sizer.implicitHeight
+            orientation: ListView.Horizontal
+            leftMargin: Theme.padding.extraLarge
+            rightMargin: Theme.padding.extraLarge
+            spacing: Theme.spacing.large
+            boundsBehavior: Flickable.StopAtBounds
+            model: shelf.modelData.items
+
+            delegate: PosterCard {
+                required property var modelData
+
+                title: modelData.meta.title_english || modelData.meta.title_romaji
+                subtitle: modelData.subtitle
+                image: modelData.meta.cover
+                badge: modelData.badge
+                onClicked: shelf.opened(modelData)
+            }
+
+            Anim {
+                id: scroll
+
+                target: list
+                property: "contentX"
+                type: Anim.Emphasized
+            }
+        }
+
+        // The tallest card (two-line title), so a shelf keeps its height as it scrolls.
+        PosterCard {
+            id: sizer
+
+            visible: false
+            title: "\n"
+            subtitle: " "
+        }
+    }
+
+    // Details only: Aikatsu can't stream from AniList, so the way on is a source search.
+    StyledDialog {
+        id: infoDialog
+
+        property var item: null
+        readonly property var m: item?.meta ?? ({})
+        readonly property string name: m.title_english || m.title_romaji || ""
+        readonly property var chips: [m.score > 0 ? {
+                text: `★ ${(m.score / 10).toFixed(1)}`,
+                accent: true
+            } : null, m.year > 0 ? {
+                text: `${m.year}`,
+                icon: "calendar_month"
+            } : null, m.episodes > 0 ? {
+                text: `${m.episodes} eps`,
+                icon: "video_library"
+            } : null, m.status ? {
+                text: m.status.replace(/_/g, " ").toLowerCase()
+            } : null, ...(m.genres ?? []).map(g => ({
+                    text: g
+                }))].filter(c => c)
+
+        width: Math.min(640, parent ? parent.width - 48 : 640)
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.spacing.extraLarge
+
+            ClippedImage {
+                Layout.alignment: Qt.AlignTop
+                Layout.preferredWidth: 120
+                Layout.preferredHeight: 174
+                radius: Theme.rounding.large
+                source: infoDialog.m.cover ?? ""
+            }
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.alignment: Qt.AlignTop
+                spacing: Theme.spacing.small
+
+                StyledText {
+                    Layout.fillWidth: true
+                    text: infoDialog.name
+                    font: Theme.font.headline.small
+                    wrapMode: Text.Wrap
+                    maximumLineCount: 3
+                    elide: Text.ElideRight
+                }
+                StyledText {
+                    Layout.fillWidth: true
+                    visible: text !== ""
+                    text: [infoDialog.m.title_romaji, infoDialog.m.title_native].filter(t => t && t !== infoDialog.name).join("  ·  ")
+                    color: Theme.palette.onSurfaceVariant
+                    wrapMode: Text.Wrap
+                }
+                StyledText {
+                    visible: text !== ""
+                    text: infoDialog.item?.note ?? ""
+                    font: Theme.font.label.large
+                    color: Theme.palette.primary
+                }
+                Flow {
+                    Layout.fillWidth: true
+                    Layout.topMargin: Theme.spacing.small
+                    spacing: Theme.spacing.small
+
+                    Repeater {
+                        model: infoDialog.chips
+
+                        Chip {
+                            required property var modelData
+
+                            text: modelData.text
+                            icon: modelData.icon ?? ""
+                            selected: modelData.accent ?? false
+                            tint: Theme.palette.tertiaryContainer
+                            onTint: Theme.palette.onTertiaryContainer
+                        }
+                    }
+                }
+            }
+        }
+        StyledText {
+            Layout.fillWidth: true
+            visible: text !== ""
+            text: infoDialog.m.description ?? ""
+            color: Theme.palette.onSurfaceVariant
+            font: Theme.font.body.large
+            wrapMode: Text.Wrap
+            maximumLineCount: 8
+            elide: Text.ElideRight
+            lineHeight: 1.15
+        }
+
+        actions: [
+            TextButton {
+                type: TextButton.Text
+                text: "Close"
+                onClicked: infoDialog.close()
+            },
+            IconTextButton {
+                icon: "search"
+                text: "Search sources"
+                onClicked: {
+                    infoDialog.close();
+                    // The sources mostly use romaji names.
+                    ApplicationWindow.window.searchFor(infoDialog.m.title_romaji || infoDialog.name);
+                }
+            }
+        ]
     }
 
     StyledMenu {
