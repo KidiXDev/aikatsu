@@ -91,7 +91,7 @@ pub const MODES: &[Mode] = &[
 ];
 
 pub fn shader_dir() -> PathBuf {
-    dirs::config_dir().unwrap_or_else(std::env::temp_dir).join("aikatsu").join("anime4k-shaders")
+    crate::dirs().config.join("anime4k-shaders")
 }
 
 pub fn installed() -> bool {

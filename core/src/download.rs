@@ -3,7 +3,7 @@
 //! installed); yt-dlp is the fallback and is fetched when missing. File names
 //! follow the Plex/Jellyfin convention so media servers recognize them.
 
-use crate::bridge::push;
+use crate::push;
 use crate::meta::Meta;
 use crate::sources::{self, SourceId};
 use crate::{blogger, http};
@@ -98,7 +98,7 @@ pub fn base_dir(setting: &str) -> PathBuf {
     if !setting.is_empty() {
         return PathBuf::from(setting);
     }
-    dirs::video_dir().map(|d| d.join("Aikatsu")).unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join(".local/aikatsu/downloads/anime"))
+    crate::dirs().videos.clone()
 }
 
 pub fn enqueue(req: Request, base: PathBuf) -> Result<Vec<u64>> {
@@ -176,6 +176,7 @@ async fn run(id: u64, src: SourceId, episode_url: &str, quality: &str, path: &Pa
         update(id, |j| j.method = "hls".into());
         match hls(&url, &stream.referer, path, id, &progress).await {
             Ok(p) => Ok(p),
+            Err(e) if !cfg!(feature = "desktop") => Err(e),
             Err(e) => {
                 tracing::info!("native HLS failed ({e:#}); falling back to yt-dlp");
                 update(id, |j| j.method = "yt-dlp".into());
@@ -186,6 +187,7 @@ async fn run(id: u64, src: SourceId, episode_url: &str, quality: &str, path: &Pa
         update(id, |j| j.method = "direct".into());
         match ranged(&Fetcher::Plain(stream.referer.clone()), &url, path, &progress).await {
             Ok(()) => Ok(path.to_owned()),
+            Err(e) if !cfg!(feature = "desktop") => Err(e),
             Err(e) => {
                 tracing::info!("direct download failed ({e:#}); falling back to yt-dlp");
                 update(id, |j| j.method = "yt-dlp".into());
@@ -466,7 +468,7 @@ pub fn which(bin: &str) -> Option<PathBuf> {
 
 fn ytdlp_local() -> PathBuf {
     let name = if cfg!(windows) { "yt-dlp.exe" } else { "yt-dlp" };
-    dirs::data_dir().unwrap_or_else(std::env::temp_dir).join("aikatsu").join("bin").join(name)
+    crate::dirs().data.join("bin").join(name)
 }
 
 /// System yt-dlp, else a copy fetched from its GitHub releases.

@@ -55,8 +55,8 @@ To add it to your app menu:
 
 ```sh
 install -Dm755 target/release/aikatsu ~/.local/bin/aikatsu
-install -Dm644 packaging/aikatsu.desktop ~/.local/share/applications/aikatsu.desktop
-install -Dm644 assets/icon.svg ~/.local/share/icons/hicolor/scalable/apps/aikatsu.svg
+install -Dm644 desktop/packaging/aikatsu.desktop ~/.local/share/applications/aikatsu.desktop
+install -Dm644 desktop/assets/icon.svg ~/.local/share/icons/hicolor/scalable/apps/aikatsu.svg
 ```
 
 If more than one Qt version is installed, point the build at Qt 6 with `QMAKE=/usr/bin/qmake6`.
@@ -78,7 +78,7 @@ If more than one Qt version is installed, point the build at Qt 6 with `QMAKE=/u
 4. Package:
    ```bat
    mkdir dist && copy target\release\aikatsu.exe dist\ && copy %MPV_DIR%\libmpv-2.dll dist\
-   C:\Qt\6.11.2\msvc2022_64\bin\windeployqt.exe --qmldir qml dist\aikatsu.exe
+   C:\Qt\6.11.2\msvc2022_64\bin\windeployqt.exe --qmldir desktop\qml dist\aikatsu.exe
    ```
    Zip `dist\`. Put `ffmpeg.exe` next to `aikatsu.exe` (or on PATH) so downloads end up as .mp4.
 
@@ -99,19 +99,22 @@ The download folder can be changed in Settings.
 Pushing a tag like `v0.2.0` builds Windows and Linux on GitHub Actions and publishes a release (tags with a `-`, like `v0.2.0-beta.1`, become pre-releases). Bump `version` in `Cargo.toml` first; the app's About line shows it.
 
 ```sh
-cargo test                                   # offline tests
-cargo test live_ -- --ignored --nocapture    # hits the real sources (LIVE_Q=<query>)
+cargo test --workspace                                    # offline tests
+cargo test -p aikatsu-core live_ -- --ignored --nocapture  # hits the real sources (LIVE_Q=<query>)
 aikatsu --search <query> --open --play --screenshot out.png   # drive the UI and save a screenshot
 ```
 
 Set `XDG_DATA_HOME` to a scratch folder to keep test runs out of your real history.
 
-- `src/sources/`: one file per source.
-- `src/proxy.rs`: local relay for the hosts mpv can't play directly.
-- `src/bridge.rs`: the `Backend` object the UI talks to.
-- `cpp/mpvitem.*`: the video item (libmpv).
-- `qml/`: the interface.
+- `core/`: everything the apps share. A UI calls `api::call` / `api::get` (JSON in and out) and receives events.
+  - `core/src/sources/`: one file per source.
+  - `core/src/api.rs`: the method table both UIs call; a new feature starts here.
+  - `core/src/proxy.rs`: local relay for the hosts mpv can't play directly.
+- `desktop/`: the Qt app.
+  - `desktop/src/bridge.rs`: the `Backend` object QML talks to.
+  - `desktop/cpp/mpvitem.*`: the video item (libmpv).
+  - `desktop/qml/`: the interface.
 
 ## License
 
-[GPL-3.0](./LICENSE). Bundled fonts: Google Sans Flex (SIL OFL 1.1) and Material Symbols Rounded (Apache-2.0), see `assets/fonts/`.
+[GPL-3.0](./LICENSE). Bundled fonts: Google Sans Flex (SIL OFL 1.1) and Material Symbols Rounded (Apache-2.0), see `desktop/assets/fonts/`.

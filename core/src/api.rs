@@ -1,9 +1,9 @@
-//! Method table behind `Backend.call` (async) and `Backend.get` (sync).
-//! Arguments and results are JSON; QML sees plain JS objects.
+//! Method table behind each app's `call` (async) and `get` (sync).
+//! Arguments and results are JSON, so both UIs see plain objects.
 
-use crate::bridge::push;
+use crate::push;
 use crate::sources::{self, SourceId};
-use crate::{anime4k, db, discord, download, meta, proxy};
+use crate::{anime4k, db, download, meta, proxy};
 use anyhow::{Result, anyhow, bail};
 use serde_json::{Value, json};
 
@@ -187,7 +187,8 @@ pub fn get(method: &str, args: Value) -> Result<Value> {
             "ytdlp": download::which("yt-dlp").is_some(),
         })),
         "presence" => {
-            discord::update(serde_json::from_value(args)?);
+            #[cfg(feature = "desktop")]
+            crate::discord::update(serde_json::from_value(args)?);
             Ok(Value::Null)
         }
         "clearCache" => {

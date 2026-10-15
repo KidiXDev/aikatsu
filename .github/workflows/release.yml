@@ -49,16 +49,16 @@ jobs:
         env:
           APPIMAGE_EXTRACT_AND_RUN: 1
           QMAKE: ${{ env.QT_ROOT_DIR }}/bin/qmake
-          QML_SOURCES_PATHS: ${{ github.workspace }}/qml
+          QML_SOURCES_PATHS: ${{ github.workspace }}/desktop/qml
           EXTRA_QT_MODULES: svg # icons are SVG, but nothing links Qt Svg directly
         run: |
           for tool in linuxdeploy linuxdeploy-plugin-qt; do
             curl -fsSLO "https://github.com/linuxdeploy/$tool/releases/download/continuous/$tool-x86_64.AppImage"
           done
           chmod +x linuxdeploy*.AppImage
-          cp assets/icon.svg aikatsu.svg
+          cp desktop/assets/icon.svg aikatsu.svg
           ./linuxdeploy-x86_64.AppImage --appdir AppDir -e target/release/aikatsu \
-            -d packaging/aikatsu.desktop -i aikatsu.svg --plugin qt --output appimage
+            -d desktop/packaging/aikatsu.desktop -i aikatsu.svg --plugin qt --output appimage
           mv Aikatsu*-x86_64.AppImage "Aikatsu-${{ github.ref_name }}-x86_64.AppImage"
 
       - uses: actions/upload-artifact@v4
@@ -111,7 +111,7 @@ jobs:
         run: |
           New-Item -ItemType Directory dist | Out-Null
           Copy-Item target\release\aikatsu.exe, "$env:MPV_DIR\libmpv-2.dll" dist
-          windeployqt --release --compiler-runtime --qmldir qml dist\aikatsu.exe
+          windeployqt --release --compiler-runtime --qmldir desktop\qml dist\aikatsu.exe
           # Icons are SVG, but nothing links Qt Svg directly, so windeployqt skips it.
           New-Item -ItemType Directory -Force dist\imageformats | Out-Null
           Copy-Item "$env:QT_ROOT_DIR\bin\Qt6Svg.dll" dist

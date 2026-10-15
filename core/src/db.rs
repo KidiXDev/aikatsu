@@ -54,8 +54,8 @@ pub fn episode_key(series_key: &str, ep: i64) -> String {
 }
 
 static DB: LazyLock<Mutex<Connection>> = LazyLock::new(|| {
-    let dir = dirs::data_dir().unwrap_or_else(std::env::temp_dir).join("aikatsu");
-    let _ = std::fs::create_dir_all(&dir);
+    let dir = &crate::dirs().data;
+    let _ = std::fs::create_dir_all(dir);
     let conn = Connection::open(dir.join("progress.db")).unwrap_or_else(|e| {
         tracing::error!("history database unavailable ({e}); using an in-memory one");
         Connection::open_in_memory().expect("sqlite")

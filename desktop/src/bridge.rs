@@ -85,12 +85,12 @@ impl ffi::Backend {
     fn call(self: Pin<&mut Self>, method: &QString, args: &QString) -> i32 {
         let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
         let (method, args) = (method.to_string(), parse_args(args));
-        crate::RT.spawn(async move { reply(id, crate::api::call(&method, args).await) });
+        aikatsu_core::RT.spawn(async move { reply(id, aikatsu_core::api::call(&method, args).await) });
         id
     }
 
     fn get(self: Pin<&mut Self>, method: &QString, args: &QString) -> QString {
-        let value = crate::api::get(&method.to_string(), parse_args(args)).unwrap_or_else(|e| {
+        let value = aikatsu_core::api::get(&method.to_string(), parse_args(args)).unwrap_or_else(|e| {
             tracing::warn!("get {method} failed: {e:#}");
             serde_json::json!({ "error": format!("{e:#}") })
         });

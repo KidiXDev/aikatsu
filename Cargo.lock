@@ -21,19 +21,29 @@ dependencies = [
 name = "aikatsu"
 version = "0.1.0"
 dependencies = [
+ "aikatsu-core",
  "anyhow",
- "axum",
- "base64 0.22.1",
- "bytes",
  "cxx",
  "cxx-qt",
  "cxx-qt-build",
  "cxx-qt-lib",
  "dirs",
+ "pkg-config",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "aikatsu-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "base64 0.22.1",
+ "bytes",
  "discord-rich-presence",
  "futures-util",
  "html-escape",
- "pkg-config",
  "regex",
  "reqwest",
  "rusqlite",
