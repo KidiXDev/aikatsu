@@ -9,6 +9,7 @@ ParticleSystem {
     property color color: Theme.palette.primary
 
     anchors.fill: parent
+    paused: !visible // hidden tabs and pages under the player would keep simulating and redrawing
 
     ImageParticle {
         source: "qrc:/sakura.svg"

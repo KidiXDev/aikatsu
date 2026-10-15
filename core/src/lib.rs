@@ -21,8 +21,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{LazyLock, OnceLock};
 pub use tracing_appender::non_blocking::WorkerGuard;
 
-pub static RT: LazyLock<tokio::runtime::Runtime> =
-    LazyLock::new(|| tokio::runtime::Builder::new_multi_thread().enable_all().build().expect("tokio runtime"));
+/// The work is mostly network I/O, so a few workers do; one per core just adds
+/// thread stacks and allocator arenas.
+pub static RT: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
+    let workers = std::thread::available_parallelism().map_or(2, |n| n.get().min(4));
+    tokio::runtime::Builder::new_multi_thread().worker_threads(workers).enable_all().build().expect("tokio runtime")
+});
 
 /// Where the app keeps its files; each platform picks its own.
 pub struct Dirs {

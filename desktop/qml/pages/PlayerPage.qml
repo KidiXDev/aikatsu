@@ -384,7 +384,9 @@ FocusScope {
         anchors.fill: parent
         Component.onCompleted: {
             setProp("cache", "yes");
-            setProp("demuxer-max-bytes", "300MiB");
+            // The demuxer cache lives in RAM: a few minutes ahead and ~1 minute back is plenty.
+            setProp("demuxer-max-bytes", "128MiB");
+            setProp("demuxer-max-back-bytes", "32MiB");
             setProp("demuxer-readahead-secs", "20");
             setProp("audio-display", "no");
             setProp("keep-open", "no");

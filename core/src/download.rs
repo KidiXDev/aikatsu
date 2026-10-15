@@ -488,7 +488,7 @@ async fn hls(url: &str, referer: &str, dest: &Path, id: u64, progress: &(impl Fn
     drop(out);
     if which("ffmpeg").is_some() {
         update(id, |j| j.state = "remuxing".into());
-        let status = tokio::process::Command::new("ffmpeg")
+        let status = command("ffmpeg")
             .args(["-hide_banner", "-loglevel", "error", "-y", "-i"])
             .arg(&ts)
             .args(["-c", "copy", "-bsf:a", "aac_adtstoasc"])
@@ -504,6 +504,16 @@ async fn hls(url: &str, referer: &str, dest: &Path, id: u64, progress: &(impl Fn
     Ok(ts)
 }
 
+
+/// The Windows release build has no console, so each console tool it starts
+/// would pop up a console window of its own.
+fn command(bin: impl AsRef<std::ffi::OsStr>) -> tokio::process::Command {
+    #[cfg_attr(not(windows), allow(unused_mut))]
+    let mut cmd = tokio::process::Command::new(bin);
+    #[cfg(windows)]
+    cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    cmd
+}
 
 pub fn which(bin: &str) -> Option<PathBuf> {
     let exe = if cfg!(windows) { format!("{bin}.exe") } else { bin.to_owned() };
@@ -546,7 +556,7 @@ static YTDLP_PROGRESS_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^AIKAT
 
 async fn ytdlp(url: &str, referer: &str, dest: &Path, progress: &(impl Fn(u64, u64, f64) + Sync)) -> Result<()> {
     let bin = ensure_ytdlp().await?;
-    let impersonate = tokio::process::Command::new(&bin)
+    let impersonate = command(&bin)
         .arg("--list-impersonate-targets")
         .output()
         .await
@@ -554,7 +564,7 @@ async fn ytdlp(url: &str, referer: &str, dest: &Path, progress: &(impl Fn(u64, u
         .unwrap_or(false);
     let mut last_err = anyhow!("yt-dlp did not run");
     for _attempt in 0..2 {
-        let mut cmd = tokio::process::Command::new(&bin);
+        let mut cmd = command(&bin);
         cmd.args(["-f", "bestvideo+bestaudio/best", "--concurrent-fragments", "24", "--hls-use-mpegts", "--socket-timeout", "30", "--no-part", "--newline"])
             .args(["--progress-template", "download:AIKATSU|%(progress.downloaded_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s"]);
         if !referer.is_empty() {
