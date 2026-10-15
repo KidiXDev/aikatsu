@@ -36,9 +36,9 @@ class _PlayerPageState extends State<PlayerPage> {
   final _subs = <StreamSubscription<Object?>>[];
 
   late int _index = widget.index;
-  late final String _sourceName = d.local
-      ? 'Downloaded'
-      : ((Api.get('sources') as List).firstWhere((s) => s['key'] == d.anime['source'], orElse: () => null)?['name'] ?? d.anime['source']);
+  late final String _source =
+      (Api.get('sources') as List).firstWhere((s) => s['key'] == d.anime['source'], orElse: () => null)?['name'] ?? d.anime['source'];
+  String get _sourceName => _isLocal ? 'Downloaded' : _source;
 
   _Phase _phase = _Phase.resolving;
   String _status = 'Starting the player…'; // what the loading screen waits on
@@ -74,6 +74,10 @@ class _PlayerPageState extends State<PlayerPage> {
 
   AnimeData get d => widget.data;
   Map<String, dynamic> get _ep => d.episodes[_index];
+
+  /// This episode is downloaded: it plays from the file, no source lookups.
+  String? get _localFile => d.localFiles[_ep['url']];
+  bool get _isLocal => _localFile != null;
   Map<String, dynamic> get _meta => d.meta ?? const {};
   bool get _hasNext => _index + 1 < d.episodes.length;
   bool get _hasPrev => _index > 0;
@@ -250,7 +254,7 @@ class _PlayerPageState extends State<PlayerPage> {
   void _save({bool completed = false}) {
     // Until details land the series key can still change; the next tick saves.
     final duration = _duration;
-    if (d.local || duration <= 0 || !d.metaLoaded) return;
+    if (duration <= 0 || !d.metaLoaded) return;
     final done = completed || _completedMarked || _position / duration >= 0.9;
     if (done && !_completedMarked && _hasNext) {
       // Warm the page cache so the next episode starts fast.
@@ -263,7 +267,7 @@ class _PlayerPageState extends State<PlayerPage> {
 
   void _fetchSkip() {
     final num = _ep['num'], mal = toInt(_meta['mal_id']);
-    if (mal == 0 || d.local) return;
+    if (mal == 0) return;
     Api.call('skipTimes', {'malId': mal, 'episode': num}).then((s) {
       if (mounted && _ep['num'] == num) setState(() => _skip = s);
     }, onError: (_) {});
@@ -289,7 +293,7 @@ class _PlayerPageState extends State<PlayerPage> {
     setState(() {
       _index = i;
       _phase = _Phase.resolving;
-      _setStatus(d.local ? 'Opening the file…' : 'Looking up episode ${_ep['num']} on $_sourceName…');
+      _setStatus(_isLocal ? 'Opening the downloaded episode…' : 'Looking up episode ${_ep['num']} on $_sourceName…');
       _started = false;
       _skip = {};
       _completedMarked = _skippedOp = _skippedEd = false;
@@ -302,20 +306,18 @@ class _PlayerPageState extends State<PlayerPage> {
       _quality = '';
       _reconnects = 0;
     });
-    final saved = d.local
-        ? null
-        : (Api.get('seriesProgress', {'key': d.seriesKey, 'url': d.anime['url']}) as List).firstWhere(
-            (p) => p['episode_number'] == _ep['num'],
-            orElse: () => null,
-          );
+    final saved = (Api.get('seriesProgress', {'key': d.seriesKey, 'url': d.anime['url']}) as List).firstWhere(
+      (p) => p['episode_number'] == _ep['num'],
+      orElse: () => null,
+    );
     _resumeAt = saved != null && saved['completed'] != true && toInt(saved['playback_time']) > 30
         ? toInt(saved['playback_time']).toDouble()
         : 0;
-    if (d.local) {
-      _load(req, {'url': _ep['url']});
+    _fetchSkip();
+    if (_localFile case final file?) {
+      _load(req, {'url': file});
       return;
     }
-    _fetchSkip();
     Api.call('qualities', {'source': d.anime['source'], 'url': _ep['url']}).then(
       (list) {
         if (req != _request || !mounted) return;
@@ -403,7 +405,7 @@ class _PlayerPageState extends State<PlayerPage> {
   /// Before the first frame, try each other quality once; mid-episode,
   /// reconnect at the same spot up to twice. Then the error card.
   void _fail(String err) {
-    final next = d.local
+    final next = _isLocal
         ? ''
         : _started
         ? (_reconnects < 2 ? _quality : '')
@@ -427,7 +429,7 @@ class _PlayerPageState extends State<PlayerPage> {
 
   /// From the error card: same or another quality, keeping the position.
   void _retry(String q) {
-    if (d.local || (!_started && _qualities.isEmpty)) return _start(_index); // the quality lookup itself failed
+    if (_isLocal || (!_started && _qualities.isEmpty)) return _start(_index); // the quality lookup itself failed
     _tried = [];
     _reconnects = 0;
     if (_started) _startAt = _lastPos;
@@ -769,7 +771,7 @@ class _PlayerPageState extends State<PlayerPage> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        if (!d.local)
+                        if (!_isLocal)
                           TextButton.icon(
                             style: TextButton.styleFrom(foregroundColor: Colors.white),
                             icon: const Icon(Icons.settings_rounded),

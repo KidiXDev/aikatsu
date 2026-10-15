@@ -178,6 +178,14 @@ pub fn get(method: &str, args: Value) -> Result<Value> {
             Ok(json!(ids))
         }
         "downloads" => Ok(serde_json::to_value(download::jobs())?),
+        // Finished downloads still on disk, grouped by series.
+        "library" => Ok(serde_json::to_value(db::library()?)?),
+        // Episode URL → file for one series, so those episodes play offline.
+        "localEpisodes" => Ok(serde_json::to_value(db::local_episodes(s(&args, "source"), s(&args, "url"))?)?),
+        "deleteDownloads" => {
+            download::delete(&serde_json::from_value::<Vec<String>>(args["paths"].clone())?)?;
+            Ok(Value::Null)
+        }
         "cancelDownload" => {
             download::cancel(i(&args, "id") as u64);
             Ok(Value::Null)

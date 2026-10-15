@@ -6,7 +6,7 @@
 use crate::push;
 use crate::meta::Meta;
 use crate::sources::{self, SourceId};
-use crate::{blogger, http};
+use crate::{blogger, db, http};
 use anyhow::{Context, Result, anyhow, bail};
 use bytes::Bytes;
 use futures_util::{StreamExt, TryStreamExt, stream::BoxStream};
@@ -36,6 +36,10 @@ pub struct EpisodeRef {
 pub struct Request {
     pub source: String,
     pub name: String,
+    /// The series page on the source; with the episode URLs it ties a file to
+    /// what the player would otherwise stream.
+    #[serde(default)]
+    pub url: String,
     pub episodes: Vec<EpisodeRef>,
     #[serde(default)]
     pub quality: String,
@@ -94,6 +98,30 @@ fn update(id: u64, f: impl FnOnce(&mut Job)) {
     }
 }
 
+/// Deletes downloaded episodes, then their season and series folders once
+/// empty. Only paths the library recorded are touched.
+pub fn delete(paths: &[String]) -> Result<()> {
+    for path in paths {
+        if !db::remove_download(path)? {
+            tracing::warn!("not deleting {path}: not a recorded download");
+            continue;
+        }
+        let file = Path::new(path);
+        match std::fs::remove_file(file) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e).with_context(|| format!("couldn't delete {path}")),
+        }
+        // remove_dir only removes empty folders, so other episodes stay put.
+        for dir in file.ancestors().skip(1).take(2) {
+            if std::fs::remove_dir(dir).is_err() {
+                break;
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn base_dir(setting: &str) -> PathBuf {
     if !setting.is_empty() {
         return PathBuf::from(setting);
@@ -114,6 +142,15 @@ pub fn enqueue(req: Request, base: PathBuf) -> Result<Vec<u64>> {
         push("download", &serde_json::to_value(&job)?);
         JOBS.lock().unwrap().insert(id, Entry { job, cancel: cancel.clone(), last_push: Instant::now() });
         let quality = req.quality.clone();
+        let mut record = db::Download {
+            source: src.key().to_owned(),
+            series_url: req.url.clone(),
+            series_name: req.name.clone(),
+            episode_number: ep.num.into(),
+            episode_url: ep.url.clone(),
+            meta: meta.clone(),
+            ..Default::default()
+        };
         crate::RT.spawn(async move {
             let Ok(_slot) = SLOTS.clone().acquire_owned().await else { return };
             if cancel.is_cancelled() {
@@ -125,11 +162,18 @@ pub fn enqueue(req: Request, base: PathBuf) -> Result<Vec<u64>> {
                 _ = cancel.cancelled() => Err(anyhow!("cancelled")),
             };
             match res {
-                Ok(final_path) => update(id, |j| {
-                    j.state = "done".into();
-                    j.progress = 1.0;
-                    j.path = final_path.display().to_string();
-                }),
+                Ok(final_path) => {
+                    record.path = final_path.display().to_string();
+                    record.size = tokio::fs::metadata(&final_path).await.map(|m| m.len() as i64).unwrap_or(0);
+                    if let Err(e) = db::add_download(&record) {
+                        tracing::warn!("download {id}: couldn't record it in the library ({e:#})");
+                    }
+                    update(id, |j| {
+                        j.state = "done".into();
+                        j.progress = 1.0;
+                        j.path = record.path.clone();
+                    })
+                }
                 Err(e) if cancel.is_cancelled() => {
                     tracing::info!("download {id} cancelled: {e}");
                     update(id, |j| j.state = "cancelled".into());
@@ -622,7 +666,7 @@ mod tests {
             let eps = sources::episodes(SourceId::Ylnime, &found[0].url).await.unwrap();
             (found[0].name.clone(), eps[0].url.clone())
         });
-        let req = Request { source: "ylnime".into(), name: src, episodes: vec![EpisodeRef { num: 1, url }], quality: "360p".into(), meta: None };
+        let req = Request { source: "ylnime".into(), name: src, url: String::new(), episodes: vec![EpisodeRef { num: 1, url }], quality: "360p".into(), meta: None };
         let id = enqueue(req, dir).unwrap()[0];
         let start = Instant::now();
         loop {

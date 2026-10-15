@@ -18,6 +18,9 @@ abstract final class Api {
   /// Bumped whenever watch history changes so pages can refresh.
   static final historyRevision = ValueNotifier(0);
 
+  /// Bumped when downloaded episodes are deleted (finished ones arrive as `download` pushes).
+  static final libraryRevision = ValueNotifier(0);
+
   static void init(String dataDir, String videosDir) {
     rust.init(dataDir: dataDir, videosDir: videosDir).listen((e) => _pushed.add((e.kind, jsonDecode(e.json))));
   }
@@ -27,6 +30,12 @@ abstract final class Api {
 
   static dynamic get(String method, [Map<String, Object?> args = const {}]) =>
       jsonDecode(rust.get_(method: method, args: jsonEncode(args)));
+
+  /// Deletes downloaded episode files (only ones the core recorded).
+  static void deleteDownloads(List<String> paths) {
+    get('deleteDownloads', {'paths': paths});
+    libraryRevision.value++;
+  }
 
   static String setting(String key) => (get('settings') as Map)[key] as String? ?? '';
 

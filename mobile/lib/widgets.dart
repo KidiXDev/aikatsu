@@ -379,6 +379,7 @@ class EpisodeTile extends StatelessWidget {
     this.recap = false,
     this.record,
     this.current = false,
+    this.downloaded = false,
     this.onTap,
     this.onLongPress,
   });
@@ -386,6 +387,9 @@ class EpisodeTile extends StatelessWidget {
   final int num;
   final String title;
   final bool filler, recap, current;
+
+  /// On this phone: plays from the file instead of streaming.
+  final bool downloaded;
   final Map<String, dynamic>? record;
   final VoidCallback? onTap, onLongPress;
 
@@ -487,6 +491,7 @@ class EpisodeTile extends StatelessWidget {
                           ),
                         ),
                       ],
+                      if (downloaded) ...[const SizedBox(width: 6), Icon(Icons.download_done_rounded, size: 16, color: c.primary)],
                     ],
                   ),
                   const SizedBox(height: 3),
@@ -673,3 +678,18 @@ Future<T?> pickFrom<T>(BuildContext context, String header, List<(String label, 
     ),
   );
 }
+
+/// Yes/no dialog for destructive actions; false when dismissed.
+Future<bool> confirm(BuildContext context, String title, String message, String action) async =>
+    await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: Text(action)),
+        ],
+      ),
+    ) ??
+    false;

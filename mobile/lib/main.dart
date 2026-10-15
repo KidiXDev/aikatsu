@@ -8,6 +8,7 @@ import 'api.dart';
 import 'download_notifications.dart';
 import 'pages/downloads.dart';
 import 'pages/home.dart';
+import 'pages/library.dart';
 import 'pages/search.dart';
 import 'pages/settings.dart';
 import 'src/rust/frb_generated.dart';
@@ -94,7 +95,7 @@ class _ShellState extends State<Shell> {
   /// A tapped download notification: back out of any anime page or player.
   void _showDownloads() {
     Navigator.popUntil(context, (route) => route.isFirst);
-    _go(2);
+    _go(3);
   }
 
   @override
@@ -113,6 +114,7 @@ class _ShellState extends State<Shell> {
               },
             ),
             SearchPage(key: _searchKey),
+            const LibraryPage(),
             const DownloadsPage(),
             const SettingsPage(),
           ],
@@ -134,6 +136,7 @@ class _WarmCapsuleNavBar extends StatelessWidget {
   static const _items = [
     (icon: Icons.home_outlined, activeIcon: Icons.home_rounded, label: 'Home'),
     (icon: Icons.search_rounded, activeIcon: Icons.search_rounded, label: 'Search'),
+    (icon: Icons.video_library_outlined, activeIcon: Icons.video_library_rounded, label: 'Library'),
     (icon: Icons.download_outlined, activeIcon: Icons.download_rounded, label: 'Downloads'),
     (icon: Icons.tune_rounded, activeIcon: Icons.tune_rounded, label: 'Settings'),
   ];
@@ -185,7 +188,7 @@ class _NavItem extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 260),
         curve: Curves.easeOutCubic,
-        padding: EdgeInsets.symmetric(horizontal: selected ? 16 : 14, vertical: 8),
+        padding: EdgeInsets.symmetric(horizontal: selected ? 16 : 10, vertical: 8), // 5 items fit 360 dp
         decoration: BoxDecoration(color: selected ? c.primary : Colors.transparent, borderRadius: BorderRadius.circular(999)),
         child: Row(
           mainAxisSize: MainAxisSize.min,

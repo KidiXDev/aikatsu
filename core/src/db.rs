@@ -1,5 +1,6 @@
-//! Watch history, settings and the lookup cache, stored in SQLite.
+//! Watch history, settings, downloaded episodes and the lookup cache, stored in SQLite.
 
+use crate::meta::Meta;
 use anyhow::Result;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::de::DeserializeOwned;
@@ -89,6 +90,18 @@ fn init(c: &Connection) -> rusqlite::Result<()> {
         CREATE INDEX IF NOT EXISTS idx_series ON media_progress(series_key, episode_number);
         CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS cache (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL, expires INTEGER NOT NULL);
+        CREATE TABLE IF NOT EXISTS downloads (
+            path           TEXT    PRIMARY KEY NOT NULL,
+            source         TEXT    NOT NULL,
+            series_url     TEXT    NOT NULL DEFAULT '',
+            series_name    TEXT    NOT NULL DEFAULT '',
+            episode_number INTEGER NOT NULL,
+            episode_url    TEXT    NOT NULL DEFAULT '',
+            size           INTEGER NOT NULL DEFAULT 0,
+            finished       INTEGER NOT NULL,
+            meta           TEXT    NOT NULL DEFAULT '{}'
+        );
+        CREATE INDEX IF NOT EXISTS idx_downloads_series ON downloads(source, series_url);
         DELETE FROM cache WHERE expires < strftime('%s', 'now') - 30 * 86400;",
     )
 }
@@ -238,6 +251,125 @@ pub fn clear_history() -> Result<()> {
     Ok(())
 }
 
+/// A finished download on disk, recorded so the app can list and play it offline.
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct Download {
+    pub path: String,
+    pub source: String,
+    pub series_url: String,
+    /// The source's name for the series (`meta` has the AniList titles when known).
+    pub series_name: String,
+    pub episode_number: i64,
+    pub episode_url: String,
+    pub size: i64,
+    pub finished: i64,
+    #[serde(skip)] // once per series in `Library`, not per episode
+    pub meta: Meta,
+}
+
+/// One series in the offline library, newest download first.
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct LibrarySeries {
+    pub source: String,
+    pub series_url: String,
+    pub series_name: String,
+    pub meta: Meta,
+    pub size: i64,
+    pub finished: i64,
+    pub episodes: Vec<Download>,
+}
+
+pub fn add_download(d: &Download) -> Result<()> {
+    add_download_on(&DB.lock().unwrap(), d)
+}
+
+fn add_download_on(c: &Connection, d: &Download) -> Result<()> {
+    c.execute(
+        "INSERT OR REPLACE INTO downloads (path, source, series_url, series_name, episode_number, episode_url, size, finished, meta)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+        params![
+            d.path, d.source, d.series_url, d.series_name, d.episode_number, d.episode_url, d.size,
+            if d.finished > 0 { d.finished } else { now() },
+            serde_json::to_string(&d.meta)?
+        ],
+    )?;
+    Ok(())
+}
+
+/// Every recorded download whose file is still there; rows for files deleted
+/// outside the app are dropped on the way.
+fn downloads_on(c: &Connection, filter: &str, args: &[&str]) -> Result<Vec<Download>> {
+    let mut st = c.prepare(&format!(
+        "SELECT path, source, series_url, series_name, episode_number, episode_url, size, finished, meta
+         FROM downloads {filter} ORDER BY finished DESC"
+    ))?;
+    let rows: Vec<Download> = st
+        .query_map(rusqlite::params_from_iter(args), |r| {
+            Ok(Download {
+                path: r.get(0)?,
+                source: r.get(1)?,
+                series_url: r.get(2)?,
+                series_name: r.get(3)?,
+                episode_number: r.get(4)?,
+                episode_url: r.get(5)?,
+                size: r.get(6)?,
+                finished: r.get(7)?,
+                meta: serde_json::from_str(&r.get::<_, String>(8)?).unwrap_or_default(),
+            })
+        })?
+        .collect::<rusqlite::Result<_>>()?;
+    let (present, missing): (Vec<_>, Vec<_>) = rows.into_iter().partition(|d| std::path::Path::new(&d.path).is_file());
+    for d in missing {
+        c.execute("DELETE FROM downloads WHERE path = ?1", [&d.path])?;
+    }
+    Ok(present)
+}
+
+pub fn library() -> Result<Vec<LibrarySeries>> {
+    Ok(group_library(downloads_on(&DB.lock().unwrap(), "", &[])?))
+}
+
+/// Groups by source and series URL (by name for rows without a URL), keeping
+/// the newest-first order of `rows` for the series.
+fn group_library(rows: Vec<Download>) -> Vec<LibrarySeries> {
+    let mut out: Vec<LibrarySeries> = Vec::new();
+    for d in rows {
+        let same = |s: &LibrarySeries| s.source == d.source && if d.series_url.is_empty() { s.series_name == d.series_name } else { s.series_url == d.series_url };
+        let i = match out.iter().position(same) {
+            Some(i) => i,
+            None => {
+                out.push(LibrarySeries {
+                    source: d.source.clone(),
+                    series_url: d.series_url.clone(),
+                    series_name: d.series_name.clone(),
+                    meta: d.meta.clone(),
+                    finished: d.finished,
+                    ..Default::default()
+                });
+                out.len() - 1
+            }
+        };
+        out[i].size += d.size;
+        out[i].episodes.push(d);
+    }
+    for s in &mut out {
+        s.episodes.sort_by_key(|d| d.episode_number);
+    }
+    out
+}
+
+/// Episode URL → file, for one series of one source: those play offline.
+pub fn local_episodes(source: &str, series_url: &str) -> Result<HashMap<String, String>> {
+    let rows = downloads_on(&DB.lock().unwrap(), "WHERE source = ?1 AND series_url = ?2", &[source, series_url])?;
+    Ok(rows.into_iter().map(|d| (d.episode_url, d.path)).collect())
+}
+
+/// Forgets a recorded download; false when `path` was never one (so callers
+/// never delete files the app didn't download).
+pub fn remove_download(path: &str) -> Result<bool> {
+    Ok(DB.lock().unwrap().execute("DELETE FROM downloads WHERE path = ?1", [path])? > 0)
+}
+
 pub fn setting(key: &str) -> Option<String> {
     DB.lock().unwrap().query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| r.get(0)).optional().ok().flatten()
 }
@@ -359,5 +491,40 @@ mod tests {
         assert_eq!(group_series(&rows)[0].continue_episode, 2);
         rows.push(Progress { total_episodes: 3, ..ep(2, 1400, true, 30) });
         assert!(group_series(&rows)[0].finished);
+    }
+
+    #[test]
+    fn library_groups_and_drops_missing_files() {
+        let c = Connection::open_in_memory().unwrap();
+        init(&c).unwrap();
+        let dir = std::env::temp_dir().join(format!("aikatsu-library-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let dl = |name: &str, url: &str, ep: i64, finished: i64| {
+            let path = dir.join(format!("{name}-{ep}.mp4"));
+            std::fs::write(&path, b"x").unwrap();
+            Download {
+                path: path.display().to_string(),
+                source: "src".into(),
+                series_url: url.into(),
+                series_name: name.into(),
+                episode_number: ep,
+                episode_url: format!("{url}/ep{ep}"),
+                size: 10,
+                finished,
+                ..Default::default()
+            }
+        };
+        let rows = [dl("a", "https://s/a", 2, 30), dl("b", "https://s/b", 1, 20), dl("a", "https://s/a", 1, 10), dl("c", "", 1, 5)];
+        for d in &rows {
+            add_download_on(&c, d).unwrap();
+        }
+        std::fs::remove_file(&rows[1].path).unwrap(); // deleted outside the app
+        let lib = group_library(downloads_on(&c, "", &[]).unwrap());
+        let summary: Vec<(&str, Vec<i64>, i64)> =
+            lib.iter().map(|s| (s.series_name.as_str(), s.episodes.iter().map(|e| e.episode_number).collect(), s.size)).collect();
+        assert_eq!(summary, [("a", vec![1, 2], 20), ("c", vec![1], 10)], "newest series first, episodes in order");
+        let left: i64 = c.query_row("SELECT COUNT(*) FROM downloads", [], |r| r.get(0)).unwrap();
+        assert_eq!(left, 3, "the missing file's row is gone");
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -18,26 +20,34 @@ void openAnime(BuildContext context, Map<String, dynamic> anime, {int autoplayEp
 /// What the anime page knows about a series. The player listens to it too,
 /// since details can land after playback has started.
 class AnimeData extends ChangeNotifier {
-  AnimeData(this.anime) : local = false;
+  AnimeData(this.anime);
 
-  /// A downloaded episode: plays the file, no source lookups or history.
-  AnimeData.local({required String title, required int episode, required String path})
-    : anime = {'name': title, 'url': path, 'image': '', 'source': 'local'},
-      local = true,
-      meta = {},
+  /// A series from the offline library: its downloaded episodes, with the
+  /// details saved at download time, so nothing needs the network. Progress
+  /// saves under the same keys as streaming, so history stays one.
+  AnimeData.library(Map<String, dynamic> series)
+    : anime = {
+        'name': series['series_name'],
+        'url': series['series_url'],
+        'image': text([series['meta']['cover']]),
+        'source': series['source'],
+        'anilistId': series['meta']['anilist_id'],
+      },
+      meta = series['meta'],
       metaLoaded = true,
       loading = false,
       episodes = [
-        {'num': episode, 'url': path, 'title': ''},
-      ];
+        for (final e in series['episodes']) {'num': e['episode_number'], 'url': e['episode_url'], 'title': ''},
+      ],
+      localFiles = {for (final e in series['episodes']) e['episode_url'] as String: e['path'] as String};
 
   final Map<String, dynamic> anime; // {name, url, image, source, anilistId?}
-  final bool local;
   Map<String, dynamic>? meta; // null until enrich answers, {} if it failed
   bool metaLoaded = false; // progress saves wait for this so the series key stays stable
   List<dynamic> episodes = [];
   Map<int, dynamic> info = {}; // episode number → {title, filler, recap}
   Map<int, dynamic> progress = {}; // episode number → progress row
+  Map<String, String> localFiles = {}; // episode URL → downloaded file, played instead of streaming
   bool loading = true;
   String error = '';
   bool _disposed = false;
@@ -67,8 +77,13 @@ class AnimeData extends ChangeNotifier {
 
   String episodeTitle(Map<String, dynamic> ep) => text([info[ep['num']]?['title'], ep['title']]);
 
+  /// Downloaded episodes of this series on this source (a quick local lookup).
+  void refreshLocal() {
+    localFiles = Map<String, String>.from(Api.get('localEpisodes', {'source': anime['source'], 'url': anime['url']}));
+    notifyListeners();
+  }
+
   void refreshProgress() {
-    if (local) return;
     progress = {
       for (final p in Api.get('seriesProgress', {'key': seriesKey, 'url': anime['url']}) as List) toInt(p['episode_number']): p,
     };
@@ -162,12 +177,18 @@ class _AnimePageState extends State<AnimePage> {
   bool _descending = false;
   bool _synopsisOpen = false;
   String _jump = '';
+  late final StreamSubscription<(String, dynamic)> _downloads;
 
   @override
   void initState() {
     super.initState();
     _data.addListener(_changed);
     Api.historyRevision.addListener(_data.refreshProgress);
+    Api.libraryRevision.addListener(_data.refreshLocal);
+    _downloads = Api.pushed.listen((e) {
+      if (e.$1 == 'download' && e.$2['state'] == 'done') _data.refreshLocal();
+    });
+    _data.refreshLocal();
     _data.load().then((_) {
       if (!mounted || widget.autoplayEpisode == 0 || _data.episodes.isEmpty) return;
       final i = _data.episodes.indexWhere((e) => e['num'] == widget.autoplayEpisode);
@@ -178,6 +199,8 @@ class _AnimePageState extends State<AnimePage> {
   @override
   void dispose() {
     Api.historyRevision.removeListener(_data.refreshProgress);
+    Api.libraryRevision.removeListener(_data.refreshLocal);
+    _downloads.cancel();
     _data.dispose();
     super.dispose();
   }
@@ -196,10 +219,11 @@ class _AnimePageState extends State<AnimePage> {
 
   Future<void> _episodeMenu(Map<String, dynamic> ep) async {
     final watched = _data.progress[ep['num']]?['completed'] == true;
+    final file = _data.localFiles[ep['url']];
     final choice = await pickFrom(context, 'Episode ${ep['num']}', [
-      ('Play', 'play', false),
+      (file != null ? 'Play downloaded' : 'Play', 'play', false),
       (watched ? 'Mark as unwatched' : 'Mark as watched', 'toggle', false),
-      ('Download episode', 'download', false),
+      if (file == null) ('Download episode', 'download', false) else ('Delete download', 'delete', false),
     ]);
     if (!mounted) return;
     switch (choice) {
@@ -210,6 +234,11 @@ class _AnimePageState extends State<AnimePage> {
         Api.historyRevision.value++;
       case 'download':
         showDownloadSheet(context, _data, single: ep);
+      case 'delete':
+        if (file != null &&
+            await confirm(context, 'Delete episode ${ep['num']}?', 'The downloaded file is removed. You can still stream it.', 'Delete')) {
+          Api.deleteDownloads([file]);
+        }
     }
   }
 
@@ -545,6 +574,7 @@ class _AnimePageState extends State<AnimePage> {
                     recap: d.info[ep['num']]?['recap'] == true,
                     record: d.progress[ep['num']],
                     current: ep['num'] == current,
+                    downloaded: d.localFiles.containsKey(ep['url']),
                     onTap: () => _play(d.episodes.indexWhere((e) => e['url'] == ep['url'])),
                     onLongPress: () => _episodeMenu(ep),
                   );
@@ -581,7 +611,8 @@ Future<void> showDownloadSheet(BuildContext context, AnimeData data, {Map<String
       builder: (context, setState) {
         final t = Theme.of(context);
         final c = t.colorScheme;
-        final chosen = selection();
+        final picked = selection();
+        final chosen = picked.where((e) => !data.localFiles.containsKey(e['url'])).toList(); // already-downloaded ones are skipped
 
         ChoiceChip choice(String label, String value) =>
             ChoiceChip(label: Text(label), selected: mode == value, onSelected: (_) => setState(() => mode = value));
@@ -642,6 +673,7 @@ Future<void> showDownloadSheet(BuildContext context, AnimeData data, {Map<String
                           Api.get('download', {
                             'source': data.anime['source'],
                             'name': data.anime['name'],
+                            'url': data.anime['url'],
                             'quality': quality,
                             'meta': data.meta?.containsKey('anilist_id') == true ? data.meta : null,
                             'episodes': [
@@ -658,7 +690,11 @@ Future<void> showDownloadSheet(BuildContext context, AnimeData data, {Map<String
                       borderRadius: BorderRadius.circular(999),
                     ),
                     child: Text(
-                      chosen.length > 1 ? 'Download ${chosen.length} episodes' : 'Download',
+                      picked.isNotEmpty && chosen.isEmpty
+                          ? 'Already downloaded'
+                          : chosen.length > 1
+                          ? 'Download ${chosen.length} episodes'
+                          : 'Download',
                       style: TextStyle(
                         fontFamily: 'GoogleSansFlex',
                         fontWeight: FontWeight.w700,

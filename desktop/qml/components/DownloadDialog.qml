@@ -139,6 +139,7 @@ StyledDialog {
                 Api.get("download", {
                     source: root.anime.source,
                     name: root.anime.name,
+                    url: root.anime.url,
                     quality: root.quality,
                     meta: root.meta && root.meta.anilist_id !== undefined ? root.meta : null,
                     episodes: root.selection.map(e => ({

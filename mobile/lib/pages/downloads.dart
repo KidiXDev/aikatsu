@@ -5,18 +5,15 @@ import 'package:flutter/material.dart';
 import '../api.dart';
 import '../theme.dart';
 import '../widgets.dart';
-import 'anime.dart';
-import 'player.dart';
+import 'library.dart';
 
 const activeDownloadStates = {'queued', 'resolving', 'downloading', 'remuxing'};
-
-String _bytes(num n) => n > 1073741824 ? '${(n / 1073741824).toStringAsFixed(2)} GB' : '${(n / 1048576).toStringAsFixed(1)} MB';
 
 /// One line on where a download is, shared by this page and the notification.
 String downloadStatus(Map<String, dynamic> j) => switch (j['state']) {
   'failed' => Api.describe(j['error']),
-  'downloading' => '${_bytes(j['bytes'])} of ${_bytes(j['total'])}  ·  ${_bytes(j['speed'])}/s',
-  'done' => 'Ready to watch · Tap to play',
+  'downloading' => '${formatBytes(j['bytes'])} of ${formatBytes(j['total'])}  ·  ${formatBytes(j['speed'])}/s',
+  'done' => 'Saved to Library · Tap to play',
   'queued' => 'Waiting in queue…',
   'resolving' => 'Finding the video stream…',
   'remuxing' => 'Finishing and packing file…',
@@ -54,8 +51,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
   void _reload() => setState(() => _jobs = {for (final j in Api.get('downloads') as List) j['id'] as int: j});
 
   void _play(Map<String, dynamic> job) {
-    final data = AnimeData.local(title: job['title'], episode: job['episode'], path: job['path']);
-    Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerPage(data: data, index: 0)));
+    if (!playDownloaded(context, job['path'])) toast('That file is gone. It may have been deleted.');
   }
 
   @override
@@ -63,7 +59,9 @@ class _DownloadsPageState extends State<DownloadsPage> {
     final t = Theme.of(context);
     final c = t.colorScheme;
     final jobs = _jobs.values.toList()..sort((a, b) => b['id'] - a['id']);
-    final hasFinished = jobs.any((j) => j['state'] == 'done' || j['state'] == 'failed' || j['state'] == 'cancelled');
+    final active = jobs.where((j) => activeDownloadStates.contains(j['state'])).toList();
+    final history = jobs.where((j) => !activeDownloadStates.contains(j['state'])).toList();
+    final hasFinished = history.isNotEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -95,7 +93,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
                         Icon(Icons.clear_all_rounded, size: 16, color: c.primary),
                         const SizedBox(width: 6),
                         Text(
-                          'Clear finished',
+                          'Clear history',
                           style: TextStyle(fontFamily: 'GoogleSansFlex', fontSize: 12.5, fontWeight: FontWeight.w600, color: c.onSurface),
                         ),
                       ],
@@ -111,15 +109,25 @@ class _DownloadsPageState extends State<DownloadsPage> {
                   padding: EdgeInsets.only(bottom: 110),
                   child: EmptyState(
                     face: '( ˘▽˘)っ♨',
-                    title: 'No downloads yet',
-                    message: 'Open an anime and use Download… to save single episodes, a range, or the whole series for offline watching.',
+                    title: 'Nothing downloading',
+                    message: 'Open an anime and use Download… to save single episodes, a range, or the whole series. Finished ones go to the Library.',
                   ),
                 )
-              : ListView.separated(
+              : ListView(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 110), // clearance for bottom nav
-                  itemCount: jobs.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 10),
-                  itemBuilder: (context, i) => _tile(context, jobs[i]),
+                  children: [
+                    for (final (title, list) in [('In progress', active), ('History', history)])
+                      if (list.isNotEmpty) ...[
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(4, 8, 4, 10),
+                          child: Text(
+                            '$title  ·  ${list.length}',
+                            style: t.textTheme.titleSmall?.copyWith(color: c.onSurfaceVariant, fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                        for (final j in list) ...[_tile(context, j), const SizedBox(height: 10)],
+                      ],
+                  ],
                 ),
         ),
       ],

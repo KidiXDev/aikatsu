@@ -284,6 +284,9 @@ ThemeMode themeModeOf(String setting) => switch (setting) {
   _ => ThemeMode.system,
 };
 
+/// 340.2 MB, or 1.25 GB.
+String formatBytes(num n) => n > 1073741824 ? '${(n / 1073741824).toStringAsFixed(2)} GB' : '${(n / 1048576).toStringAsFixed(1)} MB';
+
 /// 5:09, or 1:05:09 past an hour.
 String formatTime(num seconds) {
   final sec = seconds.isFinite ? seconds.floor().clamp(0, 1 << 31) : 0;
