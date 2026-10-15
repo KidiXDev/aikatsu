@@ -565,7 +565,8 @@ async fn ytdlp(url: &str, referer: &str, dest: &Path, progress: &(impl Fn(u64, u
     let mut last_err = anyhow!("yt-dlp did not run");
     for _attempt in 0..2 {
         let mut cmd = command(&bin);
-        cmd.args(["-f", "bestvideo+bestaudio/best", "--concurrent-fragments", "24", "--hls-use-mpegts", "--socket-timeout", "30", "--no-part", "--newline"])
+        // A user yt-dlp.conf could move or rename the output (-P, merge format).
+        cmd.args(["--ignore-config", "-f", "bestvideo+bestaudio/best", "--concurrent-fragments", "24", "--hls-use-mpegts", "--socket-timeout", "30", "--no-part", "--newline"])
             .args(["--progress-template", "download:AIKATSU|%(progress.downloaded_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s"]);
         if !referer.is_empty() {
             cmd.args(["--add-header", &format!("Referer:{referer}")]);
@@ -576,7 +577,9 @@ async fn ytdlp(url: &str, referer: &str, dest: &Path, progress: &(impl Fn(u64, u
         if impersonate {
             cmd.args(["--impersonate", "chrome"]);
         }
-        cmd.arg("-o").arg(dest).arg(url).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).kill_on_drop(true);
+        // -o is a template, so a literal % in a title must be doubled. `--` keeps
+        // a scraped URL like "--exec=..." from being parsed as an option.
+        cmd.arg("-o").arg(dest.to_string_lossy().replace('%', "%%")).arg("--").arg(url).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).kill_on_drop(true);
         let mut child = cmd.spawn().context("failed to start yt-dlp")?;
         let mut lines = BufReader::new(child.stdout.take().unwrap()).lines();
         let run = async {
