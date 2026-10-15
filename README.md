@@ -39,7 +39,7 @@ Get the latest version from the [Releases](../../releases) page:
 
 - **Windows:** download the `.zip`, unpack it anywhere, and run `aikatsu.exe`.
 - **Linux:** download the `.AppImage`, make it executable (`chmod +x Aikatsu-*.AppImage`), and run it.
-- **Android:** download the `-android-arm64.apk` on your phone and open it (allow installing from your browser when asked).
+- **Android:** download the `-android-arm64-v8a.apk` on your phone and open it (allow installing from your browser when asked). Older 32-bit phones need the `-armeabi-v7a.apk` instead.
 
 Optional: install [ffmpeg](https://ffmpeg.org/download.html) so every download ends up as a normal .mp4.
 
@@ -92,10 +92,10 @@ You need Flutter 3.47+, Rust through rustup with the Android target (`rustup tar
 ```sh
 cd mobile
 flutter run                                                                     # on a connected phone or an emulator
-flutter build apk --release --split-per-abi --target-platform android-arm64     # build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+flutter build apk --release --split-per-abi --obfuscate --split-debug-info=build/debug-info   # one APK per ABI in build/app/outputs/flutter-apk/
 ```
 
-Keep `--split-per-abi` on release builds: without it, media_kit's video library for other ABIs ends up in the APK without the Rust core, and the app installs on those devices but can't start.
+Keep `--split-per-abi` on release builds: each APK then carries only its own ABI's native libraries. A single APK limited with `--target-platform` would still pack media_kit's video library for other ABIs without the Rust core, so it would install on those devices and not start. Add `--target-platform android-arm64` to build just the phone APK faster.
 
 Release builds are signed with `mobile/android/key.properties` (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`) when it exists, else with the debug key.
 
@@ -121,7 +121,7 @@ On Android everything lives in the app's own storage and is removed with the app
 
 ## For developers
 
-Pushing a tag like `v0.2.0` builds Windows, Linux and Android on GitHub Actions and publishes a release (tags with a `-`, like `v0.2.0-beta.1`, become pre-releases). Bump `version` in the root `Cargo.toml` first; the app's About line shows it. The APK is signed with the `ANDROID_KEYSTORE_B64` (base64 of the .jks), `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_ALIAS` repository secrets; a tag build fails without them, since an APK signed with another key can't update an installed one.
+Pushing a tag like `v0.2.0` builds Windows, Linux and Android on GitHub Actions and publishes a release (tags with a `-`, like `v0.2.0-beta.1`, become pre-releases). Bump `version` in the root `Cargo.toml` first; the app's About line shows it. The APK is signed with the `ANDROID_KEYSTORE_B64` (base64 of the .jks), `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_ALIAS` repository secrets; a tag build fails without them, since an APK signed with another key can't update an installed one. Each run also keeps the Dart debug symbols as the `symbols-android` artifact (90 days, not published) for reading obfuscated crash traces with `flutter symbolize`.
 
 ```sh
 cargo test --workspace                                    # offline tests

@@ -65,7 +65,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: linux
+          name: release-linux
           path: Aikatsu-*.AppImage
           if-no-files-found: error
 
@@ -122,7 +122,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: windows
+          name: release-windows
           path: Aikatsu-*.zip
           if-no-files-found: error
 
@@ -141,10 +141,10 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
 
-      # cargokit builds the Rust side through rustup (NDK and cmake come with the runner).
+      # cargokit builds the Rust side through rustup, once per ABI (NDK and cmake come with the runner).
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
 
       - name: Signing key
         env:
@@ -163,19 +163,31 @@ jobs:
       - name: Build
         working-directory: mobile
         run: |
-          # versionCode must grow with every release so installs update in place.
+          # versionCode must grow with every release so installs update in place
+          # (--split-per-abi adds 1000 × the ABI on top, so each APK updates its own kind).
           args=(--build-number "${{ github.run_number }}")
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then args+=(--build-name "${GITHUB_REF_NAME#v}"); fi
-          # --split-per-abi keeps every native lib to arm64; a plain --target-platform build
-          # would still pack media_kit's libmpv for other ABIs, without the Rust core.
-          flutter build apk --release --split-per-abi --target-platform android-arm64 "${args[@]}"
-          mv build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "../Aikatsu-${{ github.ref_name }}-android-arm64.apk"
+          # One APK per ABI, each with only its own native libs (Rust core, libmpv, Flutter).
+          # Dart symbols are obfuscated; the names live in build/debug-info, kept below.
+          flutter build apk --release --split-per-abi --obfuscate --split-debug-info=build/debug-info "${args[@]}"
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            mv "build/app/outputs/flutter-apk/app-$abi-release.apk" "../Aikatsu-${{ github.ref_name }}-android-$abi.apk"
+          done
 
       - uses: actions/upload-artifact@v4
         with:
-          name: android
+          name: release-android
           path: Aikatsu-*.apk
           if-no-files-found: error
+
+      # Needed to read crash stack traces from these builds (`flutter symbolize`).
+      # A workflow artifact, not a release asset: publishing it would undo the obfuscation.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: symbols-android
+          path: mobile/build/debug-info
+          if-no-files-found: error
+          retention-days: 90
 
   release:
     if: startsWith(github.ref, 'refs/tags/')
@@ -187,10 +199,15 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: dist
+          pattern: release-* # not symbols-android
           merge-multiple: true
 
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*
           generate_release_notes: true
+          body: |
+            **Which file?**
+            - Windows: `…-windows-x64.zip` · Linux: `…-x86_64.AppImage`
+            - Android: `…-android-arm64-v8a.apk` for almost every phone; `…-armeabi-v7a.apk` for older 32-bit phones; `…-x86_64.apk` for emulators and Chromebooks.
           prerelease: ${{ contains(github.ref_name, '-') }} # e.g. v0.2.0-beta.1
