@@ -1,6 +1,6 @@
 # Aikatsu 🌸
 
-Fast and smooth native app for watching anime with indonesian subs without ads or a browser, on desktop (Linux, Windows) and Android.
+Fast native app for watching anime with indonesian subs without ads or a browser, on desktop (Linux, Windows) and Android.
 
 ## What it can do
 
@@ -105,20 +105,6 @@ After changing `mobile/rust/src/api/mod.rs`, regenerate the Dart bindings. Its `
 cd mobile && RUSTFLAGS='--cfg reqwest_unstable' flutter_rust_bridge_codegen generate
 ```
 
-## Where your data lives
-
-|                    | Linux                                | Windows                               |
-| ------------------ | ------------------------------------ | ------------------------------------- |
-| History & settings | `~/.local/share/aikatsu/progress.db` | `%APPDATA%\aikatsu\progress.db`       |
-| Downloads          | `~/Videos/Aikatsu`                   | `%USERPROFILE%\Videos\Aikatsu`        |
-| Cover image cache  | `~/.cache/Aikatsu/images`            | `%LOCALAPPDATA%\Aikatsu\cache\images` |
-| Logs               | `~/.local/share/aikatsu/logs/`       | `%APPDATA%\aikatsu\logs\`             |
-| Anime4K files      | `~/.config/aikatsu/anime4k-shaders`  | `%APPDATA%\aikatsu\anime4k-shaders`   |
-
-The download folder can be changed in Settings.
-
-On Android everything lives in the app's own storage and is removed with the app. Downloads go to `Android/data/io.github.kidixdev.aikatsu/files/Anime` and play from the Downloads tab.
-
 ## For developers
 
 Pushing a tag like `v0.2.0` builds Windows, Linux and Android on GitHub Actions and publishes a release (tags with a `-`, like `v0.2.0-beta.1`, become pre-releases). Bump `version` in the root `Cargo.toml` first; the app's About line shows it. The APK is signed with the `ANDROID_KEYSTORE_B64` (base64 of the .jks), `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_ALIAS` repository secrets; a tag build fails without them, since an APK signed with another key can't update an installed one. Each run also keeps the Dart debug symbols as the `symbols-android` artifact (90 days, not published) for reading obfuscated crash traces with `flutter symbolize`.
@@ -143,6 +129,12 @@ Set `XDG_DATA_HOME` to a scratch folder to keep test runs out of your real histo
   - `mobile/rust/src/api/mod.rs`: the same `call` / `get` / events surface for Dart (flutter_rust_bridge).
   - `mobile/lib/api.dart`: the Dart twin of `desktop/qml/Api.qml`.
   - `mobile/lib/pages/`: one file per screen, ported from `desktop/qml/pages/`; the player uses media_kit (also libmpv).
+
+## Disclaimer
+
+This project is not affiliated, associated, authorized, endorsed by, or in any way officially connected with any other company, organization, or media franchise.
+
+All media content, video streams, and metadata accessed through this application are retrieved dynamically from third-party, publicly available sources on the internet. The developers do not host, upload, maintain, or control any of the media, and assume no responsibility or liability for third-party content, copyright compliance, or any use of this software.
 
 ## License
 
