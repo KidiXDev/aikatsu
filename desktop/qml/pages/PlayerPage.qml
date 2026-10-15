@@ -504,13 +504,26 @@ FocusScope {
     }
 
     MouseArea {
+        property point lastPoke
+
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: root.showControls ? Qt.ArrowCursor : Qt.BlankCursor
-        onPositionChanged: root.poke()
+        // Jitter (a bumped desk, a twitchy mouse) shouldn't bring the controls up; a real move should.
+        onPositionChanged: mouse => {
+            if (Math.hypot(mouse.x - lastPoke.x, mouse.y - lastPoke.y) < 12)
+                return;
+            lastPoke = Qt.point(mouse.x, mouse.y);
+            root.poke();
+        }
         onClicked: if (root.started && root.phase === "playing")
             root.togglePause()
-        onDoubleClicked: ApplicationWindow.window.toggleFullScreen()
+        onDoubleClicked: {
+            // YouTube-style: the pair's first click already toggled pause, so undo it.
+            if (root.started && root.phase === "playing")
+                root.togglePause();
+            ApplicationWindow.window.toggleFullScreen();
+        }
     }
 
     // Series art behind the loading screen and the error card
