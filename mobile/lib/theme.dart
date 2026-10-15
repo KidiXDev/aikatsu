@@ -227,6 +227,7 @@ ThemeData buildTheme(Brightness brightness) {
     ),
 
     chipTheme: ChipThemeData(
+      showCheckmark: false,
       shape: const StadiumBorder(),
       side: cardBorder,
       backgroundColor: scheme.surfaceContainer,

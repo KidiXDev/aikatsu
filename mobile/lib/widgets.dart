@@ -537,32 +537,12 @@ class EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Decorative circular badge with soft ambient sakura motif
-            Stack(
-              alignment: Alignment.center,
-              children: [
-                Container(
-                  width: 96,
-                  height: 96,
-                  decoration: BoxDecoration(
-                    color: accent.withValues(alpha: 0.12),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: accent.withValues(alpha: 0.25), width: 1.5),
-                  ),
-                ),
-                if (!error)
-                  Opacity(
-                    opacity: 0.25,
-                    child: SakuraBlossom(size: 80, petalColor: accent, centerColor: c.secondary),
-                  ),
-                Text(
-                  face,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontFamily: 'GoogleSansFlex', fontSize: 28, fontWeight: FontWeight.w600, color: accent),
-                ),
-              ],
+            Text(
+              face,
+              textAlign: TextAlign.center,
+              style: t.textTheme.displaySmall?.copyWith(color: accent, fontWeight: FontWeight.w600),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
             Text(
               title,
               textAlign: TextAlign.center,

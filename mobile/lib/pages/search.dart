@@ -29,8 +29,6 @@ class _SearchPageState extends State<SearchPage> {
   List<Map<String, dynamic>> get _failures => _status.values.where((s) => s['state'] == 'error').toList();
   bool get _allFailed => !_searching && _failures.isNotEmpty && _failures.length == _status.length;
 
-  static const _popularQueries = ['Frieren', 'Jujutsu Kaisen', 'Bocchi the Rock', 'Chainsaw Man', 'Spy x Family', 'Oshi no Ko'];
-
   @override
   void initState() {
     super.initState();
@@ -259,53 +257,6 @@ class _SearchPageState extends State<SearchPage> {
               title: 'What do you want to watch?',
               message: 'Type a title and search. Results show up as each source answers.',
             ),
-          // Suggested popular queries to get started quickly
-          if (_query.isEmpty) ...[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
-              child: Text(
-                'POPULAR TITLES',
-                style: TextStyle(
-                  fontFamily: 'GoogleSansFlex',
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.8,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-              ),
-            ),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              alignment: WrapAlignment.center,
-              children: [
-                for (final title in _popularQueries)
-                  BouncyTap(
-                    borderRadius: BorderRadius.circular(999),
-                    onTap: () => _search(title),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surfaceContainerHigh,
-                        borderRadius: BorderRadius.circular(999),
-                        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.5)),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.search_rounded, size: 14, color: Theme.of(context).colorScheme.primary),
-                          const SizedBox(width: 6),
-                          Text(
-                            title,
-                            style: const TextStyle(fontFamily: 'GoogleSansFlex', fontSize: 12.5, fontWeight: FontWeight.w500),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ],
         ],
       ),
     );

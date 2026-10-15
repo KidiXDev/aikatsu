@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../api.dart';
-import '../theme.dart';
 import '../widgets.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -264,7 +263,6 @@ class _SettingsGroup extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = Theme.of(context).colorScheme;
-    final aikatsu = context.aikatsu;
     final r = BorderRadius.circular(22);
 
     return Padding(
@@ -289,14 +287,13 @@ class _SettingsGroup extends StatelessWidget {
               ],
             ),
           ),
-          Container(
-            decoration: BoxDecoration(
-              color: c.surfaceContainer,
-              borderRadius: r,
-              border: Border.all(color: c.outlineVariant.withValues(alpha: 0.5), width: 1),
-              boxShadow: aikatsu.cardShadow,
-            ),
+          Material(
+            color: c.surfaceContainer,
             clipBehavior: Clip.antiAlias,
+            shape: RoundedRectangleBorder(
+              borderRadius: r,
+              side: BorderSide(color: c.outlineVariant.withValues(alpha: 0.5), width: 1),
+            ),
             child: Column(
               children: [
                 for (var i = 0; i < children.length; i++) ...[

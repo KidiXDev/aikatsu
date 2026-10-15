@@ -135,6 +135,7 @@ class _HomePageState extends State<HomePage> {
                     avatar: Icon(_autoplay ? Icons.bolt_rounded : Icons.pause_circle_outline_rounded, size: 16),
                     label: const Text('Autoplay'),
                     selected: _autoplay,
+                    showCheckmark: false,
                     onSelected: (v) {
                       Api.setSetting('autoplay', v);
                       setState(() => _autoplay = v);
