@@ -382,6 +382,8 @@ FocusScope {
         id: mpv
 
         anchors.fill: parent
+        // Through playback, buffering, the next episode's lookup and the autoplay countdown; not when paused or on the end/error card.
+        keepAwake: (root.phase === "playing" || root.phase === "resolving") && !mpv.paused
         Component.onCompleted: {
             setProp("cache", "yes");
             // The demuxer cache lives in RAM: a few minutes ahead and ~1 minute back is plenty.

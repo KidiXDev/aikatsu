@@ -13,6 +13,14 @@
 #include <clocale>
 #include <stdexcept>
 
+#ifdef Q_OS_WIN
+#include <QtCore/qt_windows.h> // windows.h without the min/max macros
+#elif defined(Q_OS_LINUX)
+#include <QtDBus/QDBusConnection>
+#include <QtDBus/QDBusMessage>
+#include <QtDBus/QDBusReply>
+#endif
+
 MpvCore::~MpvCore() {
     if (gl) mpv_render_context_free(gl);
     if (mpv) mpv_terminate_destroy(mpv);
@@ -108,6 +116,7 @@ MpvItem::MpvItem(QQuickItem *parent) : QQuickFramebufferObject(parent), core(std
 }
 
 MpvItem::~MpvItem() {
+    setKeepAwake(false);
     mpv_set_wakeup_callback(core->mpv, nullptr, nullptr);
     {
         // After this returns libmpv makes no further update callbacks into us.
@@ -208,6 +217,26 @@ QString MpvItem::getProp(const QString &name) const {
     QString out = v ? QString::fromUtf8(v) : QString();
     mpv_free(v);
     return out;
+}
+
+void MpvItem::setKeepAwake(bool v) {
+    if (v == m_keepAwake) return;
+    m_keepAwake = v;
+#ifdef Q_OS_WIN
+    // Per thread; QML bindings and the destructor both run on the GUI thread.
+    SetThreadExecutionState(v ? ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED : ES_CONTINUOUS);
+#elif defined(Q_OS_LINUX)
+    auto msg = QDBusMessage::createMethodCall("org.freedesktop.ScreenSaver", "/org/freedesktop/ScreenSaver", "org.freedesktop.ScreenSaver",
+                                              v ? "Inhibit" : "UnInhibit");
+    if (v) {
+        QDBusReply<uint> reply = QDBusConnection::sessionBus().call(msg << QGuiApplication::applicationName() << QStringLiteral("Playing video"));
+        if (reply.isValid()) m_inhibitCookie = reply.value();
+        else qWarning("could not inhibit the screensaver: %s", qPrintable(reply.error().message()));
+    } else if (m_inhibitCookie) {
+        QDBusConnection::sessionBus().send(msg << *m_inhibitCookie);
+        m_inhibitCookie.reset();
+    }
+#endif
 }
 
 void MpvItem::setPaused(bool v) { setProp("pause", v ? "yes" : "no"); }

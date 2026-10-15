@@ -6,6 +6,7 @@
 #include <QtQuick/QQuickFramebufferObject>
 #include <memory>
 #include <mutex>
+#include <optional>
 
 #include <mpv/client.h>
 #include <mpv/render_gl.h>
@@ -33,6 +34,8 @@ class MpvItem : public QQuickFramebufferObject {
     Q_PROPERTY(QString trackList READ trackList NOTIFY trackListChanged)
     // true once the GL render context exists; loading a file before that leaves mpv without a video output
     Q_PROPERTY(bool ready READ ready NOTIFY readyChanged)
+    // Holds off the screensaver and sleep. mpv's stop-screensaver needs a VO window, which the render API has none of.
+    Q_PROPERTY(bool keepAwake READ keepAwake WRITE setKeepAwake)
 
 public:
     explicit MpvItem(QQuickItem *parent = nullptr);
@@ -50,6 +53,8 @@ public:
     QString trackList() const { return m_trackList; }
     bool ready() const { return m_ready; }
     void markReady() { if (!m_ready) { m_ready = true; emit readyChanged(); } }
+    bool keepAwake() const { return m_keepAwake; }
+    void setKeepAwake(bool v);
     void setPaused(bool v);
     void setVolume(double v);
     void setSpeed(double v);
@@ -83,8 +88,9 @@ private:
     void drainEvents();
     QString m_lastError;
     double m_position = 0, m_duration = 0, m_cacheTime = 0, m_volume = 100, m_speed = 1;
-    bool m_paused = false, m_buffering = false, m_idle = true, m_ready = false;
+    bool m_paused = false, m_buffering = false, m_idle = true, m_ready = false, m_keepAwake = false;
     QString m_trackList;
+    std::optional<uint> m_inhibitCookie; // org.freedesktop.ScreenSaver, Linux only
 };
 
 // Must run after QGuiApplication exists and before any window is created.
