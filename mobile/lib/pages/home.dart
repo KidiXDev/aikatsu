@@ -230,8 +230,13 @@ class _HomePageState extends State<HomePage> {
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [c.surfaceContainer.withValues(alpha: 0.3), c.surfaceContainer.withValues(alpha: 0.85), c.surfaceContainer],
-                  stops: const [0.0, 0.55, 1.0],
+                  colors: [
+                    c.surfaceContainer.withValues(alpha: 0.25),
+                    c.surfaceContainer.withValues(alpha: 0.85),
+                    c.surfaceContainer,
+                    c.surfaceContainer,
+                  ],
+                  stops: const [0.0, 0.5, 0.9, 1.0],
                 ),
               ),
             ),

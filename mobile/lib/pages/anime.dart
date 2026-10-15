@@ -252,8 +252,8 @@ class _AnimePageState extends State<AnimePage> {
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
-                        colors: [c.surface.withValues(alpha: 0.25), c.surface.withValues(alpha: 0.75), c.surface],
-                        stops: const [0.0, 0.65, 1.0],
+                        colors: [c.surface.withValues(alpha: 0.2), c.surface.withValues(alpha: 0.75), c.surface, c.surface],
+                        stops: const [0.0, 0.5, 0.85, 1.0],
                       ),
                     ),
                   ),

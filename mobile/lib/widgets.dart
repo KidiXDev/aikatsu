@@ -210,7 +210,9 @@ class Cover extends StatelessWidget {
   }
 }
 
-/// Blurred cover or banner behind a header with smooth clamping.
+/// Blurred cover or banner behind a header.
+/// Uses RepaintBoundary and scale oversampling so Skia/Impeller
+/// blur edge clamping artifacts and scroll jitter are completely eliminated.
 class BlurredArt extends StatelessWidget {
   const BlurredArt(this.url, {super.key, required this.sigma});
 
@@ -218,12 +220,28 @@ class BlurredArt extends StatelessWidget {
   final double sigma;
 
   @override
-  Widget build(BuildContext context) => ClipRect(
-    child: ImageFiltered(
-      imageFilter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma, tileMode: TileMode.clamp),
-      child: Cover(url, radius: 0, showBorder: false),
-    ),
-  );
+  Widget build(BuildContext context) {
+    if (url.isEmpty) return const SizedBox.expand();
+
+    return RepaintBoundary(
+      child: ClipRect(
+        child: Transform.scale(
+          scale: 1.2, // Overscale image past clip rect so blur sampling edges stay outside visible bounds
+          child: ImageFiltered(
+            imageFilter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma, tileMode: TileMode.clamp),
+            child: Image.network(
+              url,
+              fit: BoxFit.cover,
+              width: double.infinity,
+              height: double.infinity,
+              errorBuilder: (_, _, _) => const SizedBox.expand(),
+              frameBuilder: (_, child, frame, sync) => sync || frame != null ? child : const SizedBox.expand(),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// Solid, tactile anime poster card with warm styling and bouncy tap animation.
