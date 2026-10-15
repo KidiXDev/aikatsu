@@ -1,6 +1,6 @@
 # Aikatsu 🌸
 
-Fast and smooth native desktop app for watching anime with indonesian subs without ads or a browser.
+Fast and smooth native app for watching anime with indonesian subs without ads or a browser, on desktop (Linux, Windows) and Android.
 
 ## What it can do
 
@@ -11,13 +11,13 @@ Fast and smooth native desktop app for watching anime with indonesian subs witho
   - Skips openings and endings, automatically or with a button.
   - Plays the next episode after a short countdown.
   - Switches audio and subtitle tracks and playback speed.
-- **Sharper video.** Optional Anime4K sharpening makes lower-quality video look crisp. Needs a decent graphics card.
+- **Sharper video.** Optional Anime4K sharpening makes lower-quality video look crisp, on desktop and Android. Needs a decent graphics card (or a recent phone).
 - **Download episodes.** One episode, a range, or a whole series, saved with names that Plex and Jellyfin recognize.
 - **Anime details.** Cover art, synopsis, score, genres and episode titles, with filler and recap episodes marked.
-- **Discord status.** Shows what you're watching on your Discord profile (can be turned off).
+- **Discord status.** Shows what you're watching on your Discord profile (desktop, can be turned off).
 - **Dark and light themes.**
 
-## Keyboard shortcuts
+## Keyboard shortcuts (desktop)
 
 | Key               | Action                                               |
 | ----------------- | ---------------------------------------------------- |
@@ -31,12 +31,15 @@ Fast and smooth native desktop app for watching anime with indonesian subs witho
 | Esc               | Leave fullscreen, then close the player              |
 | Ctrl+L            | Show the log (for troubleshooting)                   |
 
+On Android, tap the video for the controls, double-tap its left or right side to jump 10 seconds, and long-press an episode or a card for more options.
+
 ## Download
 
 Get the latest version from the [Releases](../../releases) page:
 
 - **Windows:** download the `.zip`, unpack it anywhere, and run `aikatsu.exe`.
 - **Linux:** download the `.AppImage`, make it executable (`chmod +x Aikatsu-*.AppImage`), and run it.
+- **Android:** download the `-android-arm64.apk` on your phone and open it (allow installing from your browser when asked).
 
 Optional: install [ffmpeg](https://ffmpeg.org/download.html) so every download ends up as a normal .mp4.
 
@@ -82,6 +85,24 @@ If more than one Qt version is installed, point the build at Qt 6 with `QMAKE=/u
    ```
    Zip `dist\`. Put `ffmpeg.exe` next to `aikatsu.exe` (or on PATH) so downloads end up as .mp4.
 
+### Android
+
+You need Flutter 3.47+, Rust through rustup with the Android target (`rustup target add aarch64-linux-android`), the Android SDK, and cmake. The NDK is installed on first build if missing.
+
+```sh
+cd mobile
+flutter run                                                        # on a connected phone
+flutter build apk --release --target-platform android-arm64       # build/app/outputs/flutter-apk/app-release.apk
+```
+
+Release builds are signed with `mobile/android/key.properties` (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`) when it exists, else with the debug key.
+
+After changing `mobile/rust/src/api/mod.rs`, regenerate the Dart bindings. Its `cargo expand` replaces the rustflags from `.cargo/config.toml`, so pass them again:
+
+```sh
+cd mobile && RUSTFLAGS='--cfg reqwest_unstable' flutter_rust_bridge_codegen generate
+```
+
 ## Where your data lives
 
 |                    | Linux                                | Windows                               |
@@ -94,9 +115,11 @@ If more than one Qt version is installed, point the build at Qt 6 with `QMAKE=/u
 
 The download folder can be changed in Settings.
 
+On Android everything lives in the app's own storage and is removed with the app. Downloads go to `Android/data/io.github.kidixdev.aikatsu/files/Anime` and play from the Downloads tab.
+
 ## For developers
 
-Pushing a tag like `v0.2.0` builds Windows and Linux on GitHub Actions and publishes a release (tags with a `-`, like `v0.2.0-beta.1`, become pre-releases). Bump `version` in `Cargo.toml` first; the app's About line shows it.
+Pushing a tag like `v0.2.0` builds Windows, Linux and Android on GitHub Actions and publishes a release (tags with a `-`, like `v0.2.0-beta.1`, become pre-releases). Bump `version` in the root `Cargo.toml` first; the app's About line shows it. The APK is signed with the `ANDROID_KEYSTORE_B64` (base64 of the .jks), `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_ALIAS` repository secrets; a tag build fails without them, since an APK signed with another key can't update an installed one.
 
 ```sh
 cargo test --workspace                                    # offline tests
@@ -114,6 +137,10 @@ Set `XDG_DATA_HOME` to a scratch folder to keep test runs out of your real histo
   - `desktop/src/bridge.rs`: the `Backend` object QML talks to.
   - `desktop/cpp/mpvitem.*`: the video item (libmpv).
   - `desktop/qml/`: the interface.
+- `mobile/`: the Flutter app for Android.
+  - `mobile/rust/src/api/mod.rs`: the same `call` / `get` / events surface for Dart (flutter_rust_bridge).
+  - `mobile/lib/api.dart`: the Dart twin of `desktop/qml/Api.qml`.
+  - `mobile/lib/pages/`: one file per screen, ported from `desktop/qml/pages/`; the player uses media_kit (also libmpv).
 
 ## License
 

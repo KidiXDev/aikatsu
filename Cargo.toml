@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["core", "desktop"]
+members = ["core", "desktop", "mobile/rust"]
 default-members = ["desktop"]
 
 [workspace.package]

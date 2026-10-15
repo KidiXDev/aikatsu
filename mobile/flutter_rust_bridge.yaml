@@ -1,0 +1,5 @@
+# Regenerate after changing rust/src/api: RUSTFLAGS='--cfg reqwest_unstable' flutter_rust_bridge_codegen generate
+# (its cargo expand replaces the rustflags from .cargo/config.toml).
+rust_input: crate::api
+rust_root: rust/
+dart_output: lib/src/rust

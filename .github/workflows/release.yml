@@ -16,6 +16,8 @@ env:
   # only understands since #1000, which isn't on PyPI yet (3.3.0 is the latest).
   # Drop this, and the aqtsource lines, once aqtinstall 3.4 is released.
   AQT_SOURCE: git+https://github.com/miurahr/aqtinstall.git@076e1659807d0b362a3ed684d54c2e9c775eb9c7
+  # The Flutter the Android app is developed and tested on.
+  FLUTTER_VERSION: "3.47.1"
 
 jobs:
   linux:
@@ -124,9 +126,58 @@ jobs:
           path: Aikatsu-*.zip
           if-no-files-found: error
 
+  android:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      # cargokit builds the Rust side through rustup (NDK and cmake come with the runner).
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Signing key
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ -z "$KEYSTORE" ]; then
+            # Test builds may use the debug key; a release can't, or it won't update installed copies.
+            if [[ "$GITHUB_REF" == refs/tags/* ]]; then echo "::error::ANDROID_KEYSTORE_B64 is not set"; exit 1; fi
+            exit 0
+          fi
+          echo "$KEYSTORE" | base64 -d > mobile/android/app/upload.jks
+          printf 'storeFile=upload.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' "$PASSWORD" "$ALIAS" "$PASSWORD" > mobile/android/key.properties
+
+      - name: Build
+        working-directory: mobile
+        run: |
+          # versionCode must grow with every release so installs update in place.
+          args=(--build-number "${{ github.run_number }}")
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then args+=(--build-name "${GITHUB_REF_NAME#v}"); fi
+          flutter build apk --release --target-platform android-arm64 "${args[@]}"
+          mv build/app/outputs/flutter-apk/app-release.apk "../Aikatsu-${{ github.ref_name }}-android-arm64.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: Aikatsu-*.apk
+          if-no-files-found: error
+
   release:
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [linux, windows]
+    needs: [linux, windows, android]
     runs-on: ubuntu-latest
     permissions:
       contents: write
