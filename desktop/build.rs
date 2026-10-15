@@ -28,7 +28,7 @@ fn write_compile_commands(mpv_include: &Path) {
         args.push("-fPIC".to_owned()); // Qt's headers refuse to compile without it on ELF
     }
     args.push(format!("-I{}", headers.display()));
-    for module in ["QtCore", "QtGui", "QtQml", "QtQuick", "QtOpenGL"] {
+    for module in ["QtCore", "QtGui", "QtQml", "QtQuick", "QtOpenGL", "QtDBus"] {
         args.push(format!("-I{}", headers.join(module).display()));
     }
     // An explicit -I/usr/include reorders system dirs and breaks libstdc++'s #include_next.
@@ -92,13 +92,16 @@ fn main() {
 
     write_compile_commands(&mpv_include);
 
-    let builder = CxxQtBuilder::new_qml_module(QmlModule::new("Aikatsu").qml_files(qml).depend("QtQuick"))
+    let mut builder = CxxQtBuilder::new_qml_module(QmlModule::new("Aikatsu").qml_files(qml).depend("QtQuick"))
         .files(["src/bridge.rs"])
         .cpp_files(["cpp/mpvitem.h", "cpp/mpvitem.cpp"])
         .qt_module("Quick")
         .qt_module("OpenGL")
         .qt_module("Network")
         .qrc("assets/assets.qrc");
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("linux") {
+        builder = builder.qt_module("DBus"); // screensaver inhibit
+    }
     // SAFETY: only adds an include path
     unsafe { builder.cc_builder(|cc| { cc.include(&mpv_include); }) }.build();
 }
