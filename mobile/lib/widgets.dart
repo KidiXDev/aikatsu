@@ -266,7 +266,7 @@ class PosterCard extends StatelessWidget {
     final t = Theme.of(context);
     final c = t.colorScheme;
     final aikatsu = context.aikatsu;
-    final r = BorderRadius.circular(18);
+    const r = BorderRadius.vertical(top: Radius.circular(18));
 
     return BouncyTap(
       onTap: onTap,

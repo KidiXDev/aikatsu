@@ -267,6 +267,7 @@ FocusScope {
     }
 
     function togglePause(): void {
+        clickDelay.stop();
         const p = !mpv.paused;
         mpv.paused = p;
         osd.show(p ? "pause" : "play_arrow", "");
@@ -517,12 +518,18 @@ FocusScope {
             root.poke();
         }
         onClicked: if (root.started && root.phase === "playing")
-            root.togglePause()
+            clickDelay.restart()
         onDoubleClicked: {
-            // YouTube-style: the pair's first click already toggled pause, so undo it.
-            if (root.started && root.phase === "playing")
-                root.togglePause();
+            clickDelay.stop();
             ApplicationWindow.window.toggleFullScreen();
+        }
+
+        Timer {
+            id: clickDelay
+
+            interval: Qt.styleHints.mouseDoubleClickInterval
+            onTriggered: if (root.started && root.phase === "playing")
+                root.togglePause()
         }
     }
 
