@@ -1,14 +1,15 @@
 //! Discord "Watching" status. The Discord client blocks, so it runs on its own
 //! thread; the player reports every few seconds and only real changes are sent.
 
-use discord_rich_presence::activity::{Activity, ActivityType, Assets, Button, Timestamps};
+use discord_rich_presence::activity::{Activity, ActivityType, Assets, Button, StatusDisplayType, Timestamps};
 use discord_rich_presence::{DiscordIpc, DiscordIpcClient};
 use serde::Deserialize;
 use std::sync::LazyLock;
 use std::sync::mpsc::{Sender, channel};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-const CLIENT_ID: &str = "1302721937717334128";
+const CLIENT_ID: &str = "1560477338435854427";
+const LOGO_URL: &str = "https://raw.githubusercontent.com/KidiXDev/aikatsu/main/mobile/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png";
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
@@ -80,17 +81,18 @@ fn should_update(last: Option<&(State, Instant)>, s: &State) -> bool {
 fn activity(s: &State) -> Activity<'_> {
     let now_ms = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
     let mut a = Activity::new()
-        .name("Aikatsu") // the client ID's registered app name is "GoAnime"
+        .name(s.title.as_str())
         .activity_type(ActivityType::Watching)
+        .status_display_type(StatusDisplayType::Details)
         .details(s.title.as_str())
         .state(format!("Episode {}", s.episode))
         .assets({
-            let mut assets = Assets::new().large_text(s.title.as_str());
+            let mut assets = Assets::new()
+                .large_text(s.title.as_str())
+                .small_image(LOGO_URL)
+                .small_text(if s.paused { "Aikatsu · Paused" } else { "Aikatsu" });
             if !s.cover.is_empty() {
                 assets = assets.large_image(s.cover.as_str());
-            }
-            if s.paused {
-                assets = assets.small_image("pause-button").small_text("Paused");
             }
             assets
         });
@@ -115,6 +117,28 @@ fn activity(s: &State) -> Activity<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn anime_title_and_branding() {
+        let mut state = State {
+            title: "Aikatsu Stars!".into(), episode: 12, cover: "https://example.com/cover.jpg".into(),
+            duration: 1440.0, speed: 1.0, anilist_id: 21648, mal_id: 32717, ..Default::default()
+        };
+        for paused in [false, true] {
+            state.paused = paused;
+            let payload = serde_json::to_value(activity(&state)).unwrap();
+            assert_eq!(payload["name"], state.title);
+            assert_eq!(payload["type"], 3);
+            assert_eq!(payload["status_display_type"], 2);
+            assert_eq!(payload["details"], state.title);
+            assert_eq!(payload["state"], "Episode 12");
+            assert_eq!(payload["assets"]["large_image"], state.cover);
+            assert_eq!(payload["assets"]["small_image"], LOGO_URL);
+            assert_eq!(payload["assets"]["small_text"], if paused { "Aikatsu · Paused" } else { "Aikatsu" });
+            assert_eq!(payload.get("timestamps").is_some(), !paused);
+            assert_eq!(payload["buttons"].as_array().unwrap().len(), 2);
+        }
+    }
 
     #[test]
     fn update_rules() {
