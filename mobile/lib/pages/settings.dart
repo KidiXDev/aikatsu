@@ -6,6 +6,32 @@ import 'package:flutter/services.dart';
 import '../api.dart';
 import '../widgets.dart';
 
+/// Called once the app's first frame is ready; checks never install plugins.
+Future<void> checkPluginUpdatesOnOpen(BuildContext context) async {
+  if (Api.setting('autoCheckPluginUpdates') != 'true') return;
+  try {
+    final repos = await Api.call('checkPluginUpdates') as List;
+    final count = repos.fold<int>(0, (n, r) => n + toInt(r['updates']));
+    if (!context.mounted || count == 0) return;
+    final review = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('$count plugin update${count == 1 ? '' : 's'} available'),
+        content: const Text('Open Plugins to review and download updates.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Later')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('View updates')),
+        ],
+      ),
+    );
+    if (review == true && context.mounted) {
+      await Navigator.push(context, MaterialPageRoute(builder: (_) => const _PluginsPage()));
+    }
+  } catch (_) {
+    // An offline launch should still open normally; Plugins shows the check error.
+  }
+}
+
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
 
@@ -238,6 +264,12 @@ class _SettingsPageState extends State<SettingsPage> {
               trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
               onTap: _openPlugins,
             ),
+            SwitchListTile(
+              title: const Text('Check for plugin updates on startup', style: TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: const Text('Updates are downloaded only when you choose.'),
+              value: _s['autoCheckPluginUpdates'] == 'true',
+              onChanged: (v) => _set('autoCheckPluginUpdates', v),
+            ),
           ],
         ),
 
@@ -348,18 +380,29 @@ class _PluginsPageState extends State<_PluginsPage> {
   void _refresh() => setState(() => _repos = Api.get('repos'));
 
   List<String> get _disabled => Api.setting('disabledSources').split(',').map((x) => x.trim()).where((x) => x.isNotEmpty).toList();
+  int get _updates => _repos.fold<int>(0, (n, r) => n + toInt(r['updates']));
 
   void _toggle(String key, bool on) {
     Api.setSetting('disabledSources', [..._disabled.where((k) => k != key), if (!on) key].join(','));
     setState(() {});
   }
 
-  Future<void> _checkUpdates() async {
+  Future<void> _checkUpdates({bool download = false}) async {
+    if (_syncing) return;
     setState(() => _syncing = true);
     try {
-      final list = await Api.call('syncPlugins') as List;
-      _repos = list;
-      toast(list.any((r) => r['error'] != null) ? "Some repos couldn't update" : 'Plugins are up to date');
+      final result = await Api.call(download ? 'syncPlugins' : 'checkPluginUpdates');
+      if (!mounted) return;
+      setState(() => _repos = (download ? result['repos'] : result) as List);
+      String message = 'Plugins are up to date';
+      if (_repos.any((r) => r['error'] != null)) {
+        message = download ? "Some repos couldn't update" : "Some repos couldn't be checked";
+      } else if (download && result['updated'] == true) {
+        message = 'Plugins updated';
+      } else if (_updates > 0) {
+        message = '$_updates plugin update${_updates == 1 ? '' : 's'} available';
+      }
+      toast(message);
     } catch (e) {
       toast('$e');
     }
@@ -431,19 +474,30 @@ class _PluginsPageState extends State<_PluginsPage> {
   }
 
   Future<void> _install(String url, String name) async {
+    if (!mounted || _syncing) return;
+    setState(() => _syncing = true);
     try {
-      await Api.call('addRepo', {'url': url});
-      toast('Added $name');
+      final list = await Api.call('addRepo', {'url': url}) as List;
+      if (!mounted) return;
+      setState(() => _repos = list);
+      toast(list.any((r) => r['url'] == url && r['error'] != null) ? 'Added $name; some plugins could not load' : 'Added $name');
     } catch (e) {
       toast('$e');
     }
-    if (mounted) _refresh();
+    if (mounted) setState(() => _syncing = false);
   }
 
   Future<void> _remove(Map<String, dynamic> repo) async {
     if (!await confirm(context, 'Remove ${repo['name']}?', 'Its sources will be removed from search.', 'Remove')) return;
-    Api.get('removeRepo', {'url': repo['url']});
-    if (mounted) _refresh();
+    if (!mounted || _syncing) return;
+    setState(() => _syncing = true);
+    try {
+      final list = await Api.call('removeRepo', {'url': repo['url']}) as List;
+      if (mounted) setState(() => _repos = list);
+    } catch (e) {
+      toast('$e');
+    }
+    if (mounted) setState(() => _syncing = false);
   }
 
   void _addKyoko() => _install(Api.get('officialRepo') as String, 'Kyoko');
@@ -458,17 +512,26 @@ class _PluginsPageState extends State<_PluginsPage> {
       appBar: AppBar(
         title: const Text('Plugins'),
         actions: [
+          if (_updates > 0)
+            IconButton(
+              tooltip: 'Download $_updates plugin update${_updates == 1 ? '' : 's'}',
+              onPressed: _syncing ? null : () => _checkUpdates(download: true),
+              icon: const Icon(Icons.download_rounded),
+            ),
           IconButton(
             tooltip: 'Check for updates',
-            onPressed: _syncing ? null : _checkUpdates,
+            onPressed: _syncing ? null : () => _checkUpdates(),
             icon: _syncing
                 ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.refresh_rounded),
           ),
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: FilledButton.tonalIcon(onPressed: _add, icon: const Icon(Icons.add_rounded), label: const Text('Add')),
-          ),
+          if (_updates > 0 && MediaQuery.sizeOf(context).width < 400)
+            IconButton(tooltip: 'Add plugins', onPressed: _syncing ? null : _add, icon: const Icon(Icons.add_rounded))
+          else
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: FilledButton.tonalIcon(onPressed: _syncing ? null : _add, icon: const Icon(Icons.add_rounded), label: const Text('Add')),
+            ),
         ],
       ),
       body: _repos.isEmpty
@@ -476,7 +539,7 @@ class _PluginsPageState extends State<_PluginsPage> {
               face: '(・・ )?',
               title: 'No plugins',
               message: 'Search needs at least one.',
-              action: FilledButton.tonal(onPressed: _addKyoko, child: const Text('Add Kyoko')),
+              action: FilledButton.tonal(onPressed: _syncing ? null : _addKyoko, child: const Text('Add Kyoko')),
             )
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
@@ -495,23 +558,27 @@ class _PluginsPageState extends State<_PluginsPage> {
                               )
                             : ListTile(
                                 title: Text(p['name'] as String, style: bold),
-                                subtitle: Text(p['compatible'] == true ? "Couldn't load" : 'Needs a newer Aikatsu'),
+                                subtitle: Text(p['compatible'] == true
+                                    ? p['updateAvailable'] == true ? 'Download to enable' : "Couldn't load"
+                                    : 'Needs a newer Aikatsu'),
                               ),
                       ListTile(
                         title: Text(
-                          repo['error'] != null ? "Couldn't update" : '${repo['short']}${repo['official'] == true ? '' : '  ·  Third-party'}',
+                          repo['error'] != null ? "Couldn't check or update" : '${repo['short']}${repo['official'] == true ? '' : '  ·  Third-party'}',
                           style: t.textTheme.bodySmall?.copyWith(color: repo['error'] != null ? c.error : c.onSurfaceVariant),
                         ),
-                        subtitle: repo['error'] != null ? Text('${repo['error']}', maxLines: 2, overflow: TextOverflow.ellipsis) : null,
+                        subtitle: repo['error'] != null
+                            ? Text('${repo['error']}', maxLines: 2, overflow: TextOverflow.ellipsis)
+                            : toInt(repo['updates']) > 0 ? Text('${repo['updates']} plugin update${repo['updates'] == 1 ? '' : 's'} available') : null,
                         trailing: TextButton(
                           style: TextButton.styleFrom(foregroundColor: c.error),
-                          onPressed: () => _remove(Map<String, dynamic>.from(repo)),
+                          onPressed: _syncing ? null : () => _remove(Map<String, dynamic>.from(repo)),
                           child: const Text('Remove'),
                         ),
                       ),
                     ],
                   ),
-                if (!_repos.any((r) => r['official'] == true)) Center(child: TextButton(onPressed: _addKyoko, child: const Text('Add Kyoko'))),
+                if (!_repos.any((r) => r['official'] == true)) Center(child: TextButton(onPressed: _syncing ? null : _addKyoko, child: const Text('Add Kyoko'))),
               ],
             ),
     );

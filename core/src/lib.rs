@@ -69,9 +69,7 @@ pub fn init(dirs: Dirs, debug: bool, push: impl Fn(&str, &Value) + Send + Sync +
     assert!(DIRS.set(dirs).is_ok(), "aikatsu_core::init must run first, and once");
     let _ = SINK.set(Box::new(push));
     DEBUG_FLAG.store(debug, Ordering::Relaxed);
-    let guard = init_logging();
-    RT.spawn(plugins::sync_all());
-    guard
+    init_logging()
 }
 
 pub fn debug_enabled() -> bool {

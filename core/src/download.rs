@@ -711,7 +711,7 @@ mod tests {
     fn live_download() {
         let dir = std::env::var("LIVE_DIR").map(PathBuf::from).unwrap_or_else(|_| std::env::temp_dir().join("aikatsu-live"));
         let (src, url) = crate::RT.block_on(async {
-            crate::plugins::ensure_installed().await;
+            crate::plugins::sync_all().await;
             let found = sources::search("kyoko/ylnime", "frieren").await.unwrap();
             let eps = sources::episodes("kyoko/ylnime", &found[0].url).await.unwrap();
             (found[0].name.clone(), eps[0].url.clone())

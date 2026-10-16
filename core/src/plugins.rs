@@ -23,7 +23,7 @@ pub const API_VERSION: i64 = 1;
 pub const OFFICIAL_REPO: &str = "https://github.com/KidiXDev/kyoko";
 const REPOS_SETTING: &str = "pluginRepos";
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Index {
     pub id: String,
     pub name: String,
@@ -31,7 +31,7 @@ pub struct Index {
     pub plugins: Vec<Entry>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Entry {
     pub key: String,
     pub name: String,
@@ -107,6 +107,8 @@ pub fn add_local(p: Plugin) -> Arc<Plugin> {
 
 fn reload() {
     *REGISTRY.write().unwrap() = load_installed();
+    CACHE.lock().unwrap().clear();
+    http::clear_pages();
     push("plugins", &Value::Null);
 }
 
@@ -202,31 +204,71 @@ fn saved_index(url: &str) -> Option<Index> {
     serde_json::from_str(&std::fs::read_to_string(repo_dir(url).join("index.json")).ok()?).ok()
 }
 
-/// The last sync's failure per repo, shown under it in Settings.
+/// The last check or download failure per repo, shown under it in Settings.
 static ERRORS: LazyLock<Mutex<HashMap<String, String>>> = LazyLock::new(Default::default);
+static AVAILABLE: LazyLock<Mutex<HashMap<String, Index>>> = LazyLock::new(Default::default);
 static SYNCING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+fn pending_updates(url: &str, index: &Index) -> usize {
+    let saved = saved_index(url);
+    let changed = index.plugins.iter().filter(|e| e.api <= API_VERSION)
+        .filter(|e| saved.as_ref().and_then(|i| i.plugins.iter().find(|old| old.key == e.key)) != Some(*e) || !script_current(url, e))
+        .count();
+    changed + saved.iter().flat_map(|i| &i.plugins).filter(|old| !index.plugins.iter().any(|e| e.key == old.key)).count()
+}
+
+fn script_current(url: &str, e: &Entry) -> bool {
+    std::fs::read(script_path(url, &e.key)).is_ok_and(|b| sha256_hex(&b).eq_ignore_ascii_case(&e.sha256))
+}
+
+/// Checks metadata only. Installed scripts and the running registry stay untouched.
+pub async fn check_updates() -> Value {
+    let _one = SYNCING.lock().await;
+    for url in repo_urls() {
+        let result = async {
+            let index = fetch_index(&url).await?;
+            check_unique(&url, &index.id)?;
+            Ok::<_, anyhow::Error>(index)
+        }.await;
+        match result {
+            Ok(index) => {
+                AVAILABLE.lock().unwrap().insert(url.clone(), index);
+                ERRORS.lock().unwrap().remove(&url);
+            }
+            Err(e) => {
+                ERRORS.lock().unwrap().insert(url, format!("{e:#}"));
+            }
+        }
+    }
+    push("plugins", &Value::Null);
+    repos()
+}
 
 /// For the Settings page: every repo with its plugins and last error.
 pub fn repos() -> Value {
     let errors = ERRORS.lock().unwrap().clone();
+    let available = AVAILABLE.lock().unwrap().clone();
     let loaded: HashSet<String> = installed().iter().map(|p| p.id.clone()).collect();
     Value::Array(
         repo_urls()
             .into_iter()
             .map(|url| {
                 let official = url == OFFICIAL_REPO;
-                let index = saved_index(&url);
+                let updates = available.get(&url).map_or(0, |i| pending_updates(&url, i));
+                let index = saved_index(&url).or_else(|| available.get(&url).cloned());
                 let name = index.as_ref().map(|i| i.name.clone()).unwrap_or_else(|| if official { "Kyoko".into() } else { short(&url).into() });
                 let plugins: Vec<Value> = index
                     .iter()
                     .flat_map(|i| {
                         i.plugins.iter().map(|e| {
                             let key = format!("{}/{}", i.id, e.key);
-                            json!({ "loaded": loaded.contains(&key), "key": key, "name": e.name, "version": e.version, "compatible": e.api <= API_VERSION })
+                            let update = available.get(&url).and_then(|i| i.plugins.iter().find(|latest| latest.key == e.key))
+                                .is_some_and(|latest| latest.api <= API_VERSION && (latest != e || !script_current(&url, latest)));
+                            json!({ "loaded": loaded.contains(&key), "key": key, "name": e.name, "version": e.version, "compatible": e.api <= API_VERSION, "updateAvailable": update })
                         })
                     })
                     .collect();
-                json!({ "url": url, "short": short(&url), "official": official, "name": name, "error": errors.get(&url), "plugins": plugins })
+                json!({ "url": url, "short": short(&url), "official": official, "name": name, "error": errors.get(&url), "plugins": plugins, "updates": updates })
             })
             .collect(),
     )
@@ -234,13 +276,17 @@ pub fn repos() -> Value {
 
 /// Fetches every repo's index and downloads the scripts that changed. A repo
 /// that can't be reached keeps what it has, so sources work offline.
-pub async fn sync_all() {
+pub async fn sync_all() -> bool {
     let _one = SYNCING.lock().await;
+    let mut updated = false;
     for url in repo_urls() {
         let res = sync_repo(&url).await;
         let mut errors = ERRORS.lock().unwrap();
         match res {
-            Ok(()) => errors.remove(&url),
+            Ok(changed) => {
+                updated |= changed;
+                errors.remove(&url)
+            }
             Err(e) => {
                 tracing::warn!("plugin repo {url}: {e:#}");
                 errors.insert(url, format!("{e:#}"))
@@ -248,15 +294,7 @@ pub async fn sync_all() {
         };
     }
     reload();
-}
-
-/// For a search right after the first launch: waits out the startup sync, and
-/// runs one when there is still nothing installed.
-pub async fn ensure_installed() {
-    drop(SYNCING.lock().await);
-    if installed().is_empty() {
-        sync_all().await;
-    }
+    updated
 }
 
 /// What the confirmation dialog shows before a repo is added.
@@ -274,6 +312,7 @@ pub async fn add(input: &str) -> Result<()> {
     let _one = SYNCING.lock().await;
     let mut urls = repo_urls();
     anyhow::ensure!(!urls.contains(&url), "Already added");
+    ERRORS.lock().unwrap().remove(&url);
     if let Err(e) = sync_repo(&url).await {
         // Added anyway when only some scripts failed: Settings shows why.
         if saved_index(&url).is_none() {
@@ -288,28 +327,34 @@ pub async fn add(input: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn remove(url: &str) -> Result<()> {
+pub async fn remove(url: &str) -> Result<()> {
+    let _one = SYNCING.lock().await;
     let urls: Vec<String> = repo_urls().into_iter().filter(|u| u != url).collect();
     set_repo_urls(&urls)?;
     let _ = std::fs::remove_dir_all(repo_dir(url));
     ERRORS.lock().unwrap().remove(url);
+    AVAILABLE.lock().unwrap().remove(url);
     reload();
     Ok(())
 }
 
-async fn sync_repo(url: &str) -> Result<()> {
+async fn sync_repo(url: &str) -> Result<bool> {
     let index = fetch_index(url).await?;
     check_unique(url, &index.id)?;
+    AVAILABLE.lock().unwrap().insert(url.to_owned(), index.clone());
     let dir = repo_dir(url);
     tokio::fs::create_dir_all(&dir).await?;
     let mut failed = Vec::new();
+    let mut updated = saved_index(url).as_ref() != Some(&index);
     for e in index.plugins.iter().filter(|e| e.api <= API_VERSION) {
         let path = script_path(url, &e.key);
-        if std::fs::read(&path).is_ok_and(|b| sha256_hex(&b).eq_ignore_ascii_case(&e.sha256)) {
+        if script_current(url, e) {
             continue;
         }
         if let Err(err) = download(url, e, &path).await {
             failed.push(format!("{}: {err:#}", e.name));
+        } else {
+            updated = true;
         }
     }
     for f in std::fs::read_dir(&dir)?.flatten() {
@@ -322,7 +367,7 @@ async fn sync_repo(url: &str) -> Result<()> {
     }
     std::fs::write(dir.join("index.json"), serde_json::to_string(&index)?)?;
     anyhow::ensure!(failed.is_empty(), "{}", failed.join("; "));
-    Ok(())
+    Ok(updated)
 }
 
 /// A broken or tampered download never replaces the script that works.
@@ -750,7 +795,7 @@ mod tests {
     fn add_update_and_remove_a_repo() {
         let dir = std::env::temp_dir().join(format!("aikatsu-repo-test-{}", std::process::id()));
         std::fs::create_dir_all(dir.join("sources")).unwrap();
-        let v1 = r#"fn search(q) {[]} fn episodes(u) {[]} fn heights(u) {[]} fn stream(u, q) {#{}}"#;
+        let v1 = r#"fn search(q) {cache_set("old", "old", 3600); []} fn episodes(u) {[]} fn heights(u) {[]} fn stream(u, q) {#{}}"#;
         let publish = |script: &str, sha: &str| {
             std::fs::write(dir.join("sources/a.rhai"), script).unwrap();
             let index = json!({ "id": "test-repo", "name": "Test", "plugins": [{ "key": "a", "name": "A", "file": "sources/a.rhai", "sha256": sha }] });
@@ -759,23 +804,59 @@ mod tests {
         publish(v1, &sha256_hex(v1.as_bytes()));
         let url = url::Url::from_file_path(dir.join("index.json")).unwrap().to_string();
         let before = repo_urls();
+        set_repo_urls(&[]).unwrap();
         crate::RT.block_on(async {
             assert_eq!(preview(&url).await.unwrap()["plugins"][0]["name"], "A");
-            add(&url).await.unwrap();
+            let added = crate::api::call("addRepo", json!({ "url": url })).await.unwrap();
+            assert_eq!(added[0]["plugins"][0]["loaded"], true);
             assert!(find("test-repo/a").is_some());
             assert!(preview(&url).await.is_err() && add(&url).await.is_err(), "already added");
+            assert_eq!(crate::api::call("syncPlugins", json!({})).await.unwrap()["updated"], false);
+            crate::sources::search("test-repo/a", "query").await.unwrap();
 
             // The index moved on but the script didn't (a CDN mid-update): refused, v1 stays.
             publish(v1, &"0".repeat(64));
-            assert!(sync_repo(&url).await.unwrap_err().to_string().contains("checksum"));
+            let failed = crate::api::call("syncPlugins", json!({})).await.unwrap();
+            assert!(failed["repos"][0]["error"].as_str().unwrap().contains("checksum"));
             assert_eq!(std::fs::read_to_string(script_path(&url, "a")).unwrap(), v1);
 
-            let v2 = format!("{v1} // v2");
+            crate::sources::search("test-repo/a", "query").await.unwrap();
+            let v2 = v1.replace("cache_set(\"old\", \"old\", 3600);", "if cache_get(\"old\") != () {throw \"stale cache\";}");
             publish(&v2, &sha256_hex(v2.as_bytes()));
-            sync_repo(&url).await.unwrap();
+            let installed_index = std::fs::read(repo_dir(&url).join("index.json")).unwrap();
+            let checked = crate::api::call("checkPluginUpdates", json!({})).await.unwrap();
+            assert_eq!(checked[0]["updates"], 1);
+            assert_eq!(std::fs::read_to_string(script_path(&url, "a")).unwrap(), v1, "checking must not download scripts");
+            assert_eq!(std::fs::read(repo_dir(&url).join("index.json")).unwrap(), installed_index, "checking must not replace installed metadata");
+            crate::sources::search("test-repo/a", "query").await.unwrap();
+            let synced = crate::api::call("syncPlugins", json!({})).await.unwrap();
+            assert_eq!(synced["updated"], true, "changed hashes update even without a version bump");
+            assert_eq!(synced["repos"][0]["error"], Value::Null);
+            assert_eq!(synced["repos"][0]["updates"], 0);
             assert_eq!(std::fs::read_to_string(script_path(&url, "a")).unwrap(), v2);
+            crate::sources::search("test-repo/a", "query").await.unwrap();
+            assert_eq!(crate::api::call("syncPlugins", json!({})).await.unwrap()["updated"], false);
+
+            let mut index: Value = serde_json::from_str(&std::fs::read_to_string(dir.join("index.json")).unwrap()).unwrap();
+            let mut b = index["plugins"][0].clone();
+            b["key"] = json!("b");
+            b["name"] = json!("B");
+            index["plugins"].as_array_mut().unwrap().push(b);
+            std::fs::write(dir.join("index.json"), index.to_string()).unwrap();
+            assert_eq!(crate::api::call("checkPluginUpdates", json!({})).await.unwrap()[0]["updates"], 1);
+            assert!(find("test-repo/b").is_none() && !script_path(&url, "b").exists());
+            let synced = crate::api::call("syncPlugins", json!({})).await.unwrap();
+            assert_eq!(synced["updated"], true);
+            assert_eq!(synced["repos"][0]["plugins"][1]["loaded"], true, "new sources are ready in the returned list");
+            assert!(find("test-repo/b").is_some());
+            index["plugins"].as_array_mut().unwrap().pop();
+            std::fs::write(dir.join("index.json"), index.to_string()).unwrap();
+            assert_eq!(crate::api::call("checkPluginUpdates", json!({})).await.unwrap()[0]["updates"], 1);
+            assert!(find("test-repo/b").is_some(), "checking must not remove installed plugins");
+            assert_eq!(crate::api::call("syncPlugins", json!({})).await.unwrap()["updated"], true);
+            assert!(find("test-repo/b").is_none());
         });
-        remove(&url).unwrap();
+        crate::RT.block_on(crate::api::call("removeRepo", json!({ "url": url }))).unwrap();
         assert!(find("test-repo/a").is_none() && !repo_dir(&url).exists());
         set_repo_urls(&before).unwrap();
         std::fs::remove_dir_all(dir).unwrap();

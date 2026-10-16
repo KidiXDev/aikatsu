@@ -184,12 +184,12 @@ mod tests {
 
     /// `cargo test live_blogger -- --ignored --nocapture`: resolves Samehadaku's
     /// latest One Piece episode (Blogspot) and reads bytes through the proxy.
-    /// Fetches Kyoko's plugins first when none are installed.
+    /// Explicitly downloads Kyoko's plugins before the live test.
     #[test]
     #[ignore]
     fn live_blogger_proxy() {
         crate::RT.block_on(async {
-            crate::plugins::ensure_installed().await;
+            crate::plugins::sync_all().await;
             let src = "kyoko/samehadaku";
             let found = sources::search(src, "one piece").await.unwrap();
             let eps = sources::episodes(src, &found[0].url).await.unwrap();

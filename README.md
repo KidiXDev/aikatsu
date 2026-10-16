@@ -5,7 +5,7 @@ Fast native app for watching anime with indonesian subs without ads or a browser
 ## What it can do
 
 - **Search multiple sources at once.** Results appear as each source answers.
-- **Sources fix themselves.** The sites are plugins from [Kyoko](https://github.com/KidiXDev/kyoko), checked for updates at every start, so when a site changes its layout the fix arrives without a new app version. You can add other plugin repos in Settings.
+- **Plugin updates on your terms.** Sources come from [Kyoko](https://github.com/KidiXDev/kyoko) and other repos you add in Settings. Startup checks announce available updates; download them from the Plugins page when you choose. Automatic checks can be disabled in Settings.
 - **Continue watching.** The home screen shows what you were watching and the episode you're up to. Click once to carry on from the exact minute.
 - **A proper video player.**
   - Picks a quality for you (or remembers the one you chose), like YouTube.

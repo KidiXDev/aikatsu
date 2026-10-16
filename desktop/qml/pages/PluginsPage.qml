@@ -8,10 +8,12 @@ import Aikatsu
 // Plugin repos and the sources each brings, opened from Settings.
 Item {
     id: root
+    objectName: "pluginsPage"
 
     property var repos: Api.get("repos")
     property var disabled: (Api.setting("disabledSources") || "").split(",").map(x => x.trim()).filter(x => x)
     property bool syncing
+    readonly property int updates: repos.reduce((n, r) => n + (r.updates || 0), 0)
 
     function refresh(): void {
         repos = Api.get("repos");
@@ -25,12 +27,17 @@ Item {
         disabled = list;
     }
 
-    function checkUpdates(): void {
+    function checkUpdates(download: bool): void {
+        if (syncing)
+            return;
         syncing = true;
-        Api.call("syncPlugins", {}, list => {
+        Api.call(download ? "syncPlugins" : "checkPluginUpdates", {}, result => {
             syncing = false;
-            repos = list;
-            ApplicationWindow.window.toast(list.some(r => r.error) ? "Some repos couldn't update" : "Plugins are up to date");
+            repos = download ? result.repos : result;
+            ApplicationWindow.window.toast(repos.some(r => r.error)
+                ? download ? "Some repos couldn't update" : "Some repos couldn't be checked"
+                : download && result.updated ? "Plugins updated"
+                : updates > 0 ? `${updates} plugin update${updates === 1 ? "" : "s"} available` : "Plugins are up to date");
         }, e => {
             syncing = false;
             ApplicationWindow.window.toast(e);
@@ -62,12 +69,19 @@ Item {
     }
 
     function add(url: string, name: string): void {
+        if (syncing)
+            return;
+        syncing = true;
         Api.call("addRepo", {
             url: url
-        }, () => {
-            refresh();
-            ApplicationWindow.window.toast(`Added ${name}`);
-        }, e => ApplicationWindow.window.toast(e));
+        }, list => {
+            syncing = false;
+            repos = list;
+            ApplicationWindow.window.toast(list.some(r => r.url === url && r.error) ? `Added ${name}; some plugins could not load` : `Added ${name}`);
+        }, e => {
+            syncing = false;
+            ApplicationWindow.window.toast(e);
+        });
     }
 
     Connections {
@@ -111,6 +125,16 @@ Item {
                     font: Theme.font.headline.large
                 }
                 IconButton {
+                    visible: root.updates > 0
+                    type: IconButton.Text
+                    icon: "download"
+                    iconSize: 18
+                    disabled: root.syncing
+                    ToolTip.visible: hovered
+                    ToolTip.text: `Download ${root.updates} plugin update${root.updates === 1 ? "" : "s"}`
+                    onClicked: root.checkUpdates(true)
+                }
+                IconButton {
                     id: refreshButton
 
                     type: IconButton.Text
@@ -119,7 +143,7 @@ Item {
                     disabled: root.syncing
                     ToolTip.visible: hovered
                     ToolTip.text: "Check for updates"
-                    onClicked: root.checkUpdates()
+                    onClicked: root.checkUpdates(false)
 
                     RotationAnimator {
                         target: refreshButton.label
@@ -136,6 +160,7 @@ Item {
                     type: TextButton.Filled
                     icon: "add"
                     text: "Add"
+                    disabled: root.syncing
                     onClicked: {
                         addDialog.error = "";
                         urlField.text = "";
@@ -198,6 +223,7 @@ Item {
                             TextButton {
                                 type: TextButton.Text
                                 text: "Remove"
+                                disabled: root.syncing
                                 onClicked: {
                                     removeDialog.repo = card.modelData;
                                     removeDialog.open();
@@ -222,7 +248,7 @@ Item {
                                 }
                                 StyledText {
                                     visible: !plugin.modelData.loaded
-                                    text: plugin.modelData.compatible ? "Couldn't load" : "Needs a newer Aikatsu"
+                                    text: plugin.modelData.compatible ? plugin.modelData.updateAvailable ? "Download to enable" : "Couldn't load" : "Needs a newer Aikatsu"
                                     color: Theme.palette.onSurfaceVariant
                                     font: Theme.font.body.small
                                 }
@@ -232,6 +258,12 @@ Item {
                                     onToggled: root.toggle(plugin.modelData.key, checked)
                                 }
                             }
+                        }
+                        StyledText {
+                            visible: (card.modelData.updates || 0) > 0
+                            text: `${card.modelData.updates} plugin update${card.modelData.updates === 1 ? "" : "s"} available`
+                            font: Theme.font.body.small
+                            color: Theme.palette.primary
                         }
                     }
                 }
@@ -250,6 +282,7 @@ Item {
                     Layout.topMargin: Theme.spacing.medium
                     type: TextButton.Tonal
                     text: "Add Kyoko"
+                    disabled: root.syncing
                     onClicked: root.add(Api.get("officialRepo"), "Kyoko")
                 }
             }
@@ -257,6 +290,7 @@ Item {
                 visible: root.repos.length > 0 && !root.repos.some(r => r.official)
                 type: TextButton.Text
                 text: "Add Kyoko"
+                disabled: root.syncing
                 onClicked: root.add(Api.get("officialRepo"), "Kyoko")
             }
         }
@@ -356,11 +390,19 @@ Item {
                 type: TextButton.Text
                 text: "Remove"
                 onClicked: {
-                    Api.get("removeRepo", {
+                    if (root.syncing)
+                        return;
+                    root.syncing = true;
+                    Api.call("removeRepo", {
                         url: removeDialog.repo.url
+                    }, list => {
+                        root.syncing = false;
+                        root.repos = list;
+                    }, e => {
+                        root.syncing = false;
+                        ApplicationWindow.window.toast(e);
                     });
                     removeDialog.close();
-                    root.refresh();
                 }
             }
         ]

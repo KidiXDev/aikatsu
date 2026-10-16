@@ -31,6 +31,7 @@ pub const SETTING_DEFAULTS: &[(&str, &str)] = &[
     ("theme", "system"),
     ("quality", "best"),
     ("disabledSources", ""),
+    ("autoCheckPluginUpdates", "true"),
     ("downloadDir", ""),
     ("tmdbKey", ""),
     ("discord", "true"),
@@ -58,7 +59,6 @@ pub async fn call(method: &str, args: Value) -> Result<Value> {
         }
         "search" => {
             let query = s(&args, "query").to_owned();
-            plugins::ensure_installed().await;
             sources::search_all(&query, &enabled_sources(), |p, res| {
                 push(
                     "searchResult",
@@ -73,13 +73,18 @@ pub async fn call(method: &str, args: Value) -> Result<Value> {
         }
         // Third-party repos: shown with a trust warning before `addRepo`.
         "previewRepo" => plugins::preview(s(&args, "url")).await,
+        "checkPluginUpdates" => Ok(plugins::check_updates().await),
         "addRepo" => {
             plugins::add(s(&args, "url")).await?;
-            Ok(Value::Null)
+            Ok(plugins::repos())
+        }
+        "removeRepo" => {
+            plugins::remove(s(&args, "url")).await?;
+            Ok(plugins::repos())
         }
         "syncPlugins" => {
-            plugins::sync_all().await;
-            Ok(plugins::repos())
+            let updated = plugins::sync_all().await;
+            Ok(json!({ "repos": plugins::repos(), "updated": updated }))
         }
         "enrich" => {
             let id = i(&args, "anilistId");
@@ -185,10 +190,6 @@ pub fn get(method: &str, args: Value) -> Result<Value> {
         }
         "sources" => Ok(plugins::list()),
         "repos" => Ok(plugins::repos()),
-        "removeRepo" => {
-            plugins::remove(s(&args, "url"))?;
-            Ok(Value::Null)
-        }
         "officialRepo" => Ok(json!(plugins::OFFICIAL_REPO)),
         "stopStreams" => {
             proxy::clear();

@@ -13,17 +13,29 @@ import 'package:flutter_test/flutter_test.dart';
 class _Backend extends Fake implements RustLibApi {
   String logs = '';
   bool fail = false;
+  Completer<String>? pending;
+  String? called;
+  String autoCheck = 'true';
+  List<dynamic>? reposOverride;
+
+  @override
+  Future<String> crateApiCall({required String method, required String args}) {
+    called = method;
+    return pending!.future;
+  }
 
   @override
   String crateApiGet({required String method, required String args}) {
     if ((method == 'logTail' || method == 'logReport') && fail) throw 'Permission denied reading the log';
     return jsonEncode(switch (method) {
-      'settings' => {'theme': 'system', 'anime4k': 'off', 'debug': 'false', 'tmdbKey': '', 'disabledSources': ''},
+      'settings' => {'theme': 'system', 'anime4k': 'off', 'debug': 'false', 'tmdbKey': '', 'disabledSources': '', 'autoCheckPluginUpdates': autoCheck},
+      'setSetting' => autoCheck = jsonDecode(args)['value'] as String,
       'anime4kModes' => [],
+      'officialRepo' => 'https://github.com/KidiXDev/kyoko',
       'sources' => [
         {'key': 'someone/a', 'name': 'A source', 'repo': "Someone's repo", 'version': 1},
       ],
-      'repos' => [
+      'repos' => reposOverride ?? [
         {
           'url': 'https://github.com/someone/repo',
           'short': 'someone/repo',
@@ -53,6 +65,150 @@ void main() {
     RustLib.initMock(api: backend);
   });
   tearDown(RustLib.dispose);
+
+  for (final count in [0, 1, 2]) {
+    testWidgets('startup check announces $count updates without downloading', (tester) async {
+      final repos = jsonDecode(backend.crateApiGet(method: 'repos', args: '{}')) as List;
+      repos[0]['updates'] = count;
+      backend.reposOverride = repos;
+      backend.pending = Completer<String>();
+      await tester.pumpWidget(MaterialApp(
+        theme: buildTheme(Brightness.light),
+        home: Scaffold(body: Builder(builder: (context) => TextButton(
+          onPressed: () => checkPluginUpdatesOnOpen(context),
+          child: const Text('Open app'),
+        ))),
+      ));
+      await tester.tap(find.text('Open app'));
+      expect(backend.called, 'checkPluginUpdates');
+      backend.pending!.complete(jsonEncode(repos));
+      await tester.pumpAndSettle();
+      if (count == 0) {
+        expect(find.byType(AlertDialog), findsNothing);
+      } else {
+        expect(find.text('$count plugin update${count == 1 ? '' : 's'} available'), findsOneWidget);
+        expect(backend.called, 'checkPluginUpdates', reason: 'announcing an update must not install it');
+        await tester.tap(find.text(count == 1 ? 'View updates' : 'Later'));
+        await tester.pumpAndSettle();
+        if (count == 1) expect(find.byTooltip('Download 1 plugin update'), findsOneWidget);
+        expect(find.byType(AlertDialog), findsNothing);
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('startup check can be disabled from Settings', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: buildTheme(Brightness.light),
+      home: const Scaffold(body: SettingsPage()),
+    ));
+    final toggle = find.widgetWithText(SwitchListTile, 'Check for plugin updates on startup');
+    await tester.scrollUntilVisible(toggle, 300, scrollable: find.byType(Scrollable).first);
+    await tester.ensureVisible(toggle);
+    await tester.pumpAndSettle();
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(backend.autoCheck, 'false');
+    expect(tester.widget<SwitchListTile>(toggle).value, false);
+    await checkPluginUpdatesOnOpen(tester.element(toggle));
+    expect(backend.called, isNull);
+    expect(find.byType(AlertDialog), findsNothing);
+  });
+
+  testWidgets('plugin actions show their completed list without a manual refresh', (tester) async {
+    tester.view.physicalSize = const Size(320, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(MaterialApp(
+      theme: buildTheme(Brightness.light),
+      scaffoldMessengerKey: messenger,
+      home: const Scaffold(body: SettingsPage()),
+    ));
+    await tester.scrollUntilVisible(find.text('1 source'), 300, scrollable: find.byType(Scrollable).first);
+    await tester.ensureVisible(find.text('1 source'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('1 source'));
+    await tester.pumpAndSettle();
+
+    final updateButton = find.byWidgetPredicate((w) => w is IconButton && w.tooltip == 'Check for updates');
+    backend.pending = Completer<String>();
+    await tester.tap(find.text('Add Kyoko'));
+    await tester.pump();
+    expect(backend.called, 'addRepo');
+    expect(tester.widget<IconButton>(updateButton).onPressed, isNull);
+    expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Add')).onPressed, isNull);
+    final repos = jsonDecode(backend.crateApiGet(method: 'repos', args: '{}')) as List;
+    (repos[0]['plugins'] as List).add({'key': 'someone/c', 'name': 'New source', 'compatible': true, 'loaded': true});
+    backend.pending!.complete(jsonEncode(repos));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(SwitchListTile, 'New source'), findsOneWidget);
+    expect(tester.widget<IconButton>(updateButton).onPressed, isNotNull);
+
+    backend.pending = Completer<String>();
+    await tester.tap(updateButton);
+    await tester.pump();
+    expect(backend.called, 'checkPluginUpdates');
+    repos[0]['updates'] = 1;
+    backend.pending!.complete(jsonEncode(repos));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(SwitchListTile, 'New source'), findsOneWidget);
+    expect(find.byTooltip('Download 1 plugin update'), findsOneWidget);
+    expect(find.byTooltip('Add plugins'), findsOneWidget);
+
+    messenger.currentState!.removeCurrentSnackBar();
+    backend.pending = Completer<String>();
+    await tester.tap(find.byTooltip('Download 1 plugin update'));
+    await tester.pump();
+    expect(backend.called, 'syncPlugins');
+    repos[0]['updates'] = 0;
+    repos[0]['plugins'][2]['name'] = 'Updated source';
+    backend.pending!.complete(jsonEncode({'repos': repos, 'updated': true}));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(SwitchListTile, 'Updated source'), findsOneWidget);
+    expect(find.text('Plugins updated'), findsOneWidget);
+    expect(find.byTooltip('Download 1 plugin update'), findsNothing);
+
+    messenger.currentState!.removeCurrentSnackBar();
+    backend.pending = Completer<String>();
+    await tester.tap(updateButton);
+    await tester.pump();
+    backend.pending!.complete(jsonEncode(repos));
+    await tester.pumpAndSettle();
+    expect(find.text('Plugins are up to date'), findsOneWidget);
+
+    messenger.currentState!.removeCurrentSnackBar();
+    backend.pending = Completer<String>();
+    await tester.tap(updateButton);
+    await tester.pump();
+    repos[0]['error'] = 'Checksum mismatch';
+    backend.pending!.complete(jsonEncode(repos));
+    await tester.pumpAndSettle();
+    expect(find.text("Some repos couldn't be checked"), findsOneWidget);
+    expect(find.text('Checksum mismatch'), findsOneWidget);
+
+    messenger.currentState!.removeCurrentSnackBar();
+    backend.pending = Completer<String>();
+    await tester.tap(updateButton);
+    await tester.pump();
+    backend.pending!.completeError('Offline');
+    await tester.pumpAndSettle();
+    expect(find.text('Offline'), findsOneWidget);
+    expect(tester.widget<IconButton>(updateButton).onPressed, isNotNull);
+
+    messenger.currentState!.removeCurrentSnackBar();
+    await tester.tap(find.text('Remove'));
+    await tester.pumpAndSettle();
+    backend.pending = Completer<String>();
+    await tester.tap(find.widgetWithText(TextButton, 'Remove').last);
+    await tester.pump();
+    expect(backend.called, 'removeRepo');
+    backend.pending!.complete('[]');
+    await tester.pumpAndSettle();
+    expect(find.text('No plugins'), findsOneWidget);
+    expect(find.text('Updated source'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 
   for (final size in [const Size(320, 700), const Size(800, 500)]) {
     testWidgets('plugins page opens from Settings and asks only for a GitHub link at $size', (tester) async {

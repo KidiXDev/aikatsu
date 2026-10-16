@@ -79,6 +79,9 @@ class _ShellState extends State<Shell> {
   void initState() {
     super.initState();
     DownloadNotifications.tapped.addListener(_showDownloads);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) checkPluginUpdatesOnOpen(context);
+    });
   }
 
   @override

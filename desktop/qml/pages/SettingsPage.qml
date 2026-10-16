@@ -258,6 +258,15 @@ Item {
                         onClicked: ApplicationWindow.window.openPlugins()
                     }
                 }
+                Row {
+                    label: "Check for plugin updates on startup"
+                    hint: "Updates are downloaded only when you choose."
+
+                    StyledSwitch {
+                        checked: root.s.autoCheckPluginUpdates === "true"
+                        onToggled: root.set("autoCheckPluginUpdates", checked)
+                    }
+                }
             }
 
             Section {

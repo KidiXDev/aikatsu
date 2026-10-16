@@ -30,7 +30,8 @@ ApplicationWindow {
     }
 
     function openPlugins(): void {
-        stack.push(pluginsPage);
+        if (stack.currentItem?.objectName !== "pluginsPage")
+            stack.push(pluginsPage);
     }
 
     function goTab(i: int): void {
@@ -77,7 +78,43 @@ ApplicationWindow {
     title: "Aikatsu"
     color: Theme.palette.surface
 
-    Component.onCompleted: Theme.mode = Api.setting("theme")
+    Component.onCompleted: {
+        Theme.mode = Api.setting("theme");
+        if (Api.setting("autoCheckPluginUpdates") === "true") {
+            Api.call("checkPluginUpdates", {}, repos => {
+                const count = repos.reduce((n, r) => n + (r.updates || 0), 0);
+                if (count > 0) {
+                    pluginUpdatesDialog.count = count;
+                    pluginUpdatesDialog.open();
+                }
+            });
+        }
+    }
+
+    StyledDialog {
+        id: pluginUpdatesDialog
+        objectName: "pluginUpdatesDialog"
+
+        property int count: 0
+        icon: "download"
+        title: `${count} plugin update${count === 1 ? "" : "s"} available`
+        text: "Open Plugins to review and download updates."
+        actions: [
+            TextButton {
+                type: TextButton.Text
+                text: "Later"
+                onClicked: pluginUpdatesDialog.close()
+            },
+            TextButton {
+                type: TextButton.Text
+                text: "View updates"
+                onClicked: {
+                    pluginUpdatesDialog.close();
+                    win.openPlugins();
+                }
+            }
+        ]
+    }
 
     // Dev aid: `aikatsu --screenshot out.png [--tab N | --plugins]` renders, saves, quits.
     Timer {
