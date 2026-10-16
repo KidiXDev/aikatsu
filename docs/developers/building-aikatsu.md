@@ -118,4 +118,6 @@ cargo test -p aikatsu-core live_ -- --ignored --nocapture
 
 The root `Cargo.toml` supplies the desktop, core, and mobile Rust package version. Keep `mobile/pubspec.yaml` and the workspace entries in `Cargo.lock` in step.
 
+The default sync server is compiled in from the `AIKATSU_SYNC_SERVER` environment variable, which the release workflow sets from a repository secret. Builds without it have no default: users enter a server in Settings before signing in. Set it locally to test against your own server, for example `AIKATSU_SYNC_SERVER=http://localhost:3000 cargo run`.
+
 Pushing a `v` version tag starts the existing release workflow. Android release builds use the tag for their visible version and the workflow run number for the build number. Signing secrets are required for published Android releases. Check the workflow before changing release behavior, especially signing and APK ABI handling.

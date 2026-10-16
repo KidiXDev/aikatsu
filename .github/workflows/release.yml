@@ -18,6 +18,8 @@ env:
   AQT_SOURCE: git+https://github.com/miurahr/aqtinstall.git@076e1659807d0b362a3ed684d54c2e9c775eb9c7
   # The Flutter the Android app is developed and tested on.
   FLUTTER_VERSION: "3.47.1"
+  # Default sync server compiled into the apps (core/src/sync.rs). Without it, users must enter one.
+  AIKATSU_SYNC_SERVER: ${{ secrets.AIKATSU_SYNC_SERVER }}
 
 jobs:
   linux:

@@ -8,8 +8,8 @@ use serde_json::{Value, json};
 use std::sync::Mutex;
 use std::time::Duration;
 
-// Placeholder: replace with the hosted instance before release.
-const DEFAULT_SERVER: &str = "https://sync.example.com";
+// Set at build time; release builds get it from the AIKATSU_SYNC_SERVER secret.
+const DEFAULT_SERVER: Option<&str> = option_env!("AIKATSU_SYNC_SERVER");
 
 pub const SYNCED_SETTINGS: [&str; 7] =
     ["autoplay", "autoSkip", "quality", "disabledSources", "autoCheckPluginUpdates", "tmdbKey", plugins::REPOS_SETTING];
@@ -50,7 +50,7 @@ fn stored(key: &str) -> String {
 }
 
 fn server() -> String {
-    Some(stored(SERVER)).filter(|s| !s.is_empty()).unwrap_or_else(|| DEFAULT_SERVER.into())
+    Some(stored(SERVER)).filter(|s| !s.is_empty()).or_else(|| DEFAULT_SERVER.and_then(|s| normalize(s).ok())).unwrap_or_default()
 }
 
 fn signed_in() -> bool {
@@ -105,6 +105,7 @@ pub fn set_server(input: &str) -> Result<Value> {
 
 pub async fn sign_in(username: &str, password: &str, create: bool) -> Result<Value> {
     let server = server();
+    ensure!(!server.is_empty(), "Choose a server first.");
     let path = if create { "/auth/register" } else { "/auth/login" };
     let r = post(&server, path, "", &json!({ "username": username, "password": password, "device": std::env::consts::OS })).await?;
     let token = r["token"].as_str().context("Unexpected response from the server")?;
