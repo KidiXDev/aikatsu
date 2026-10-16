@@ -1,11 +1,14 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Dialogs
+import QtCore
 import Aikatsu
 
 // Ctrl+L: the end of this run's log file.
 Drawer {
     id: root
+    property bool exporting: false
 
     edge: Qt.BottomEdge
     width: parent.width
@@ -16,6 +19,27 @@ Drawer {
         const result = Api.get("logTail");
         logText.text = result?.error ?? result;
         Qt.callLater(() => flick.contentY = Math.max(0, flick.contentHeight - flick.height));
+    }
+
+    FileDialog {
+        id: exportDialog
+
+        title: "Export log"
+        fileMode: FileDialog.SaveFile
+        nameFilters: ["Text files (*.txt)"]
+        defaultSuffix: "txt"
+        currentFolder: StandardPaths.writableLocation(StandardPaths.DownloadLocation)
+        selectedFile: currentFolder + "/aikatsu-log.txt"
+        onAccepted: {
+            root.exporting = true;
+            Api.call("exportLog", {path: Api.get("localPath", {url: selectedFile.toString()})}, () => {
+                root.exporting = false;
+                ApplicationWindow.window.toast("Log saved. Attach the .txt file to your GitHub issue.");
+            }, error => {
+                root.exporting = false;
+                ApplicationWindow.window.toast("Couldn't export log: " + error);
+            });
+        }
     }
 
     background: StyledRect {
@@ -39,6 +63,15 @@ Drawer {
                 Layout.fillWidth: true
                 text: "Logs"
                 font: Theme.font.title.medium
+            }
+            IconButton {
+                type: IconButton.Text
+                icon: "save_alt"
+                disabled: root.exporting
+                Accessible.name: "Export log"
+                ToolTip.visible: hovered
+                ToolTip.text: "Export log"
+                onClicked: exportDialog.open()
             }
             IconButton {
                 type: IconButton.Text

@@ -4,7 +4,7 @@
 use crate::push;
 use crate::sources::{self, SourceId};
 use crate::{anime4k, db, download, meta, proxy};
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use serde_json::{Value, json};
 
 fn s<'a>(args: &'a Value, key: &str) -> &'a str {
@@ -52,6 +52,12 @@ pub fn enabled_sources() -> Vec<SourceId> {
 
 pub async fn call(method: &str, args: Value) -> Result<Value> {
     match method {
+        "exportLog" => {
+            let path = s(&args, "path");
+            anyhow::ensure!(!path.is_empty(), "choose a file for the exported log");
+            tokio::fs::write(path, crate::log_report()?).await.with_context(|| format!("couldn't export log to {path}"))?;
+            Ok(Value::Null)
+        }
         "search" => {
             let query = s(&args, "query").to_owned();
             sources::search_all(&query, &enabled_sources(), |src, res| {
@@ -225,7 +231,28 @@ pub fn get(method: &str, args: Value) -> Result<Value> {
         }
         "localPath" => Ok(json!(url::Url::parse(s(&args, "url")).ok().and_then(|u| u.to_file_path().ok()).map(|p| p.display().to_string()).unwrap_or_default())),
         "logTail" => Ok(Value::String(crate::log_tail(400)?)),
+        "logReport" => Ok(Value::String(crate::log_report()?)),
         "version" => Ok(json!(env!("CARGO_PKG_VERSION"))),
         _ => bail!("unknown method {method}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn export_log_report_and_write_errors() {
+        let dir = std::env::temp_dir().join(format!("aikatsu-export-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("aikatsu-log.txt");
+        let report = get("logReport", Value::Null).unwrap();
+        call("exportLog", json!({"path": path})).await.unwrap();
+        let contents = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(contents, report.as_str().unwrap());
+        assert!(contents.starts_with(&format!("Aikatsu {}\nPlatform: ", env!("CARGO_PKG_VERSION"))));
+        assert!(call("exportLog", json!({"path": ""})).await.is_err());
+        assert!(call("exportLog", json!({"path": dir})).await.unwrap_err().to_string().contains("couldn't export log"));
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }

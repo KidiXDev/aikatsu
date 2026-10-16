@@ -99,6 +99,10 @@ pub fn log_tail(lines: usize) -> anyhow::Result<String> {
     read_log_tail(&log_path(), lines)
 }
 
+pub fn log_report() -> anyhow::Result<String> {
+    Ok(format!("Aikatsu {}\nPlatform: {} ({})\n\n{}\n", env!("CARGO_PKG_VERSION"), std::env::consts::OS, std::env::consts::ARCH, log_tail(usize::MAX)?))
+}
+
 fn read_log_tail(path: &std::path::Path, lines: usize) -> anyhow::Result<String> {
     use anyhow::Context;
     let text = match std::fs::read_to_string(path) {
@@ -125,6 +129,9 @@ mod tests {
         std::fs::write(&path, "first\nsecond\nlast\n").unwrap();
         assert_eq!(read_log_tail(&path, 2).unwrap(), "second\nlast");
         assert_eq!(read_log_tail(&path, 0).unwrap(), "");
+        let full = (0..450).map(|i| format!("entry {i}")).collect::<Vec<_>>().join("\n");
+        std::fs::write(&path, &full).unwrap();
+        assert_eq!(read_log_tail(&path, usize::MAX).unwrap(), full);
         assert!(read_log_tail(&dir, 400).unwrap_err().to_string().contains("couldn't read log"));
         std::fs::remove_dir_all(dir).unwrap();
     }

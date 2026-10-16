@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
 import 'package:aikatsu/pages/settings.dart';
 import 'package:aikatsu/src/rust/frb_generated.dart';
 import 'package:aikatsu/theme.dart';
+import 'package:aikatsu/widgets.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class _Backend extends Fake implements RustLibApi {
@@ -13,7 +16,7 @@ class _Backend extends Fake implements RustLibApi {
 
   @override
   String crateApiGet({required String method, required String args}) {
-    if (method == 'logTail' && fail) throw 'Permission denied reading the log';
+    if ((method == 'logTail' || method == 'logReport') && fail) throw 'Permission denied reading the log';
     return jsonEncode(switch (method) {
       'settings' => {'theme': 'system', 'anime4k': 'off', 'debug': 'false', 'tmdbKey': '', 'disabledSources': ''},
       'sources' || 'anime4kModes' => [],
@@ -21,6 +24,7 @@ class _Backend extends Fake implements RustLibApi {
       'downloadDir' => '/downloads',
       'version' => 'test',
       'logTail' => logs,
+      'logReport' => 'Aikatsu test\nPlatform: android\n\n$logs\n',
       _ => throw StateError('Unexpected method: $method'),
     });
   }
@@ -36,6 +40,17 @@ void main() {
 
   for (final size in [const Size(320, 700), const Size(800, 500)]) {
     testWidgets('logs stay wide and refresh empty, error, and populated states at $size', (tester) async {
+      const channel = MethodChannel('io.github.kidixdev.aikatsu/logs');
+      final exported = <String>[];
+      Completer<bool>? pendingExport;
+      bool failExport = false;
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
+        expect(call.method, 'exportLog');
+        exported.add((call.arguments as Map)['contents'] as String);
+        if (failExport) throw PlatformException(code: 'EXPORT_FAILED', message: 'Disk full');
+        return pendingExport == null ? true : await pendingExport.future;
+      });
+      addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, null));
       tester.view.physicalSize = size;
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
@@ -43,6 +58,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           theme: buildTheme(size.width == 320 ? Brightness.light : Brightness.dark),
+          scaffoldMessengerKey: messenger,
           builder: (context, child) => MediaQuery(
             data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(size.width == 320 ? 1 : 2)),
             child: child!,
@@ -69,6 +85,29 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('short log entry'), findsOneWidget);
       checkWidth();
+
+      backend.logs = 'full session log\nincluding earlier entries';
+      await tester.tap(find.byTooltip('Export log'));
+      await tester.pumpAndSettle();
+      expect(exported.single, contains('full session log\nincluding earlier entries'));
+      expect(find.text('Log saved. Attach the .txt file to your GitHub issue.'), findsOneWidget);
+
+      pendingExport = Completer<bool>();
+      await tester.tap(find.byTooltip('Export log'));
+      await tester.pump();
+      final exportButton = find.ancestor(of: find.byTooltip('Export log'), matching: find.byType(IconButton));
+      expect(tester.widget<IconButton>(exportButton).onPressed, isNull);
+      pendingExport.complete(false);
+      await tester.pumpAndSettle();
+      expect(tester.widget<IconButton>(exportButton).onPressed, isNotNull);
+      pendingExport = null;
+
+      failExport = true;
+      await tester.tap(find.byTooltip('Export log'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining("Couldn't export log:"), findsOneWidget);
+      expect(tester.widget<IconButton>(exportButton).onPressed, isNotNull);
+      failExport = false;
 
       backend.fail = true;
       await tester.tap(find.byTooltip('Refresh logs'));

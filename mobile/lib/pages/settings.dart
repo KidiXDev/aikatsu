@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../api.dart';
 import '../widgets.dart';
@@ -39,6 +40,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   void _showLogs() {
     String logs = '', error = '';
+    bool exporting = false;
     void load() {
       try {
         logs = Api.get('logTail') as String;
@@ -68,6 +70,24 @@ class _SettingsPageState extends State<SettingsPage> {
                   child: Row(
                     children: [
                       Expanded(child: Text('Logs', style: Theme.of(context).textTheme.titleLarge)),
+                      IconButton(
+                        tooltip: 'Export log',
+                        icon: const Icon(Icons.save_alt_rounded),
+                        onPressed: exporting
+                            ? null
+                            : () async {
+                                setSheetState(() => exporting = true);
+                                try {
+                                  final saved = await const MethodChannel('io.github.kidixdev.aikatsu/logs')
+                                      .invokeMethod<bool>('exportLog', {'contents': Api.get('logReport')});
+                                  if (context.mounted && saved == true) toast('Log saved. Attach the .txt file to your GitHub issue.');
+                                } catch (e) {
+                                  if (context.mounted) toast("Couldn't export log: $e");
+                                } finally {
+                                  if (context.mounted) setSheetState(() => exporting = false);
+                                }
+                              },
+                      ),
                       IconButton(tooltip: 'Refresh logs', icon: const Icon(Icons.refresh_rounded), onPressed: () => setSheetState(load)),
                       IconButton(tooltip: 'Close logs', icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context)),
                     ],
