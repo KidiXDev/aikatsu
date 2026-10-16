@@ -343,11 +343,18 @@ async fn download(repo: &str, e: &Entry, path: &Path) -> Result<()> {
 async fn read_url(url: &str) -> Result<String> {
     let u = url::Url::parse(url).with_context(|| format!("not a link: {url}"))?;
     match u.scheme() {
-        "https" => http::text("Plugin repo", http::PLAIN.get(url).header("User-Agent", http::API_UA).timeout(Duration::from_secs(20))).await,
+        "https" => http::text("Plugin repo", repo_request(u)).await,
         // A repo on disk, for developing plugins.
         "file" => Ok(tokio::fs::read_to_string(u.to_file_path().map_err(|_| anyhow!("not a file path: {url}"))?).await?),
         s => bail!("plugin repos are https:// links, not {s}://"),
     }
+}
+
+fn repo_request(mut url: url::Url) -> wreq::RequestBuilder {
+    // Raw GitHub files are CDN-cached; a check must see newly published indexes and scripts.
+    let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
+    url.query_pairs_mut().append_pair("_aikatsu", &nonce.to_string());
+    http::PLAIN.get(url.as_str()).header("User-Agent", http::API_UA).header("Cache-Control", "no-cache").timeout(Duration::from_secs(20))
 }
 
 async fn fetch_index(repo: &str) -> Result<Index> {
@@ -772,6 +779,19 @@ mod tests {
         assert!(find("test-repo/a").is_none() && !repo_dir(&url).exists());
         set_repo_urls(&before).unwrap();
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn repo_requests_bypass_cdn_cache_and_keep_query_parameters() {
+        let url = url::Url::parse("https://raw.githubusercontent.com/User/Repo/HEAD/index.json?token=example").unwrap();
+        let first = repo_request(url.clone()).build().unwrap();
+        let second = repo_request(url).build().unwrap();
+        let fresh = url::Url::parse(&first.uri().to_string()).unwrap();
+        assert_eq!(fresh.path(), "/User/Repo/HEAD/index.json");
+        assert!(fresh.query_pairs().any(|(k, v)| k == "token" && v == "example"));
+        assert!(fresh.query_pairs().any(|(k, v)| k == "_aikatsu" && !v.is_empty()));
+        assert_ne!(first.uri(), second.uri());
+        assert_eq!(first.headers()["cache-control"], "no-cache");
     }
 
     #[test]
