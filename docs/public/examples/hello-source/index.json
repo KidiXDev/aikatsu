@@ -1,0 +1,14 @@
+{
+  "id": "hello-source",
+  "name": "Hello Source",
+  "plugins": [
+    {
+      "key": "example",
+      "name": "Example",
+      "version": 1,
+      "api": 1,
+      "file": "sources/example.rhai",
+      "sha256": "56c23c722cb6f1fa9a408d7c9e4a1acfec5a3cd90ecc2445009bd300ba95725f"
+    }
+  ]
+}

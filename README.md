@@ -2,6 +2,10 @@
 
 Fast native app for watching anime with indonesian subs without ads or a browser, on desktop (Linux, Windows) and Android.
 
+## Documentation
+
+The [documentation site](https://kidixdev.github.io/aikatsu/) covers using the app, managing plugins, and building your own source. Its source lives in [`docs/`](./docs/index.md). To run it locally: `cd docs`, `npm ci`, then `npm run dev`. Changes to the docs on `main` deploy automatically to GitHub Pages. See [working on the docs](./docs/developers/docs-site.md) for builds and hosting.
+
 ## What it can do
 
 - **Search multiple sources at once.** Results appear as each source answers.
@@ -119,7 +123,8 @@ aikatsu --search <query> --open --play --screenshot out.png   # drive the UI and
 Set `XDG_DATA_HOME` to a scratch folder to keep test runs out of your real history.
 
 - `core/`: everything the apps share. A UI calls `api::call` / `api::get` (JSON in and out) and receives events.
-  - `core/src/sources/`: one file per source.
+  - `core/src/plugins.rs`: the plugin engine and repo management.
+  - `core/src/sources.rs`: source types and the search/playback contract.
   - `core/src/api.rs`: the method table both UIs call; a new feature starts here.
   - `core/src/proxy.rs`: local relay for the hosts mpv can't play directly.
 - `desktop/`: the Qt app.
