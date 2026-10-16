@@ -113,7 +113,7 @@ cd mobile && RUSTFLAGS='--cfg reqwest_unstable' flutter_rust_bridge_codegen gene
 
 ## For developers
 
-Pushing a tag like `v0.2.0` builds Windows, Linux and Android on GitHub Actions and publishes a release (tags with a `-`, like `v0.2.0-beta.1`, become pre-releases). Bump `version` in the root `Cargo.toml` first; the app's About line shows it. The APK is signed with the `ANDROID_KEYSTORE_B64` (base64 of the .jks), `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_ALIAS` repository secrets; a tag build fails without them, since an APK signed with another key can't update an installed one. Each run also keeps the Dart debug symbols as the `symbols-android` artifact (90 days, not published) for reading obfuscated crash traces with `flutter symbolize`.
+Pushing a tag like `v0.2.0` builds Windows, Linux and Android on GitHub Actions and publishes a release (tags with a `-`, like `v0.2.0-beta.1`, become pre-releases). Bump `version` in the root `Cargo.toml` first; the app's About line shows it. The APK is signed with the `ANDROID_KEYSTORE_B64` (base64 of the .jks), `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_ALIAS` repository secrets; a tag build fails without them, since an APK signed with another key can't update an installed one. The `AIKATSU_SYNC_SERVER` secret is the default sync server compiled into the apps; without it, users must enter their own. Each run also keeps the Dart debug symbols as the `symbols-android` artifact (90 days, not published) for reading obfuscated crash traces with `flutter symbolize`.
 
 ```sh
 cargo test --workspace                                    # offline tests
