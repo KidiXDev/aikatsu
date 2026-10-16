@@ -364,7 +364,7 @@ FocusScope {
             break;
         case Qt.Key_Escape:
             if (ApplicationWindow.window.visibility === Window.FullScreen)
-                ApplicationWindow.window.showNormal();
+                ApplicationWindow.window.toggleFullScreen();
             else
                 exit();
             break;

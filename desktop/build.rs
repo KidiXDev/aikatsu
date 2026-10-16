@@ -94,7 +94,7 @@ fn main() {
 
     let mut builder = CxxQtBuilder::new_qml_module(QmlModule::new("Aikatsu").qml_files(qml).depend("QtQuick"))
         .files(["src/bridge.rs"])
-        .cpp_files(["cpp/mpvitem.h", "cpp/mpvitem.cpp"])
+        .cpp_files(["cpp/mpvitem.h", "cpp/mpvitem.cpp", "cpp/windowstate.h"])
         .qt_module("Quick")
         .qt_module("OpenGL")
         .qt_module("Network")

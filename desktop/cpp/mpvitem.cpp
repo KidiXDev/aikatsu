@@ -1,4 +1,5 @@
 #include "mpvitem.h"
+#include "windowstate.h"
 
 #include <QtGui/QGuiApplication>
 #include <QtGui/QIcon>
@@ -264,6 +265,10 @@ public:
 void aikatsu_engine_init(QQmlApplicationEngine &engine) {
     static CachingNamFactory factory;
     engine.setNetworkAccessManagerFactory(&factory);
+    QObject::connect(&engine, &QQmlApplicationEngine::objectCreated, &engine, [](QObject *object, const QUrl &) {
+        if (auto *window = qobject_cast<QWindow *>(object))
+            new WindowState(window, QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation) + "/window.ini");
+    });
 }
 
 void aikatsu_init() {

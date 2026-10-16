@@ -10,6 +10,12 @@ ApplicationWindow {
 
     property int tab: 0
     readonly property bool playing: playerLoader.active
+    property int windowedVisibility: Window.Windowed
+
+    onVisibilityChanged: {
+        if (visibility === Window.Windowed || visibility === Window.Maximized)
+            windowedVisibility = visibility;
+    }
 
     // Bumped whenever watch history changes so pages can refresh.
     property int historyRevision: 0
@@ -46,13 +52,13 @@ ApplicationWindow {
 
     function closePlayer(): void {
         if (visibility === Window.FullScreen)
-            showNormal();
+            toggleFullScreen();
         playerLoader.active = false;
         historyRevision++;
     }
 
     function toggleFullScreen(): void {
-        visibility = visibility === Window.FullScreen ? Window.Windowed : Window.FullScreen;
+        visibility = visibility === Window.FullScreen ? windowedVisibility : Window.FullScreen;
     }
 
     function toast(message: string): void {
@@ -63,7 +69,7 @@ ApplicationWindow {
     height: 840
     minimumWidth: 960
     minimumHeight: 600
-    visible: true
+    visible: false // shown after the saved window state is restored
     title: "Aikatsu"
     color: Theme.palette.surface
 
