@@ -11,6 +11,7 @@ The [documentation site](https://kidixdev.github.io/aikatsu/) covers using the a
 - **Search multiple sources at once.** Results appear as each source answers.
 - **Plugin updates on your terms.** Sources come from [Kyoko](https://github.com/KidiXDev/kyoko) and other repos you add in Settings. Startup checks announce available updates; download them from the Plugins page when you choose. Automatic checks can be disabled in Settings.
 - **Continue watching.** The home screen shows what you were watching and the episode you're up to. Click once to carry on from the exact minute.
+- **Sync between devices.** Sign in, and your history and settings follow you between your phone and computer. Uses Aikatsu's sync server, or [run your own](https://kidixdev.github.io/aikatsu/guide/self-hosting) with Docker.
 - **A proper video player.**
   - Picks a quality for you (or remembers the one you chose), like YouTube.
   - Skips openings and endings, automatically or with a button.
