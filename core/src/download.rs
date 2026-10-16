@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncSeekExt, AsyncWriteExt, BufReader};
 use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
 
@@ -358,8 +358,9 @@ fn part_path(dest: &Path, i: u64) -> PathBuf {
 async fn part(f: &Fetcher, url: &str, dest: &Path, i: u64, from: u64, to: u64, meter: &Meter, progress: &(impl Fn(u64, u64, f64) + Sync)) -> Result<()> {
     let path = part_path(dest, i);
     let have = tokio::fs::metadata(&path).await.map(|m| m.len()).unwrap_or(0).min(to - from + 1);
-    let mut file = tokio::fs::OpenOptions::new().create(true).append(true).open(&path).await?;
+    let mut file = tokio::fs::OpenOptions::new().create(true).write(true).truncate(false).open(&path).await?;
     file.set_len(have).await?;
+    file.seek(std::io::SeekFrom::Start(have)).await?;
     meter.done.fetch_add(have, Ordering::Relaxed);
     let mut current = from + have;
     let mut stale = 0;
@@ -639,6 +640,41 @@ pub fn episode_path(base: &Path, title: &str, scraped_name: &str, meta: &Meta, e
 mod tests {
     use super::*;
     use crate::meta::SeasonRange;
+
+    #[tokio::test]
+    async fn parts_start_resume_and_trim() {
+        use axum::{Router, http::{HeaderMap, StatusCode}, routing::get};
+
+        const DATA: &[u8] = b"video data";
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let app = Router::new().route("/video", get(|headers: HeaderMap| async move {
+            let range = headers["range"].to_str().unwrap().strip_prefix("bytes=").unwrap();
+            let (from, to) = range.split_once('-').unwrap();
+            let from: usize = from.parse().unwrap();
+            let to: usize = to.parse().unwrap();
+            (StatusCode::PARTIAL_CONTENT, &DATA[from..=to])
+        }));
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let dir = std::env::temp_dir().join(format!("aikatsu-parts-{}-{}", std::process::id(), address.port()));
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        let dest = dir.join("episode.mp4");
+        let path = part_path(&dest, 0);
+        for seed in [None, Some(&DATA[..3]), Some(DATA), Some(b"video data stale".as_slice())] {
+            if let Some(seed) = seed {
+                tokio::fs::write(&path, seed).await.unwrap();
+            }
+            let meter = Meter { done: AtomicU64::new(0), total: DATA.len() as u64, started: Instant::now() };
+            part(&Fetcher::Plain(String::new()), &format!("http://{address}/video"), &dest, 0, 0, meter.total - 1, &meter, &|_, _, _| {})
+                .await
+                .unwrap();
+            assert_eq!(tokio::fs::read(&path).await.unwrap(), DATA);
+            assert_eq!(meter.done.load(Ordering::Relaxed), meter.total);
+            tokio::fs::remove_file(&path).await.unwrap();
+        }
+        server.abort();
+        tokio::fs::remove_dir(&dir).await.unwrap();
+    }
 
     #[test]
     fn plex_paths() {
