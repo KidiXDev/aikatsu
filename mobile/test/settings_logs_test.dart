@@ -19,7 +19,23 @@ class _Backend extends Fake implements RustLibApi {
     if ((method == 'logTail' || method == 'logReport') && fail) throw 'Permission denied reading the log';
     return jsonEncode(switch (method) {
       'settings' => {'theme': 'system', 'anime4k': 'off', 'debug': 'false', 'tmdbKey': '', 'disabledSources': ''},
-      'sources' || 'anime4kModes' => [],
+      'anime4kModes' => [],
+      'sources' => [
+        {'key': 'someone/a', 'name': 'A source', 'repo': "Someone's repo", 'version': 1},
+      ],
+      'repos' => [
+        {
+          'url': 'https://github.com/someone/repo',
+          'short': 'someone/repo',
+          'official': false,
+          'name': 'Someone\'s repo with a long name',
+          'error': null,
+          'plugins': [
+            {'key': 'someone/a', 'name': 'A source', 'version': 1, 'compatible': true, 'loaded': true},
+            {'key': 'someone/b', 'name': 'B source', 'version': 2, 'compatible': false, 'loaded': false},
+          ],
+        },
+      ],
       'anime4kInstalled' => true,
       'downloadDir' => '/downloads',
       'version' => 'test',
@@ -37,6 +53,41 @@ void main() {
     RustLib.initMock(api: backend);
   });
   tearDown(RustLib.dispose);
+
+  for (final size in [const Size(320, 700), const Size(800, 500)]) {
+    testWidgets('plugins page opens from Settings and asks only for a GitHub link at $size', (tester) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildTheme(size.width == 320 ? Brightness.light : Brightness.dark),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(size.width == 320 ? 1 : 2)),
+            child: child!,
+          ),
+          home: const Scaffold(body: SettingsPage()),
+        ),
+      );
+      await tester.scrollUntilVisible(find.text('1 source'), 300, scrollable: find.byType(Scrollable).first);
+      await tester.ensureVisible(find.text('1 source'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('1 source'));
+      await tester.pumpAndSettle();
+
+      expect(find.widgetWithText(AppBar, 'Plugins'), findsOneWidget);
+      expect(find.widgetWithText(SwitchListTile, 'A source'), findsOneWidget);
+      expect(find.text('Needs a newer Aikatsu'), findsOneWidget);
+      expect(find.text('someone/repo  ·  Third-party'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      await tester.tap(find.text('Add'));
+      await tester.pumpAndSettle();
+      expect(find.text('https://github.com/user/repo'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   for (final size in [const Size(320, 700), const Size(800, 500)]) {
     testWidgets('logs stay wide and refresh empty, error, and populated states at $size', (tester) async {

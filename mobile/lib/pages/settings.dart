@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -13,19 +15,66 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   Map<String, dynamic> _s = Api.get('settings');
-  final List<dynamic> _sources = Api.get('sources');
+  StreamSubscription<(String, dynamic)>? _pluginsSub;
   final List<dynamic> _modes = Api.get('anime4kModes');
   bool _shadersInstalled = Api.get('anime4kInstalled');
   bool _installingShaders = false;
 
+  @override
+  void initState() {
+    super.initState();
+    _pluginsSub = Api.pushed.listen((e) {
+      if (e.$1 == 'plugins' && mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _pluginsSub?.cancel();
+    super.dispose();
+  }
+
   List<String> get _disabled => '${_s['disabledSources']}'.split(',').map((x) => x.trim()).where((x) => x.isNotEmpty).toList();
+
+  String get _sourcesSummary {
+    final all = Api.get('sources') as List;
+    final on = all.where((p) => !_disabled.contains(p['key'])).length;
+    final noun = all.length == 1 ? 'source' : 'sources';
+    return all.isEmpty ? 'None installed' : (on == all.length ? '${all.length} $noun' : '$on of ${all.length} $noun on');
+  }
 
   void _set(String key, Object value) {
     Api.setSetting(key, value);
     setState(() => _s = Api.get('settings'));
   }
 
-  void _toggleSource(String key, bool on) => _set('disabledSources', [..._disabled.where((k) => k != key), if (!on) key].join(','));
+  String get _anime4kName => (_modes.firstWhere((m) => m['key'] == _s['anime4k'], orElse: () => null)?['name'] as String?) ?? 'Off';
+
+  Future<void> _pickAnime4k() async {
+    final current = '${_s['anime4k']}';
+    final key = await pickFrom(context, 'Sharpen video', [
+      ('Off', 'off', current.isEmpty || current == 'off'),
+      for (final m in _modes) (m['name'] as String, m['key'] as String, current == m['key']),
+    ]);
+    if (key != null) _set('anime4k', key);
+  }
+
+  /// One of a few values, splitting the row evenly so it fits exactly.
+  Widget _segments(String key, List<(String, String)> options) => Padding(
+    padding: const EdgeInsets.only(top: 10),
+    child: SegmentedButton<String>(
+      expandedInsets: EdgeInsets.zero,
+      showSelectedIcon: false,
+      segments: [for (final (value, label) in options) ButtonSegment(value: value, label: Text(label))],
+      selected: {'${_s[key]}'},
+      onSelectionChanged: (v) => _set(key, v.first),
+    ),
+  );
+
+  Future<void> _openPlugins() async {
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => const _PluginsPage()));
+    if (mounted) setState(() => _s = Api.get('settings'));
+  }
 
   Future<void> _installShaders() async {
     setState(() => _installingShaders = true);
@@ -124,7 +173,6 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final c = t.colorScheme;
-    final a4k = '${_s['anime4k']}';
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 110), // clearance for bottom nav
@@ -141,16 +189,7 @@ class _SettingsPageState extends State<SettingsPage> {
           children: [
             ListTile(
               title: const Text('Theme', style: TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Wrap(
-                  spacing: 8,
-                  children: [
-                    for (final (key, label) in [('system', 'System'), ('dark', 'Dark'), ('light', 'Light')])
-                      ChoiceChip(label: Text(label), selected: _s['theme'] == key, onSelected: (_) => _set('theme', key)),
-                  ],
-                ),
-              ),
+              subtitle: _segments('theme', const [('system', 'System'), ('dark', 'Dark'), ('light', 'Light')]),
             ),
           ],
         ),
@@ -162,58 +201,29 @@ class _SettingsPageState extends State<SettingsPage> {
           children: [
             SwitchListTile(
               title: const Text('Autoplay next episode', style: TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: const Text('Starts the next episode after a 5 second countdown.'),
               value: _s['autoplay'] == 'true',
               onChanged: (v) => _set('autoplay', v),
             ),
             SwitchListTile(
-              title: const Text('Skip intro & outro automatically', style: TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: const Text('Jumps past openings and endings when their timing is known.'),
+              title: const Text('Skip intro & outro', style: TextStyle(fontWeight: FontWeight.w600)),
               value: _s['autoSkip'] == 'true',
               onChanged: (v) => _set('autoSkip', v),
             ),
             ListTile(
               title: const Text('Preferred quality', style: TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Wrap(
-                  spacing: 8,
-                  children: [
-                    for (final q in ['best', '1080p', '720p', '480p'])
-                      ChoiceChip(
-                        label: Text(q == 'best' ? 'Auto' : q),
-                        selected: _s['quality'] == q,
-                        onSelected: (_) => _set('quality', q),
-                      ),
-                  ],
-                ),
-              ),
+              subtitle: _segments('quality', const [('best', 'Auto'), ('1080p', '1080p'), ('720p', '720p'), ('480p', '480p')]),
             ),
             ListTile(
               title: const Text('Sharpen video (Anime4K)', style: TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: Text(
-                "Makes lower-quality video look crisper on your phone's GPU."
-                '${_shadersInstalled ? '' : ' A small add-on downloads the first time you use it.'}',
-              ),
+              subtitle: Text(_anime4kName),
               trailing: _shadersInstalled
-                  ? null
+                  ? const Icon(Icons.arrow_forward_ios_rounded, size: 16)
                   : FilledButton.tonal(
                       onPressed: _installingShaders ? null : _installShaders,
-                      child: Text(_installingShaders ? 'Downloading…' : 'Download now'),
+                      child: Text(_installingShaders ? 'Downloading…' : 'Download'),
                     ),
+              onTap: _pickAnime4k,
             ),
-            for (final (key, name, description) in [
-              ('off', 'Off', ''),
-              for (final m in _modes) (m['key'] as String, m['name'] as String, m['description'] as String),
-            ])
-              ListTile(
-                contentPadding: const EdgeInsets.only(left: 32, right: 16),
-                dense: true,
-                title: Text(name),
-                subtitle: description.isEmpty ? null : Text(description),
-                trailing: (key == 'off' ? a4k.isEmpty || a4k == 'off' : a4k == key) ? Icon(Icons.check_rounded, color: c.primary) : null,
-                onTap: () => _set('anime4k', key),
-              ),
           ],
         ),
 
@@ -222,19 +232,12 @@ class _SettingsPageState extends State<SettingsPage> {
           title: 'Sources',
           icon: Icons.public_rounded,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
-              child: Text(
-                "Search looks through every site that's turned on. A site that keeps failing is skipped for 10 minutes.",
-                style: t.textTheme.bodySmall?.copyWith(color: c.onSurfaceVariant),
-              ),
+            ListTile(
+              title: const Text('Plugins', style: TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: Text(_sourcesSummary),
+              trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+              onTap: _openPlugins,
             ),
-            for (final s in _sources)
-              SwitchListTile(
-                title: Text(s['name'] as String, style: const TextStyle(fontWeight: FontWeight.w600)),
-                value: !_disabled.contains(s['key']),
-                onChanged: (v) => _toggleSource(s['key'] as String, v),
-              ),
           ],
         ),
 
@@ -247,20 +250,16 @@ class _SettingsPageState extends State<SettingsPage> {
               title: const Text('Download folder', style: TextStyle(fontWeight: FontWeight.w600)),
               subtitle: Text('${Api.get('downloadDir')}'),
             ),
-            const ListTile(
-              title: Text('HLS episodes are saved as .ts', style: TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: Text("Plays fine here and in most media players."),
-            ),
             ListTile(
-              title: const Text('TMDB API key (optional)', style: TextStyle(fontWeight: FontWeight.w600)),
+              title: const Text('TMDB API key', style: TextStyle(fontWeight: FontWeight.w600)),
               subtitle: Padding(
                 padding: const EdgeInsets.only(top: 6),
                 child: TextFormField(
                   initialValue: '${_s['tmdbKey']}',
                   obscureText: true,
                   decoration: const InputDecoration(
-                    hintText: 'API key',
-                    helperText: 'Helps sort long-running shows into the right season folders.',
+                    hintText: 'Optional',
+                    helperText: 'Sorts long shows into season folders.',
                   ),
                   onChanged: (v) => Api.setSetting('tmdbKey', v.trim()),
                 ),
@@ -276,19 +275,17 @@ class _SettingsPageState extends State<SettingsPage> {
           children: [
             SwitchListTile(
               title: const Text('Debug logging', style: TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: const Text('Extra detail for troubleshooting, after a restart.'),
+              subtitle: const Text('Applies after a restart.'),
               value: _s['debug'] == 'true',
               onChanged: (v) => _set('debug', v),
             ),
             ListTile(
               title: const Text('Logs', style: TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: const Text('What the app has been doing, for bug reports.'),
               trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
               onTap: _showLogs,
             ),
             ListTile(
-              title: const Text('Cached data', style: TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: const Text('Kept for a few days so pages open faster.'),
+              title: const Text('Cache', style: TextStyle(fontWeight: FontWeight.w600)),
               trailing: TextButton(
                 onPressed: () {
                   Api.get('clearCache');
@@ -321,6 +318,206 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 }
 
+/// Plugin repos and the sources each brings, opened from Settings.
+class _PluginsPage extends StatefulWidget {
+  const _PluginsPage();
+
+  @override
+  State<_PluginsPage> createState() => _PluginsPageState();
+}
+
+class _PluginsPageState extends State<_PluginsPage> {
+  List<dynamic> _repos = Api.get('repos');
+  bool _syncing = false;
+  StreamSubscription<(String, dynamic)>? _sub;
+
+  @override
+  void initState() {
+    super.initState();
+    _sub = Api.pushed.listen((e) {
+      if (e.$1 == 'plugins' && mounted) _refresh();
+    });
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  void _refresh() => setState(() => _repos = Api.get('repos'));
+
+  List<String> get _disabled => Api.setting('disabledSources').split(',').map((x) => x.trim()).where((x) => x.isNotEmpty).toList();
+
+  void _toggle(String key, bool on) {
+    Api.setSetting('disabledSources', [..._disabled.where((k) => k != key), if (!on) key].join(','));
+    setState(() {});
+  }
+
+  Future<void> _checkUpdates() async {
+    setState(() => _syncing = true);
+    try {
+      final list = await Api.call('syncPlugins') as List;
+      _repos = list;
+      toast(list.any((r) => r['error'] != null) ? "Some repos couldn't update" : 'Plugins are up to date');
+    } catch (e) {
+      toast('$e');
+    }
+    if (mounted) setState(() => _syncing = false);
+  }
+
+  /// Asks for a GitHub link and returns what that repo holds; nothing is added yet.
+  Future<Map<String, dynamic>?> _askRepo() {
+    String url = '', error = '';
+    bool busy = false;
+    return showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          Future<void> check() async {
+            if (url.trim().isEmpty || busy) return;
+            setDialogState(() {
+              busy = true;
+              error = '';
+            });
+            try {
+              final preview = await Api.call('previewRepo', {'url': url.trim()});
+              if (context.mounted) Navigator.pop(context, Map<String, dynamic>.from(preview));
+            } catch (e) {
+              if (context.mounted) {
+                setDialogState(() {
+                  busy = false;
+                  error = '$e';
+                });
+              }
+            }
+          }
+
+          return AlertDialog(
+            title: const Text('Add plugins'),
+            content: TextField(
+              autofocus: true,
+              keyboardType: TextInputType.url,
+              decoration: InputDecoration(hintText: 'https://github.com/user/repo', errorText: error.isEmpty ? null : error, errorMaxLines: 3),
+              onChanged: (v) => url = v,
+              onSubmitted: (_) => check(),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+              TextButton(onPressed: busy ? null : check, child: Text(busy ? 'Checking…' : 'Add')),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// Kyoko goes straight in; any other repo asks for trust first.
+  Future<void> _add() async {
+    final preview = await _askRepo();
+    if (preview == null || !mounted) return;
+    if (preview['official'] != true) {
+      final names = [for (final p in preview['plugins'] as List) p['name']].join(', ');
+      final ok = await confirm(
+        context,
+        'Trust this repo?',
+        '${preview['short']} can see what you search and watch, open any website, and choose the videos you play. '
+            'Only add repos you trust.${names.isEmpty ? '' : '\n\nAdds $names'}',
+        'Trust and add',
+      );
+      if (!ok) return;
+    }
+    await _install(preview['url'] as String, preview['name'] as String);
+  }
+
+  Future<void> _install(String url, String name) async {
+    try {
+      await Api.call('addRepo', {'url': url});
+      toast('Added $name');
+    } catch (e) {
+      toast('$e');
+    }
+    if (mounted) _refresh();
+  }
+
+  Future<void> _remove(Map<String, dynamic> repo) async {
+    if (!await confirm(context, 'Remove ${repo['name']}?', 'Its sources will be removed from search.', 'Remove')) return;
+    Api.get('removeRepo', {'url': repo['url']});
+    if (mounted) _refresh();
+  }
+
+  void _addKyoko() => _install(Api.get('officialRepo') as String, 'Kyoko');
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final c = t.colorScheme;
+    const bold = TextStyle(fontWeight: FontWeight.w600);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Plugins'),
+        actions: [
+          IconButton(
+            tooltip: 'Check for updates',
+            onPressed: _syncing ? null : _checkUpdates,
+            icon: _syncing
+                ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.refresh_rounded),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: FilledButton.tonalIcon(onPressed: _add, icon: const Icon(Icons.add_rounded), label: const Text('Add')),
+          ),
+        ],
+      ),
+      body: _repos.isEmpty
+          ? EmptyState(
+              face: '(・・ )?',
+              title: 'No plugins',
+              message: 'Search needs at least one.',
+              action: FilledButton.tonal(onPressed: _addKyoko, child: const Text('Add Kyoko')),
+            )
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+              children: [
+                for (final repo in _repos)
+                  _SettingsGroup(
+                    title: repo['name'] as String,
+                    icon: repo['official'] == true ? Icons.verified_rounded : Icons.extension_rounded,
+                    children: [
+                      for (final p in repo['plugins'] as List)
+                        p['loaded'] == true
+                            ? SwitchListTile(
+                                title: Text(p['name'] as String, style: bold),
+                                value: !_disabled.contains(p['key']),
+                                onChanged: (v) => _toggle(p['key'] as String, v),
+                              )
+                            : ListTile(
+                                title: Text(p['name'] as String, style: bold),
+                                subtitle: Text(p['compatible'] == true ? "Couldn't load" : 'Needs a newer Aikatsu'),
+                              ),
+                      ListTile(
+                        title: Text(
+                          repo['error'] != null ? "Couldn't update" : '${repo['short']}${repo['official'] == true ? '' : '  ·  Third-party'}',
+                          style: t.textTheme.bodySmall?.copyWith(color: repo['error'] != null ? c.error : c.onSurfaceVariant),
+                        ),
+                        subtitle: repo['error'] != null ? Text('${repo['error']}', maxLines: 2, overflow: TextOverflow.ellipsis) : null,
+                        trailing: TextButton(
+                          style: TextButton.styleFrom(foregroundColor: c.error),
+                          onPressed: () => _remove(Map<String, dynamic>.from(repo)),
+                          child: const Text('Remove'),
+                        ),
+                      ),
+                    ],
+                  ),
+                if (!_repos.any((r) => r['official'] == true)) Center(child: TextButton(onPressed: _addKyoko, child: const Text('Add Kyoko'))),
+              ],
+            ),
+    );
+  }
+}
+
 /// A cozy grouped card for settings sections with an icon badge header.
 class _SettingsGroup extends StatelessWidget {
   const _SettingsGroup({required this.title, required this.icon, required this.children});
@@ -349,9 +546,13 @@ class _SettingsGroup extends StatelessWidget {
                   child: Icon(icon, size: 16, color: c.primary),
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  title,
-                  style: TextStyle(fontFamily: 'GoogleSansFlex', fontWeight: FontWeight.w700, fontSize: 14, color: c.primary),
+                Flexible(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontFamily: 'GoogleSansFlex', fontWeight: FontWeight.w700, fontSize: 14, color: c.primary),
+                  ),
                 ),
               ],
             ),

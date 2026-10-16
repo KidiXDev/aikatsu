@@ -192,7 +192,7 @@ class _HomePageState extends State<HomePage> {
               child: EmptyState(
                 face: '٩(◕‿◕｡)۶',
                 title: 'All caught up!',
-                message: "You've finished everything you started. Check Recent to rewatch.",
+                message: 'Check Recent to rewatch.',
               ),
             )
           else if (shown.isNotEmpty)
@@ -208,7 +208,7 @@ class _HomePageState extends State<HomePage> {
                     title: s['title'],
                     subtitle: finished ? 'Finished ✓' : _episodeOf(s, ' / '),
                     image: s['cover'],
-                    badge: s['source'],
+                    badge: Api.sourceName(s['source']),
                     progress: finished ? -1 : _progressOf(s),
                     onTap: () => openAnime(context, _animeOf(s)),
                     onLongPress: () => _menu(s),
@@ -388,23 +388,21 @@ class _HomePageState extends State<HomePage> {
       clipBehavior: Clip.antiAlias,
       child: Stack(
         children: [
-          // Background artwork
-          if (banner.isNotEmpty) Positioned.fill(child: BlurredArt(banner, sigma: text([meta?['banner']]).isEmpty ? 22.0 : 4.0)),
-          // Warm solid gradient overlay to maintain absolute readability
+          // Background artwork under a warm solid gradient that keeps the text readable
           Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    c.surfaceContainer.withValues(alpha: 0.25),
-                    c.surfaceContainer.withValues(alpha: 0.85),
-                    c.surfaceContainer,
-                    c.surfaceContainer,
-                  ],
-                  stops: const [0.0, 0.5, 0.9, 1.0],
-                ),
+            child: BlurredArt(
+              banner,
+              sigma: text([meta?['banner']]).isEmpty ? 22.0 : 4.0,
+              overlay: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  c.surfaceContainer.withValues(alpha: 0.25),
+                  c.surfaceContainer.withValues(alpha: 0.85),
+                  c.surfaceContainer,
+                  c.surfaceContainer,
+                ],
+                stops: const [0.0, 0.5, 0.9, 1.0],
               ),
             ),
           ),
@@ -441,15 +439,15 @@ class _HomePageState extends State<HomePage> {
                         overflow: TextOverflow.ellipsis,
                         style: t.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700, height: 1.2),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        hero != null
-                            ? _episodeOf(hero, ' of ') + (genres.isEmpty ? '' : '  ·  $genres')
-                            : 'Watch anime with Indonesian subtitles and pick up right where you left off.',
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: t.textTheme.bodyMedium?.copyWith(color: c.onSurfaceVariant, fontSize: 13),
-                      ),
+                      if (hero != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          _episodeOf(hero, ' of ') + (genres.isEmpty ? '' : '  ·  $genres'),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: t.textTheme.bodyMedium?.copyWith(color: c.onSurfaceVariant, fontSize: 13),
+                        ),
+                      ],
                       const SizedBox(height: 14),
                       Wrap(
                         spacing: 10,

@@ -91,8 +91,20 @@ pub async fn blogger(blogger_url: &str) -> Result<String> {
     Err(last)
 }
 
+/// Wibufile video, which streams well only over HTTP/3. A host check, not a
+/// plugin's say: the proxy only ever opens these.
+pub fn is_wibufile(u: &str) -> bool {
+    url::Url::parse(u).is_ok_and(|u| {
+        matches!(u.scheme(), "http" | "https")
+            && u.host_str().is_some_and(|h| {
+                let h = h.to_lowercase();
+                h == "wibufile.com" || h.ends_with(".wibufile.com")
+            })
+    })
+}
+
 pub async fn wibufile(url: &str, referer: &str) -> Result<String> {
-    anyhow::ensure!(crate::sources::is_wibufile(url), "invalid Wibufile video URL");
+    anyhow::ensure!(is_wibufile(url), "invalid Wibufile video URL");
     let probe = H3.head(url).header("Referer", referer).timeout(std::time::Duration::from_secs(3)).send().await?;
     anyhow::ensure!(probe.status().is_success(), "wibufile HTTP/3 probe returned {}", probe.status());
     register(Upstream::H3 { url: url.to_owned(), referer: referer.to_owned() }).await
@@ -162,17 +174,26 @@ fn bad_gateway(e: impl std::fmt::Display) -> Response {
 
 #[cfg(test)]
 mod tests {
-    use crate::sources::{self, SourceId};
+    use crate::sources;
+
+    #[test]
+    fn wibufile_host_check() {
+        assert!(super::is_wibufile("https://s0.wibufile.com/video01/episode.mp4"));
+        assert!(!super::is_wibufile("https://wibufile.com.evil.example/episode.mp4"));
+    }
 
     /// `cargo test live_blogger -- --ignored --nocapture`: resolves Samehadaku's
     /// latest One Piece episode (Blogspot) and reads bytes through the proxy.
+    /// Fetches Kyoko's plugins first when none are installed.
     #[test]
     #[ignore]
     fn live_blogger_proxy() {
         crate::RT.block_on(async {
-            let found = sources::search(SourceId::Samehadaku, "one piece").await.unwrap();
-            let eps = sources::episodes(SourceId::Samehadaku, &found[0].url).await.unwrap();
-            let stream = sources::stream(SourceId::Samehadaku, &eps.last().unwrap().url, "best").await.unwrap();
+            crate::plugins::ensure_installed().await;
+            let src = "kyoko/samehadaku";
+            let found = sources::search(src, "one piece").await.unwrap();
+            let eps = sources::episodes(src, &found[0].url).await.unwrap();
+            let stream = sources::stream(src, &eps.last().unwrap().url, "best").await.unwrap();
             println!("stream: {}", &stream.url[..stream.url.len().min(90)]);
             assert!(crate::blogger::is_blogger(&stream.url), "expected a Blogger stream to exercise the proxy");
             let local = super::blogger(&stream.url).await.unwrap();

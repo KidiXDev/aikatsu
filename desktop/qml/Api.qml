@@ -43,6 +43,11 @@ QtObject {
         return "Something went wrong.";
     }
 
+    // The plugin's name for a source key; just the key's own part ("kyoko/x" → "x") when not installed.
+    function sourceName(key: string): string {
+        return get("sources").find(s => s.key === key)?.name ?? String(key ?? "").split("/").pop();
+    }
+
     function setting(key: string): string {
         return get("settings")[key] ?? "";
     }

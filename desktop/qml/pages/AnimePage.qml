@@ -273,7 +273,7 @@ Item {
                         spacing: Theme.spacing.small
 
                         Chip {
-                            text: root.anime.source
+                            text: Api.sourceName(root.anime.source)
                             icon: "public"
                             selected: true
                         }
@@ -489,8 +489,8 @@ Item {
                 Layout.topMargin: Theme.spacing.extraLarge
                 visible: !root.loading && root.episodes.length === 0
                 face: "(×﹏×)"
-                title: root.error ? `Couldn't load episodes from ${root.anime.source}` : "No episodes yet"
-                message: root.error ? Api.describe(root.error) : "This source hasn't listed any episodes for this series."
+                title: root.error ? `Couldn't load episodes from ${Api.sourceName(root.anime.source)}` : "No episodes yet"
+                message: root.error ? Api.describe(root.error) : ""
                 details: root.error
                 tint: Theme.palette.error
 

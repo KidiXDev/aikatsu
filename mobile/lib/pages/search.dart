@@ -34,7 +34,8 @@ class SearchPageState extends State<SearchPage> {
     super.initState();
     _sub = Api.pushed.listen((event) {
       final (kind, data) = event;
-      if (kind != 'searchResult' || !_status.containsKey(data['source'])) return;
+      // Any source while searching: on first launch the plugins arrive during the search.
+      if (kind != 'searchResult' || !_searching) return;
       setState(() {
         if (data['error'] != null) {
           _status[data['source']] = {'name': data['name'], 'state': 'error', 'count': 0, 'error': data['error']};
@@ -115,7 +116,7 @@ class SearchPageState extends State<SearchPage> {
                     onSubmitted: _search,
                     style: const TextStyle(fontFamily: 'GoogleSansFlex', fontSize: 15, fontWeight: FontWeight.w500),
                     decoration: InputDecoration(
-                      hintText: 'Search anime… (e.g. Frieren)',
+                      hintText: 'Search anime',
                       hintStyle: TextStyle(fontFamily: 'GoogleSansFlex', fontSize: 14.5, color: c.onSurfaceVariant.withValues(alpha: 0.65)),
                       border: InputBorder.none,
                       enabledBorder: InputBorder.none,
@@ -252,13 +253,12 @@ class SearchPageState extends State<SearchPage> {
             EmptyState(
               face: '(╥﹏╥)',
               title: 'Nothing found for “$_query”',
-              message: 'Try another spelling, or the Japanese title (e.g. Shingeki no Kyojin).',
+              message: 'Try another spelling or the Japanese title.',
             )
           else
             const EmptyState(
               face: '(◕‿◕✿)',
               title: 'What do you want to watch?',
-              message: 'Type a title and search. Results show up as each source answers.',
             ),
         ],
       ),

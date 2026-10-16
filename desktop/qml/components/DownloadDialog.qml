@@ -33,7 +33,6 @@ StyledDialog {
 
     icon: "download"
     title: "Download episodes"
-    text: `Episodes are saved to ${Api.get("downloadDir")}`
 
     RowLayout {
         spacing: Theme.spacing.small

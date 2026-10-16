@@ -36,8 +36,7 @@ class _PlayerPageState extends State<PlayerPage> {
   final _subs = <StreamSubscription<Object?>>[];
 
   late int _index = widget.index;
-  late final String _source =
-      (Api.get('sources') as List).firstWhere((s) => s['key'] == d.anime['source'], orElse: () => null)?['name'] ?? d.anime['source'];
+  late final String _source = Api.sourceName(d.anime['source']);
   String get _sourceName => _isLocal ? 'Downloaded' : _source;
 
   _Phase _phase = _Phase.resolving;
@@ -649,7 +648,7 @@ class _PlayerPageState extends State<PlayerPage> {
             ),
             if (_slow)
               Text(
-                'This is taking a while. $_sourceName can be slow, so keep waiting or go back and open the anime from another source.',
+                '$_sourceName is slow right now. Keep waiting or try another source.',
                 textAlign: TextAlign.center,
                 style: t.bodySmall?.copyWith(color: Colors.white70),
               ),

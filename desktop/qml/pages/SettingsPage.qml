@@ -10,23 +10,31 @@ Item {
     id: root
 
     property var s: Api.get("settings")
-    readonly property var sources: Api.get("sources")
+    property var sources: Api.get("sources")
     readonly property var disabled: (s.disabledSources || "").split(",").map(x => x.trim()).filter(x => x)
     readonly property var modes: Api.get("anime4kModes")
     property bool installingShaders
     property bool shadersInstalled: Api.get("anime4kInstalled")
     readonly property var tools: Api.get("tools")
+    readonly property int sourcesOn: sources.filter(x => !disabled.includes(x.key)).length
 
     function set(key: string, value: var): void {
         Api.setSetting(key, value);
         s = Api.get("settings");
     }
 
-    function toggleSource(key: string, on: bool): void {
-        const list = disabled.filter(k => k !== key);
-        if (!on)
-            list.push(key);
-        set("disabledSources", list.join(","));
+    // The Plugins page changes these while Settings stays loaded underneath.
+    Connections {
+        target: Api
+
+        function onPushed(kind: string, data: var): void {
+            if (kind === "plugins")
+                root.sources = Api.get("sources");
+        }
+
+        function onSettingChanged(key: string, value: string): void {
+            root.s = Api.get("settings");
+        }
     }
 
     component Section: StyledRect {
@@ -128,7 +136,6 @@ Item {
 
                 Row {
                     label: "Theme"
-                    hint: "Dark, light, or match your system."
 
                     Repeater {
                         model: [["system", "System"], ["dark", "Dark"], ["light", "Light"]]
@@ -151,7 +158,6 @@ Item {
 
                 Row {
                     label: "Autoplay next episode"
-                    hint: "Starts the next episode after a 5 second countdown."
 
                     StyledSwitch {
                         checked: root.s.autoplay === "true"
@@ -159,8 +165,7 @@ Item {
                     }
                 }
                 Row {
-                    label: "Skip intro & outro automatically"
-                    hint: "Jumps past openings and endings when their timing is known."
+                    label: "Skip intro & outro"
 
                     StyledSwitch {
                         checked: root.s.autoSkip === "true"
@@ -169,7 +174,6 @@ Item {
                 }
                 Row {
                     label: "Preferred quality"
-                    hint: "Also set from the player's quality menu."
 
                     Repeater {
                         model: ["best", "1080p", "720p", "480p"]
@@ -186,12 +190,11 @@ Item {
                 }
                 Row {
                     label: "Sharpen video (Anime4K)"
-                    hint: "Makes lower-quality video look crisper. Uses your graphics card. You can also change it from the player." + (root.shadersInstalled ? "" : " A small add-on downloads the first time you use it.")
 
                     TextButton {
                         visible: !root.shadersInstalled
                         type: TextButton.Tonal
-                        text: root.installingShaders ? "Downloading…" : "Download now"
+                        text: root.installingShaders ? "Downloading…" : "Download"
                         disabled: root.installingShaders
                         onClicked: {
                             root.installingShaders = true;
@@ -242,24 +245,17 @@ Item {
                 title: "Sources"
                 icon: "public"
 
-                StyledText {
-                    Layout.fillWidth: true
-                    text: "Search looks through every site that's turned on. A site that keeps failing is skipped for 10 minutes."
-                    color: Theme.palette.onSurfaceVariant
-                    wrapMode: Text.Wrap
-                }
-                Repeater {
-                    model: root.sources
+                Row {
+                    label: "Plugins"
+                    hint: {
+                        const n = root.sources.length, noun = n === 1 ? "source" : "sources";
+                        return n === 0 ? "None installed" : root.sourcesOn === n ? `${n} ${noun}` : `${root.sourcesOn} of ${n} ${noun} on`;
+                    }
 
-                    Row {
-                        required property var modelData
-
-                        label: modelData.name
-
-                        StyledSwitch {
-                            checked: !root.disabled.includes(parent.modelData.key)
-                            onToggled: root.toggleSource(parent.modelData.key, checked)
-                        }
+                    TextButton {
+                        type: TextButton.Tonal
+                        text: "Manage"
+                        onClicked: ApplicationWindow.window.openPlugins()
                     }
                 }
             }
@@ -287,15 +283,15 @@ Item {
                 Row {
                     visible: !root.tools.ffmpeg
                     label: "ffmpeg isn't installed"
-                    hint: "Some episodes will be saved as .ts files instead of .mp4. Install ffmpeg to fix this."
+                    hint: "Some episodes save as .ts instead of .mp4."
                 }
                 Row {
-                    label: "TMDB API key (optional)"
-                    hint: "Helps sort long-running shows into the right season folders."
+                    label: "TMDB API key"
+                    hint: "Sorts long shows into season folders."
 
                     StyledTextField {
                         Layout.preferredWidth: 260
-                        placeholderText: "API key"
+                        placeholderText: "Optional"
                         text: root.s.tmdbKey
                         echoMode: TextInput.Password
                         onEditingFinished: root.set("tmdbKey", text)
@@ -309,7 +305,6 @@ Item {
 
                 Row {
                     label: "Discord status"
-                    hint: "Show what you're watching on your Discord profile."
 
                     StyledSwitch {
                         checked: root.s.discord === "true"
@@ -324,7 +319,7 @@ Item {
                 }
                 Row {
                     label: "Debug logging"
-                    hint: "Extra detail for troubleshooting, after a restart. Press Ctrl+L to see the logs."
+                    hint: "Applies after a restart. Ctrl+L opens the log."
 
                     StyledSwitch {
                         checked: root.s.debug === "true"
@@ -332,8 +327,7 @@ Item {
                     }
                 }
                 Row {
-                    label: "Cached data"
-                    hint: "Anime details are kept for a few days so pages open faster, even when the info site is down."
+                    label: "Cache"
 
                     TextButton {
                         type: TextButton.Tonal

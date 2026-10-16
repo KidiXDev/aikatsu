@@ -13,11 +13,11 @@ const activeDownloadStates = {'queued', 'resolving', 'downloading', 'remuxing'};
 String downloadStatus(Map<String, dynamic> j) => switch (j['state']) {
   'failed' => Api.describe(j['error']),
   'downloading' => '${formatBytes(j['bytes'])} of ${formatBytes(j['total'])}  ·  ${formatBytes(j['speed'])}/s',
-  'done' => 'Saved to Library · Tap to play',
-  'queued' => 'Waiting in queue…',
-  'resolving' => 'Finding the video stream…',
-  'remuxing' => 'Finishing and packing file…',
-  'cancelled' => 'Download cancelled',
+  'done' => 'Saved · Tap to play',
+  'queued' => 'Queued',
+  'resolving' => 'Finding video…',
+  'remuxing' => 'Finishing…',
+  'cancelled' => 'Cancelled',
   _ => '',
 };
 
@@ -51,7 +51,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
   void _reload() => setState(() => _jobs = {for (final j in Api.get('downloads') as List) j['id'] as int: j});
 
   void _play(Map<String, dynamic> job) {
-    if (!playDownloaded(context, job['path'])) toast('That file is gone. It may have been deleted.');
+    if (!playDownloaded(context, job['path'])) toast('That file is gone.');
   }
 
   @override
@@ -109,8 +109,8 @@ class _DownloadsPageState extends State<DownloadsPage> {
                   padding: EdgeInsets.only(bottom: 110),
                   child: EmptyState(
                     face: '( ˘▽˘)っ♨',
-                    title: 'Nothing downloading',
-                    message: 'Open an anime and use Download… to save single episodes, a range, or the whole series. Finished ones go to the Library.',
+                    title: 'No downloads',
+                    message: "Start one from an anime's page.",
                   ),
                 )
               : ListView(

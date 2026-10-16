@@ -1,7 +1,7 @@
 //! Everything the desktop and mobile apps share. A UI only needs `init`, then
 //! `api::call` (async) / `api::get` (sync) with JSON in and out, plus the
 //! events handed to the `init` sink (search results per source, download
-//! progress, …).
+//! progress, plugin changes, …).
 
 pub mod api;
 mod anime4k;
@@ -12,6 +12,8 @@ mod discord;
 mod download;
 mod http;
 mod meta;
+pub mod plugin_cli;
+mod plugins;
 mod proxy;
 mod sources;
 
@@ -67,7 +69,9 @@ pub fn init(dirs: Dirs, debug: bool, push: impl Fn(&str, &Value) + Send + Sync +
     assert!(DIRS.set(dirs).is_ok(), "aikatsu_core::init must run first, and once");
     let _ = SINK.set(Box::new(push));
     DEBUG_FLAG.store(debug, Ordering::Relaxed);
-    init_logging()
+    let guard = init_logging();
+    RT.spawn(plugins::sync_all());
+    guard
 }
 
 pub fn debug_enabled() -> bool {

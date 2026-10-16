@@ -103,7 +103,38 @@ fn init(c: &Connection) -> rusqlite::Result<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_downloads_series ON downloads(source, series_url);
         DELETE FROM cache WHERE expires < strftime('%s', 'now') - 30 * 86400;",
-    )
+    )?;
+    migrate(c)
+}
+
+/// The sources that were built in before plugins; Kyoko carries them on.
+const BUILT_IN: [&str; 6] = ["otakudesu", "samehadaku", "nimegami", "ylnime", "moenime", "astronime"];
+
+/// v1: source keys gained their repo ("otakudesu" → "kyoko/otakudesu"), in
+/// history (and the keys built from it), downloads and the disabled list.
+fn migrate(c: &Connection) -> rusqlite::Result<()> {
+    let version: i64 = c.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+    if version >= 1 {
+        return Ok(());
+    }
+    let tx = c.unchecked_transaction()?;
+    for key in BUILT_IN {
+        tx.execute(
+            "UPDATE media_progress SET series_key = 'kyoko/' || series_key, episode_key = 'kyoko/' || episode_key
+             WHERE source = ?1 AND series_key LIKE ?1 || ':%'",
+            [key],
+        )?;
+        tx.execute("UPDATE media_progress SET source = 'kyoko/' || source WHERE source = ?1", [key])?;
+        tx.execute("UPDATE downloads SET source = 'kyoko/' || source WHERE source = ?1", [key])?;
+    }
+    let disabled: Option<String> = tx.query_row("SELECT value FROM settings WHERE key = 'disabledSources'", [], |r| r.get(0)).optional()?;
+    if let Some(list) = disabled {
+        let list: Vec<String> =
+            list.split(',').map(str::trim).filter(|k| !k.is_empty()).map(|k| if BUILT_IN.contains(&k) { format!("kyoko/{k}") } else { k.to_owned() }).collect();
+        tx.execute("UPDATE settings SET value = ?1 WHERE key = 'disabledSources'", [list.join(",")])?;
+    }
+    tx.execute_batch("PRAGMA user_version = 1")?;
+    tx.commit()
 }
 
 /// Remote lookups (AniList, Jikan, AniSkip) kept across restarts. A fresh entry
@@ -438,6 +469,42 @@ pub fn group_series(entries: &[Progress]) -> Vec<Series> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn migrates_built_in_source_keys() {
+        let c = Connection::open_in_memory().unwrap();
+        init(&c).unwrap();
+        c.execute_batch(
+            "PRAGMA user_version = 0;
+            INSERT INTO media_progress (episode_key, series_key, series_url, source, episode_number, playback_time, duration, last_updated)
+                VALUES ('otakudesu:https://o/a/:ep1', 'otakudesu:https://o/a/', 'https://o/a/', 'otakudesu', 1, 0, 0, 1),
+                       ('anilist:7:ep2', 'anilist:7', 'https://s/b/', 'samehadaku', 2, 0, 0, 1);
+            INSERT INTO downloads (path, source, episode_number, finished) VALUES ('/v/a.mp4', 'ylnime', 1, 1);
+            INSERT INTO settings (key, value) VALUES ('disabledSources', 'moenime, astronime');",
+        )
+        .unwrap();
+        migrate(&c).unwrap();
+        migrate(&c).unwrap(); // runs once
+        let rows: Vec<(String, String, String)> = c
+            .prepare("SELECT episode_key, series_key, source FROM media_progress ORDER BY episode_key")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(
+            rows,
+            [
+                ("anilist:7:ep2".into(), "anilist:7".into(), "kyoko/samehadaku".into()),
+                ("kyoko/otakudesu:https://o/a/:ep1".into(), "kyoko/otakudesu:https://o/a/".into(), "kyoko/otakudesu".into()),
+            ]
+        );
+        assert_eq!(c.query_row("SELECT source FROM downloads", [], |r| r.get::<_, String>(0)).unwrap(), "kyoko/ylnime");
+        assert_eq!(
+            c.query_row("SELECT value FROM settings WHERE key = 'disabledSources'", [], |r| r.get::<_, String>(0)).unwrap(),
+            "kyoko/moenime,kyoko/astronime"
+        );
+    }
 
     #[tokio::test]
     async fn cache_fresh_refresh_and_stale() {

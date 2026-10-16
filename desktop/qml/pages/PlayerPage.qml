@@ -21,7 +21,7 @@ FocusScope {
     readonly property var ep: episodes[index]
     readonly property string seriesTitle: meta.title_english || meta.title_romaji || anime.name
     readonly property string episodeTitle: page.info?.[ep?.num]?.title || ep?.title || ""
-    readonly property string sourceName: Api.get("sources").find(s => s.key === anime.source)?.name ?? anime.source
+    readonly property string sourceName: Api.sourceName(anime.source)
     readonly property bool hasNext: index + 1 < episodes.length
     readonly property bool hasPrev: index > 0
 
@@ -654,7 +654,7 @@ FocusScope {
                 Layout.fillWidth: true
                 opacity: root.slow ? 1 : 0
                 horizontalAlignment: Text.AlignHCenter
-                text: `This is taking a while. ${root.sourceName} can be slow, so keep waiting or go back and open the anime from another source.`
+                text: `${root.sourceName} is slow right now. Keep waiting or try another source.`
                 color: Qt.alpha("#ffffff", 0.55)
                 font: Theme.font.body.medium
                 wrapMode: Text.Wrap

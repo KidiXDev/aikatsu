@@ -48,21 +48,20 @@ pub fn is_unavailable(err: &anyhow::Error) -> bool {
     err.downcast_ref::<Unavailable>().is_some()
 }
 
-pub fn get(url: &str, referer: &str) -> wreq::RequestBuilder {
-    CHROME.get(url).header("Referer", referer)
-}
-
-pub fn post_form(url: &str, referer: &str, form: &[(&str, &str)]) -> wreq::RequestBuilder {
-    CHROME
-        .post(url)
-        .header("Referer", referer)
-        .header("X-Requested-With", "XMLHttpRequest")
-        .form(form)
+/// A response under 400: the body plus what scripts read besides it (a
+/// redirect's `location`, WordPress' `x-wp-totalpages`).
+pub struct Fetched {
+    pub status: u16,
+    /// Lowercase names; the last value of a repeated header wins.
+    pub headers: Vec<(String, String)>,
+    /// After redirects.
+    pub url: String,
+    pub body: String,
 }
 
 /// Retries twice, 300 ms apart, on server errors and dropped connections.
-/// Bodies over 8 MiB are rejected.
-pub async fn text(label: &str, rb: wreq::RequestBuilder) -> Result<String> {
+/// Statuses from 400 are errors; bodies over 8 MiB are rejected.
+pub async fn fetch(label: &str, rb: wreq::RequestBuilder) -> Result<Fetched> {
     let mut last = anyhow!("{label}: request failed");
     for attempt in 0..3 {
         if attempt > 0 {
@@ -72,12 +71,14 @@ pub async fn text(label: &str, rb: wreq::RequestBuilder) -> Result<String> {
         match req.send().await {
             Ok(resp) => {
                 let status = resp.status().as_u16();
-                if (200..300).contains(&status) {
+                if status < 400 {
+                    let headers = resp.headers().iter().map(|(k, v)| (k.as_str().to_owned(), String::from_utf8_lossy(v.as_bytes()).into_owned())).collect();
+                    let url = resp.uri().to_string();
                     let body = resp.bytes().await?;
                     if body.len() > MAX_BODY {
                         bail!("{label}: response over 8 MiB");
                     }
-                    return Ok(String::from_utf8_lossy(&body).into_owned());
+                    return Ok(Fetched { status, headers, url, body: String::from_utf8_lossy(&body).into_owned() });
                 }
                 let err = status_error(label, status);
                 if status < 500 {
@@ -89,6 +90,15 @@ pub async fn text(label: &str, rb: wreq::RequestBuilder) -> Result<String> {
         }
     }
     Err(last)
+}
+
+/// `fetch`, but only a 2xx body counts.
+pub async fn text(label: &str, rb: wreq::RequestBuilder) -> Result<String> {
+    let f = fetch(label, rb).await?;
+    if !(200..300).contains(&f.status) {
+        return Err(status_error(label, f.status));
+    }
+    Ok(f.body)
 }
 
 fn status_error(label: &str, status: u16) -> anyhow::Error {

@@ -37,6 +37,10 @@ abstract final class Api {
     libraryRevision.value++;
   }
 
+  /// The plugin's name for a source key; just the key's own part ("kyoko/x" → "x") when not installed.
+  static String sourceName(Object? key) =>
+      (get('sources') as List).firstWhere((s) => s['key'] == key, orElse: () => null)?['name'] ?? '${key ?? ''}'.split('/').last;
+
   static String setting(String key) => (get('settings') as Map)[key] as String? ?? '';
 
   static void setSetting(String key, Object value) {

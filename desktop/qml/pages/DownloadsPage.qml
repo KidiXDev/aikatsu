@@ -137,9 +137,9 @@ Item {
                         StyledText {
                             Layout.fillWidth: true
                             text: row.modelData.state === "failed" ? Api.describe(row.modelData.error) : row.modelData.state === "downloading" ? `${root.fmtBytes(row.modelData.bytes)} of ${root.fmtBytes(row.modelData.total)}  ·  ${root.fmtBytes(row.modelData.speed)}/s` : row.modelData.state === "done" ? row.modelData.path : ({
-                                    queued: "Waiting…",
-                                    resolving: "Finding the video…",
-                                    remuxing: "Finishing up…",
+                                    queued: "Queued",
+                                    resolving: "Finding video…",
+                                    remuxing: "Finishing…",
                                     cancelled: "Cancelled"
                                 })[row.modelData.state] ?? ""
                             color: row.modelData.state === "failed" ? Theme.palette.error : Theme.palette.onSurfaceVariant
@@ -190,8 +190,8 @@ Item {
             EmptyState {
                 anchors.centerIn: parent
                 face: "( ˘▽˘)っ♨"
-                title: "No downloads yet"
-                message: "Open an anime and use Download… to save single episodes, a range, or the whole series."
+                title: "No downloads"
+                message: "Start one from an anime's page."
             }
         }
     }

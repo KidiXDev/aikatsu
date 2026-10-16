@@ -11,9 +11,8 @@ import 'player.dart';
 String _titleOf(Map<String, dynamic> s) => text([s['meta']['title_english'], s['meta']['title_romaji'], s['series_name']]);
 
 String _removedNote(int count) =>
-    count == 1 ? 'The downloaded episode is removed from this phone.' : 'All $count downloaded episodes are removed from this phone.';
+    count == 1 ? 'Deletes it from this phone.' : 'Deletes all $count episodes from this phone.';
 
-String _sourceName(String key) => (Api.get('sources') as List).firstWhere((s) => s['key'] == key, orElse: () => null)?['name'] ?? key;
 
 /// Downloaded anime, one poster per series. Everything here plays offline.
 class LibraryPage extends StatefulWidget {
@@ -73,7 +72,7 @@ class _LibraryPageState extends State<LibraryPage> {
                 Text('Library', style: t.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700)),
                 if (_series.isNotEmpty)
                   Text(
-                    '${_series.length} anime  ·  ${formatBytes(total)} on this phone',
+                    '${_series.length} anime  ·  ${formatBytes(total)}',
                     style: t.textTheme.bodySmall?.copyWith(color: c.onSurfaceVariant),
                   ),
               ],
@@ -85,7 +84,7 @@ class _LibraryPageState extends State<LibraryPage> {
             child: EmptyState(
               face: '( ˘▽˘)っ♨',
               title: 'Nothing downloaded yet',
-              message: 'Downloaded episodes show up here and play without internet. Open an anime and use Download… to save some.',
+              message: 'Downloaded episodes play here, offline.',
             ),
           )
         else
@@ -237,7 +236,7 @@ class _LibrarySeriesPageState extends State<LibrarySeriesPage> {
     final eps = d.episodes;
     final next = d.continueIndex;
     final started = d.progress.isNotEmpty;
-    final source = _sourceName(_series['source']);
+    final source = Api.sourceName(_series['source']);
     return Scaffold(
       appBar: AppBar(
         title: Text(d.title, maxLines: 1, overflow: TextOverflow.ellipsis),

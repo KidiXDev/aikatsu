@@ -75,7 +75,8 @@ Item {
         target: Api
 
         function onPushed(kind: string, data: var): void {
-            if (kind !== "searchResult" || !root.status[data.source])
+            // Any source while searching: on first launch the plugins arrive during the search.
+            if (kind !== "searchResult" || !root.searching)
                 return;
             const st = Object.assign({}, root.status);
             if (data.error)
@@ -131,7 +132,7 @@ Item {
                     id: field
 
                     Layout.fillWidth: true
-                    placeholderText: "Search anime… (e.g. Frieren, One Piece)"
+                    placeholderText: "Search anime"
                     focus: true
                     onAccepted: root.search(text)
 
@@ -259,7 +260,7 @@ Item {
                 face: root.allFailed ? "(×﹏×)" : root.query ? "(╥﹏╥)" : "(◕‿◕✿)"
                 tint: root.allFailed ? Theme.palette.error : Theme.palette.primary
                 title: root.allFailed ? "Couldn't reach any source" : root.query ? `Nothing found for “${root.query}”` : "What do you want to watch?"
-                message: root.allFailed ? Api.describe(root.failures[0].error) : root.query ? "Try another spelling, or the Japanese title (e.g. Shingeki no Kyojin)." : "Type a title and press Enter. Results show up as each site answers."
+                message: root.allFailed ? Api.describe(root.failures[0].error) : root.query ? "Try another spelling or the Japanese title." : ""
 
                 IconTextButton {
                     Layout.alignment: Qt.AlignHCenter

@@ -1,10 +1,11 @@
 //! Method table behind each app's `call` (async) and `get` (sync).
 //! Arguments and results are JSON, so both UIs see plain objects.
 
+use crate::plugins::{self, Plugin};
 use crate::push;
-use crate::sources::{self, SourceId};
+use crate::sources;
 use crate::{anime4k, db, download, meta, proxy};
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
 
 fn s<'a>(args: &'a Value, key: &str) -> &'a str {
@@ -22,9 +23,6 @@ fn refresh(args: &Value) -> bool {
 
 const DAY: std::time::Duration = std::time::Duration::from_secs(86400);
 
-fn source(args: &Value) -> Result<SourceId> {
-    SourceId::from_key(s(args, "source")).ok_or_else(|| anyhow!("unknown source {:?}", args["source"]))
-}
 
 /// Defaults for every setting the UI exposes; stored values override them.
 pub const SETTING_DEFAULTS: &[(&str, &str)] = &[
@@ -45,9 +43,9 @@ pub fn setting(key: &str) -> String {
     db::setting(key).unwrap_or_else(|| SETTING_DEFAULTS.iter().find(|(k, _)| *k == key).map(|(_, v)| v.to_string()).unwrap_or_default())
 }
 
-pub fn enabled_sources() -> Vec<SourceId> {
-    let disabled = setting("disabledSources").to_lowercase();
-    SourceId::ALL.into_iter().filter(|s| !disabled.split(',').any(|d| d.trim() == s.key())).collect()
+pub fn enabled_sources() -> Vec<std::sync::Arc<Plugin>> {
+    let disabled = setting("disabledSources");
+    plugins::installed().into_iter().filter(|p| !disabled.split(',').any(|d| d.trim() == p.id)).collect()
 }
 
 pub async fn call(method: &str, args: Value) -> Result<Value> {
@@ -60,17 +58,28 @@ pub async fn call(method: &str, args: Value) -> Result<Value> {
         }
         "search" => {
             let query = s(&args, "query").to_owned();
-            sources::search_all(&query, &enabled_sources(), |src, res| {
+            plugins::ensure_installed().await;
+            sources::search_all(&query, &enabled_sources(), |p, res| {
                 push(
                     "searchResult",
                     &match res {
-                        Ok(items) => json!({ "source": src.key(), "name": src.name(), "items": items }),
-                        Err(e) => json!({ "source": src.key(), "name": src.name(), "error": format!("{e:#}") }),
+                        Ok(items) => json!({ "source": p.id, "name": p.label, "items": items }),
+                        Err(e) => json!({ "source": p.id, "name": p.label, "error": format!("{e:#}") }),
                     },
                 )
             })
             .await;
             Ok(json!({ "done": true }))
+        }
+        // Third-party repos: shown with a trust warning before `addRepo`.
+        "previewRepo" => plugins::preview(s(&args, "url")).await,
+        "addRepo" => {
+            plugins::add(s(&args, "url")).await?;
+            Ok(Value::Null)
+        }
+        "syncPlugins" => {
+            plugins::sync_all().await;
+            Ok(plugins::repos())
         }
         "enrich" => {
             let id = i(&args, "anilistId");
@@ -90,7 +99,7 @@ pub async fn call(method: &str, args: Value) -> Result<Value> {
             if refresh(&args) {
                 crate::http::clear_pages();
             }
-            Ok(serde_json::to_value(sources::episodes(source(&args)?, s(&args, "url")).await?)?)
+            Ok(serde_json::to_value(sources::episodes(s(&args, "source"), s(&args, "url")).await?)?)
         }
         "episodeInfo" => {
             let (mal, al) = (i(&args, "malId"), i(&args, "anilistId"));
@@ -104,8 +113,8 @@ pub async fn call(method: &str, args: Value) -> Result<Value> {
             .unwrap_or_default();
             Ok(serde_json::to_value(list)?)
         }
-        "qualities" => Ok(serde_json::to_value(sources::qualities(source(&args)?, s(&args, "url")).await?)?),
-        "resolve" => resolve(source(&args)?, s(&args, "url"), s(&args, "quality")).await,
+        "qualities" => Ok(serde_json::to_value(sources::qualities(s(&args, "source"), s(&args, "url")).await?)?),
+        "resolve" => resolve(s(&args, "source"), s(&args, "url"), s(&args, "quality")).await,
         "shaders" => {
             let paths = anime4k::shaders(s(&args, "mode")).await?;
             Ok(json!({ "list": anime4k::path_list(&paths) }))
@@ -130,12 +139,12 @@ pub async fn call(method: &str, args: Value) -> Result<Value> {
 
 /// Source stream → something mpv can open. Blogger and Wibufile go through
 /// the local proxy (Chrome TLS / HTTP/3); everything else plays directly.
-async fn resolve(src: SourceId, episode_url: &str, quality: &str) -> Result<Value> {
+async fn resolve(src: &str, episode_url: &str, quality: &str) -> Result<Value> {
     let stream = sources::stream(src, episode_url, quality).await?;
     let mut url = stream.url.clone();
     if crate::blogger::is_blogger(&url) {
         url = proxy::blogger(&url).await?;
-    } else if sources::is_wibufile(&url) {
+    } else if proxy::is_wibufile(&url) {
         match proxy::wibufile(&url, &stream.referer).await {
             Ok(p) => url = p,
             Err(e) => tracing::warn!("wibufile HTTP/3 proxy unavailable ({e}); playing directly"),
@@ -174,7 +183,13 @@ pub fn get(method: &str, args: Value) -> Result<Value> {
             db::set_setting(s(&args, "key"), s(&args, "value"))?;
             Ok(Value::Null)
         }
-        "sources" => Ok(Value::Array(SourceId::ALL.iter().map(|s| json!({ "key": s.key(), "name": s.name() })).collect())),
+        "sources" => Ok(plugins::list()),
+        "repos" => Ok(plugins::repos()),
+        "removeRepo" => {
+            plugins::remove(s(&args, "url"))?;
+            Ok(Value::Null)
+        }
+        "officialRepo" => Ok(json!(plugins::OFFICIAL_REPO)),
         "stopStreams" => {
             proxy::clear();
             Ok(Value::Null)

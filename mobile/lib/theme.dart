@@ -239,6 +239,20 @@ ThemeData buildTheme(Brightness brightness) {
       elevation: 0,
     ),
 
+    // Same pill, colors and label as the chips, as one control split evenly across the row.
+    segmentedButtonTheme: SegmentedButtonThemeData(
+      style: SegmentedButton.styleFrom(
+        shape: const StadiumBorder(),
+        side: cardBorder,
+        backgroundColor: scheme.surfaceContainer,
+        foregroundColor: scheme.onSurface,
+        selectedBackgroundColor: scheme.primaryContainer,
+        selectedForegroundColor: scheme.onPrimaryContainer,
+        textStyle: const TextStyle(fontFamily: 'GoogleSansFlex', fontSize: 13, fontWeight: FontWeight.w500),
+        visualDensity: VisualDensity.compact,
+      ),
+    ),
+
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: scheme.surfaceContainerHigh,

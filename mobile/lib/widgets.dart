@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'dart:ui';
+import 'dart:ui' as ui show Image;
 
 import 'package:flutter/material.dart';
 
@@ -210,36 +211,118 @@ class Cover extends StatelessWidget {
   }
 }
 
-/// Blurred cover or banner behind a header.
-/// Uses RepaintBoundary and scale oversampling so Skia/Impeller
-/// blur edge clamping artifacts and scroll jitter are completely eliminated.
-class BlurredArt extends StatelessWidget {
-  const BlurredArt(this.url, {super.key, required this.sigma});
+/// Blurred cover or banner behind a header, under its fade (`overlay`).
+///
+/// The blur is drawn once into a small image and shown as a plain picture: a
+/// live blur filter inside a scrolling page leaks a line of bright art past its
+/// clip while Impeller renders Android's stretch overscroll (Flutter 3.47).
+class BlurredArt extends StatefulWidget {
+  const BlurredArt(this.url, {super.key, required this.sigma, this.overlay});
 
   final String url;
   final double sigma;
+  final Gradient? overlay;
+
+  @override
+  State<BlurredArt> createState() => _BlurredArtState();
+}
+
+class _BlurredArtState extends State<BlurredArt> {
+  ImageStream? _stream;
+  late final _listener = ImageStreamListener(_loaded, onError: (_, _) {});
+  ImageInfo? _source;
+  ui.Image? _baked;
+  (Size, double)? _bakedFor;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _resolve();
+  }
+
+  @override
+  void didUpdateWidget(BlurredArt old) {
+    super.didUpdateWidget(old);
+    if (old.url != widget.url) _resolve();
+  }
+
+  void _resolve() {
+    if (widget.url.isEmpty) {
+      _stream?.removeListener(_listener);
+      _stream = null;
+      _forget();
+      return;
+    }
+    final stream = NetworkImage(widget.url).resolve(createLocalImageConfiguration(context));
+    if (stream.key == _stream?.key) return;
+    _stream?.removeListener(_listener);
+    _stream = stream..addListener(_listener);
+  }
+
+  void _loaded(ImageInfo info, bool _) {
+    if (!mounted) return info.dispose();
+    setState(() {
+      _forget();
+      _source = info;
+    });
+  }
+
+  void _forget() {
+    _source?.dispose();
+    _source = null;
+    _baked?.dispose();
+    _baked = null;
+    _bakedFor = null;
+  }
+
+  @override
+  void dispose() {
+    _stream?.removeListener(_listener);
+    _forget();
+    super.dispose();
+  }
+
+  /// The box's final look (cover-fit, zoomed 1.2× so the blur's clamped edges
+  /// stay outside, blurred) at up to 256 px wide, which the blur makes
+  /// indistinguishable from full size.
+  ui.Image _bake(ui.Image src, Size box) {
+    final f = math.min(1.0, 256 / box.width);
+    final srcSize = Size(src.width.toDouble(), src.height.toDouble());
+    final fitted = applyBoxFit(BoxFit.cover, srcSize, box * 1.2);
+    final sigma = widget.sigma * 1.2;
+    final recorder = PictureRecorder();
+    Canvas(recorder)
+      ..scale(f)
+      ..drawImageRect(
+        src,
+        Alignment.center.inscribe(fitted.source, Offset.zero & srcSize),
+        Alignment.center.inscribe(fitted.destination, Offset.zero & box),
+        Paint()
+          ..filterQuality = FilterQuality.medium
+          ..imageFilter = ImageFilter.blur(sigmaX: sigma, sigmaY: sigma, tileMode: TileMode.clamp),
+      );
+    return recorder.endRecording().toImageSync(math.max(1, (box.width * f).round()), math.max(1, (box.height * f).round()));
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (url.isEmpty) return const SizedBox.expand();
-
-    return RepaintBoundary(
-      child: ClipRect(
-        child: Transform.scale(
-          scale: 1.2, // Overscale image past clip rect so blur sampling edges stay outside visible bounds
-          child: ImageFiltered(
-            imageFilter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma, tileMode: TileMode.clamp),
-            child: Image.network(
-              url,
-              fit: BoxFit.cover,
-              width: double.infinity,
-              height: double.infinity,
-              errorBuilder: (_, _, _) => const SizedBox.expand(),
-              frameBuilder: (_, child, frame, sync) => sync || frame != null ? child : const SizedBox.expand(),
-            ),
-          ),
-        ),
-      ),
+    final overlay = widget.overlay;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final box = constraints.biggest, src = _source?.image;
+        if (src != null && box.isFinite && !box.isEmpty && _bakedFor != (box, widget.sigma)) {
+          _baked?.dispose();
+          _baked = _bake(src, box);
+          _bakedFor = (box, widget.sigma);
+        }
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            if (_baked != null) RawImage(image: _baked, fit: BoxFit.fill, filterQuality: FilterQuality.medium),
+            if (overlay != null) DecoratedBox(decoration: BoxDecoration(gradient: overlay)),
+          ],
+        );
+      },
     );
   }
 }
@@ -538,7 +621,7 @@ class EmptyState extends StatelessWidget {
     super.key,
     required this.face,
     required this.title,
-    required this.message,
+    this.message = '',
     this.details = '',
     this.error = false,
     this.action,
@@ -571,15 +654,17 @@ class EmptyState extends StatelessWidget {
               textAlign: TextAlign.center,
               style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700, fontSize: 18),
             ),
-            const SizedBox(height: 8),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 320),
-              child: Text(
-                message,
-                textAlign: TextAlign.center,
-                style: t.textTheme.bodyMedium?.copyWith(color: c.onSurfaceVariant, height: 1.4),
+            if (message.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 320),
+                child: Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: t.textTheme.bodyMedium?.copyWith(color: c.onSurfaceVariant, height: 1.4),
+                ),
               ),
-            ),
+            ],
             if (details.isNotEmpty) ...[
               const SizedBox(height: 10),
               Container(

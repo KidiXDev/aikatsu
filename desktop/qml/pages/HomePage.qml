@@ -274,7 +274,7 @@ Item {
                         StyledText {
                             Layout.fillWidth: true
                             visible: text !== ""
-                            text: root.hero ? `Episode ${root.hero.continue_episode}` + (root.hero.total_episodes >= root.hero.continue_episode ? ` of ${root.hero.total_episodes}` : "") + (root.heroMeta?.genres?.length ? "  ·  " + root.heroMeta.genres.slice(0, 3).join(" · ") : "") : "Watch anime with Indonesian subtitles and pick up right where you left off."
+                            text: root.hero ? `Episode ${root.hero.continue_episode}` + (root.hero.total_episodes >= root.hero.continue_episode ? ` of ${root.hero.total_episodes}` : "") + (root.heroMeta?.genres?.length ? "  ·  " + root.heroMeta.genres.slice(0, 3).join(" · ") : "") : ""
                             color: Theme.palette.onSurfaceVariant
                             wrapMode: Text.Wrap
                             font: Theme.font.body.large
@@ -372,7 +372,7 @@ Item {
                         title: modelData.title
                         subtitle: modelData.finished ? "Finished ✓" : `Episode ${modelData.continue_episode}` + (modelData.total_episodes >= modelData.continue_episode ? ` / ${modelData.total_episodes}` : "")
                         image: modelData.cover
-                        badge: modelData.source
+                        badge: Api.sourceName(modelData.source)
                         progress: modelData.finished ? -1 : root.progressOf(modelData)
                         onClicked: ApplicationWindow.window.openAnime(root.animeOf(modelData), 0)
                         onRightClicked: (x, y) => {
@@ -393,7 +393,7 @@ Item {
                 visible: root.shown.length === 0 && root.series.length > 0
                 face: "٩(◕‿◕｡)۶"
                 title: "All caught up!"
-                message: "You've finished everything you started. Check Recent to rewatch."
+                message: "Check Recent to rewatch."
             }
 
             Repeater {

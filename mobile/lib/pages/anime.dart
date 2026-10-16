@@ -236,7 +236,7 @@ class _AnimePageState extends State<AnimePage> {
         showDownloadSheet(context, _data, single: ep);
       case 'delete':
         if (file != null &&
-            await confirm(context, 'Delete episode ${ep['num']}?', 'The downloaded file is removed. You can still stream it.', 'Delete')) {
+            await confirm(context, 'Delete episode ${ep['num']}?', 'You can still stream it.', 'Delete')) {
           Api.deleteDownloads([file]);
         }
     }
@@ -272,21 +272,15 @@ class _AnimePageState extends State<AnimePage> {
             ),
             actions: [IconButton(icon: const Icon(Icons.refresh_rounded), onPressed: () => d.load(refresh: true))],
             flexibleSpace: FlexibleSpaceBar(
-              background: Stack(
-                fit: StackFit.expand,
-                children: [
-                  BlurredArt(banner, sigma: blur),
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [c.surface.withValues(alpha: 0.2), c.surface.withValues(alpha: 0.75), c.surface, c.surface],
-                        stops: const [0.0, 0.5, 0.85, 1.0],
-                      ),
-                    ),
-                  ),
-                ],
+              background: BlurredArt(
+                banner,
+                sigma: blur,
+                overlay: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [c.surface.withValues(alpha: 0.2), c.surface.withValues(alpha: 0.75), c.surface, c.surface],
+                  stops: const [0.0, 0.5, 0.85, 1.0],
+                ),
               ),
             ),
           ),
@@ -324,7 +318,7 @@ class _AnimePageState extends State<AnimePage> {
                             spacing: 6,
                             runSpacing: 6,
                             children: [
-                              PillBadge(label: widget.anime['source'], icon: Icons.public_rounded),
+                              PillBadge(label: Api.sourceName(widget.anime['source']), icon: Icons.public_rounded),
                               if (toInt(meta?['score']) > 0)
                                 PillBadge(label: '★ ${(toInt(meta?['score']) / 10).toStringAsFixed(1)}', color: const Color(0xffffb84d)),
                               if (toInt(meta?['year']) > 0) PillBadge(label: '${meta?['year']}', icon: Icons.calendar_month_rounded),
@@ -544,8 +538,8 @@ class _AnimePageState extends State<AnimePage> {
               child: EmptyState(
                 face: '(×﹏×)',
                 error: true,
-                title: d.error.isNotEmpty ? "Couldn't load episodes from ${widget.anime['source']}" : 'No episodes yet',
-                message: d.error.isNotEmpty ? Api.describe(d.error) : "This source hasn't listed any episodes for this series.",
+                title: d.error.isNotEmpty ? "Couldn't load episodes from ${Api.sourceName(widget.anime['source'])}" : 'No episodes yet',
+                message: d.error.isNotEmpty ? Api.describe(d.error) : '',
                 details: d.error,
                 action: FilledButton.tonalIcon(
                   icon: const Icon(Icons.refresh_rounded),
@@ -625,7 +619,6 @@ Future<void> showDownloadSheet(BuildContext context, AnimeData data, {Map<String
             spacing: 12,
             children: [
               Text('Download episodes', style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
-              Text('Episodes are saved to ${Api.get('downloadDir')}', style: t.textTheme.bodySmall?.copyWith(color: c.onSurfaceVariant)),
               Wrap(
                 spacing: 8,
                 children: [

@@ -5,8 +5,8 @@
 
 use crate::push;
 use crate::meta::Meta;
-use crate::sources::{self, SourceId};
-use crate::{blogger, db, http};
+use crate::sources;
+use crate::{blogger, db, http, proxy};
 use anyhow::{Context, Result, anyhow, bail};
 use bytes::Bytes;
 use futures_util::{StreamExt, TryStreamExt, stream::BoxStream};
@@ -130,7 +130,7 @@ pub fn base_dir(setting: &str) -> PathBuf {
 }
 
 pub fn enqueue(req: Request, base: PathBuf) -> Result<Vec<u64>> {
-    let src = SourceId::from_key(&req.source).ok_or_else(|| anyhow!("unknown source {}", req.source))?;
+    anyhow::ensure!(crate::plugins::find(&req.source).is_some(), "source {} isn't installed", req.source);
     let meta = req.meta.clone().unwrap_or_default();
     let title = if meta.title().is_empty() { req.name.clone() } else { meta.title().to_owned() };
     let mut ids = Vec::new();
@@ -141,9 +141,9 @@ pub fn enqueue(req: Request, base: PathBuf) -> Result<Vec<u64>> {
         let job = Job { id, title: title.clone(), episode: ep.num, path: path.display().to_string(), state: "queued".into(), ..Default::default() };
         push("download", &serde_json::to_value(&job)?);
         JOBS.lock().unwrap().insert(id, Entry { job, cancel: cancel.clone(), last_push: Instant::now() });
-        let quality = req.quality.clone();
+        let (quality, src) = (req.quality.clone(), req.source.clone());
         let mut record = db::Download {
-            source: src.key().to_owned(),
+            source: req.source.clone(),
             series_url: req.url.clone(),
             series_name: req.name.clone(),
             episode_number: ep.num.into(),
@@ -158,7 +158,7 @@ pub fn enqueue(req: Request, base: PathBuf) -> Result<Vec<u64>> {
                 return;
             }
             let res = tokio::select! {
-                r = run(id, src, &ep.url, &quality, &path) => r,
+                r = run(id, &src, &ep.url, &quality, &path) => r,
                 _ = cancel.cancelled() => Err(anyhow!("cancelled")),
             };
             match res {
@@ -192,7 +192,7 @@ pub fn enqueue(req: Request, base: PathBuf) -> Result<Vec<u64>> {
     Ok(ids)
 }
 
-async fn run(id: u64, src: SourceId, episode_url: &str, quality: &str, path: &Path) -> Result<PathBuf> {
+async fn run(id: u64, src: &str, episode_url: &str, quality: &str, path: &Path) -> Result<PathBuf> {
     update(id, |j| j.state = "resolving".into());
     let stream = sources::stream(src, episode_url, quality).await?;
     if let Some(dir) = path.parent() {
@@ -213,7 +213,7 @@ async fn run(id: u64, src: SourceId, episode_url: &str, quality: &str, path: &Pa
         update(id, |j| j.method = "blogger".into());
         let direct = blogger::resolve(&url).await?;
         ranged(&Fetcher::Chrome, &direct, path, &progress).await.map(|_| path.to_owned())
-    } else if sources::is_wibufile(&url) {
+    } else if proxy::is_wibufile(&url) {
         update(id, |j| j.method = "http3".into());
         ranged(&Fetcher::H3(stream.referer.clone()), &url, path, &progress).await.map(|_| path.to_owned())
     } else if lower.contains(".m3u8") {
@@ -711,11 +711,12 @@ mod tests {
     fn live_download() {
         let dir = std::env::var("LIVE_DIR").map(PathBuf::from).unwrap_or_else(|_| std::env::temp_dir().join("aikatsu-live"));
         let (src, url) = crate::RT.block_on(async {
-            let found = sources::search(SourceId::Ylnime, "frieren").await.unwrap();
-            let eps = sources::episodes(SourceId::Ylnime, &found[0].url).await.unwrap();
+            crate::plugins::ensure_installed().await;
+            let found = sources::search("kyoko/ylnime", "frieren").await.unwrap();
+            let eps = sources::episodes("kyoko/ylnime", &found[0].url).await.unwrap();
             (found[0].name.clone(), eps[0].url.clone())
         });
-        let req = Request { source: "ylnime".into(), name: src, url: String::new(), episodes: vec![EpisodeRef { num: 1, url }], quality: "360p".into(), meta: None };
+        let req = Request { source: "kyoko/ylnime".into(), name: src, url: String::new(), episodes: vec![EpisodeRef { num: 1, url }], quality: "360p".into(), meta: None };
         let id = enqueue(req, dir).unwrap()[0];
         let start = Instant::now();
         loop {

@@ -29,6 +29,10 @@ ApplicationWindow {
         });
     }
 
+    function openPlugins(): void {
+        stack.push(pluginsPage);
+    }
+
     function goTab(i: int): void {
         if (stack.depth > 1)
             stack.pop(null);
@@ -75,7 +79,7 @@ ApplicationWindow {
 
     Component.onCompleted: Theme.mode = Api.setting("theme")
 
-    // Dev aid: `aikatsu --screenshot out.png [--tab N]` renders, saves, quits.
+    // Dev aid: `aikatsu --screenshot out.png [--tab N | --plugins]` renders, saves, quits.
     Timer {
         readonly property var args: Qt.application.arguments
         readonly property int at: args.indexOf("--screenshot")
@@ -86,6 +90,8 @@ ApplicationWindow {
             const t = args.indexOf("--tab");
             if (t > 0)
                 win.tab = parseInt(args[t + 1]);
+            if (args.includes("--plugins"))
+                win.openPlugins();
         }
         onTriggered: (win.playing ? playerLoader.item : shell).grabToImage(r => {
             r.saveToFile(args[at + 1]);
@@ -196,6 +202,12 @@ ApplicationWindow {
         id: animePage
 
         AnimePage {}
+    }
+
+    Component {
+        id: pluginsPage
+
+        PluginsPage {}
     }
 
     Loader {
