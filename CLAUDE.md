@@ -62,7 +62,7 @@ Hosts that mpv can't play directly go through local relays in `core/src/proxy.rs
 - The server never reads record data, so changing what syncs needs no server change.
 - Local changes queue in `sync_dirty`, deletions included. A background loop in `sync::run` pushes and pulls every 2 minutes; the UIs also call `syncNow` when the player closes and when the mobile app resumes.
 - Only keys in `sync::SYNCED_SETTINGS` sync.
-- `DEFAULT_SERVER` is still a placeholder.
+- The default server is compiled in from the `AIKATSU_SYNC_SERVER` env var (a repo secret in `release.yml`) and is never shown in the UI. Without it, users must enter a server.
 
 ## Conventions
 
