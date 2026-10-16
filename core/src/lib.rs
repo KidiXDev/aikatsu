@@ -95,8 +95,37 @@ fn init_logging() -> WorkerGuard {
     guard
 }
 
-pub fn log_tail(lines: usize) -> String {
-    let text = std::fs::read_to_string(log_path()).unwrap_or_default();
+pub fn log_tail(lines: usize) -> anyhow::Result<String> {
+    read_log_tail(&log_path(), lines)
+}
+
+fn read_log_tail(path: &std::path::Path, lines: usize) -> anyhow::Result<String> {
+    use anyhow::Context;
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(String::new()),
+        Err(e) => return Err(e).with_context(|| format!("couldn't read log {}", path.display())),
+    };
     let all: Vec<&str> = text.lines().collect();
-    all[all.len().saturating_sub(lines)..].join("\n")
+    Ok(all[all.len().saturating_sub(lines)..].join("\n"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn log_tail_handles_empty_missing_and_unreadable_files() {
+        let dir = std::env::temp_dir().join(format!("aikatsu-log-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("test.log");
+        assert_eq!(read_log_tail(&path, 400).unwrap(), "");
+        std::fs::write(&path, "").unwrap();
+        assert_eq!(read_log_tail(&path, 400).unwrap(), "");
+        std::fs::write(&path, "first\nsecond\nlast\n").unwrap();
+        assert_eq!(read_log_tail(&path, 2).unwrap(), "second\nlast");
+        assert_eq!(read_log_tail(&path, 0).unwrap(), "");
+        assert!(read_log_tail(&dir, 400).unwrap_err().to_string().contains("couldn't read log"));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 }

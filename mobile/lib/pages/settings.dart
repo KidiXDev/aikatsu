@@ -37,19 +37,68 @@ class _SettingsPageState extends State<SettingsPage> {
     if (mounted) setState(() => _installingShaders = false);
   }
 
-  void _showLogs() => showModalBottomSheet<void>(
-    context: context,
-    showDragHandle: true,
-    isScrollControlled: true,
-    builder: (context) => SizedBox(
-      height: MediaQuery.sizeOf(context).height * 0.8,
-      child: SingleChildScrollView(
-        reverse: true, // newest lines at the bottom, in view
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        child: SelectableText(Api.get('logTail'), style: const TextStyle(fontFamily: 'monospace', fontSize: 11)),
+  void _showLogs() {
+    String logs = '', error = '';
+    void load() {
+      try {
+        logs = Api.get('logTail') as String;
+        error = '';
+      } catch (e) {
+        error = '$e';
+      }
+    }
+
+    load();
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) => SizedBox(
+          width: double.infinity,
+          height: MediaQuery.sizeOf(context).height * 0.8,
+          child: SafeArea(
+            top: false,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: [
+                      Expanded(child: Text('Logs', style: Theme.of(context).textTheme.titleLarge)),
+                      IconButton(tooltip: 'Refresh logs', icon: const Icon(Icons.refresh_rounded), onPressed: () => setSheetState(load)),
+                      IconButton(tooltip: 'Close logs', icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context)),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: error.isNotEmpty || logs.trim().isEmpty
+                      ? SingleChildScrollView(
+                          child: EmptyState(
+                            face: error.isNotEmpty ? '(×﹏×)' : '(˘▾˘)',
+                            error: error.isNotEmpty,
+                            title: error.isNotEmpty ? "Couldn't load logs" : 'No log entries yet',
+                            message: error.isNotEmpty
+                                ? 'Try refreshing. If this continues, restart the app.'
+                                : 'Nothing has been recorded this session. Use the app, then refresh to check again.',
+                            details: error,
+                          ),
+                        )
+                      : SingleChildScrollView(
+                          reverse: true, // newest lines at the bottom, in view
+                          padding: const EdgeInsets.all(16),
+                          child: SelectableText(logs, style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
-    ),
-  );
+    );
+  }
 
   @override
   Widget build(BuildContext context) {

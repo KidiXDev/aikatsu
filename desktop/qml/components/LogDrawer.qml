@@ -13,7 +13,8 @@ Drawer {
     onOpened: refresh()
 
     function refresh(): void {
-        logText.text = Api.get("logTail");
+        const result = Api.get("logTail");
+        logText.text = result?.error ?? result;
         Qt.callLater(() => flick.contentY = Math.max(0, flick.contentHeight - flick.height));
     }
 

@@ -224,7 +224,7 @@ pub fn get(method: &str, args: Value) -> Result<Value> {
             Ok(json!(url::Url::from_file_path(&target).map(String::from).unwrap_or_default()))
         }
         "localPath" => Ok(json!(url::Url::parse(s(&args, "url")).ok().and_then(|u| u.to_file_path().ok()).map(|p| p.display().to_string()).unwrap_or_default())),
-        "logTail" => Ok(Value::String(crate::log_tail(400))),
+        "logTail" => Ok(Value::String(crate::log_tail(400)?)),
         "version" => Ok(json!(env!("CARGO_PKG_VERSION"))),
         _ => bail!("unknown method {method}"),
     }
