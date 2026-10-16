@@ -4,6 +4,17 @@
 mod bridge;
 
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QUrl};
+use anyhow::Context;
+
+fn lock_instance(data: &std::path::Path) -> std::io::Result<Option<std::fs::File>> {
+    std::fs::create_dir_all(data)?;
+    let file = std::fs::OpenOptions::new().create(true).write(true).truncate(false).open(data.join("instance.lock"))?;
+    match file.try_lock() {
+        Ok(()) => Ok(Some(file)),
+        Err(std::fs::TryLockError::WouldBlock) => Ok(None),
+        Err(std::fs::TryLockError::Error(e)) => Err(e),
+    }
+}
 
 /// The same folders the app used before the core split, so history, shaders
 /// and downloads carry over.
@@ -18,8 +29,10 @@ fn dirs() -> aikatsu_core::Dirs {
     }
 }
 
-fn main() {
-    let _log = aikatsu_core::init(dirs(), std::env::args().any(|a| a == "--debug"), bridge::push);
+fn main() -> anyhow::Result<()> {
+    let dirs = dirs();
+    let Some(_instance) = lock_instance(&dirs.data).context("couldn't lock the Aikatsu instance")? else { return Ok(()) };
+    let _log = aikatsu_core::init(dirs, std::env::args().any(|a| a == "--debug"), bridge::push);
     // SAFETY: single-threaded at this point
     unsafe {
         std::env::set_var("QT_QUICK_CONTROLS_STYLE", "Basic");
@@ -41,5 +54,22 @@ fn main() {
     }
     if let Some(app) = app.as_mut() {
         app.exec();
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn instance_lock_is_exclusive_and_released() {
+        let dir = std::env::temp_dir().join(format!("aikatsu-instance-test-{}", std::process::id()));
+        let first = lock_instance(&dir).unwrap().unwrap();
+        assert!(lock_instance(&dir).unwrap().is_none());
+        drop(first);
+        let next = lock_instance(&dir).unwrap().unwrap();
+        drop(next);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }
