@@ -60,6 +60,7 @@ ApplicationWindow {
             toggleFullScreen();
         playerLoader.active = false;
         historyRevision++;
+        Api.call("syncNow", {});
     }
 
     function toggleFullScreen(): void {
@@ -149,6 +150,11 @@ ApplicationWindow {
         function onSettingChanged(key: string, value: string): void {
             if (key === "theme")
                 Theme.mode = value;
+        }
+
+        function onPushed(kind: string, data: var): void {
+            if (kind === "sync" && data.history)
+                win.historyRevision++;
         }
     }
 

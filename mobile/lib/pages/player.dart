@@ -165,6 +165,7 @@ class _PlayerPageState extends State<PlayerPage> {
   @override
   void dispose() {
     if (_phase == _Phase.playing) _save();
+    Api.call('syncNow').ignore();
     _request++;
     for (final t in [_hideTimer, _slowTimer, _resumeHide, _countdown, _osdTimer, _saveTimer]) {
       t?.cancel();

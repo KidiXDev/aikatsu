@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 /// Bumped when host functions are added; plugins asking for more are skipped.
 pub const API_VERSION: i64 = 1;
 pub const OFFICIAL_REPO: &str = "https://github.com/KidiXDev/kyoko";
-const REPOS_SETTING: &str = "pluginRepos";
+pub(crate) const REPOS_SETTING: &str = "pluginRepos";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Index {
@@ -336,6 +336,18 @@ pub async fn remove(url: &str) -> Result<()> {
     AVAILABLE.lock().unwrap().remove(url);
     reload();
     Ok(())
+}
+
+/// After a synced repo list: drops removed repos. New ones download only when the user chooses.
+pub async fn repos_synced(before: &[String]) {
+    let _one = SYNCING.lock().await;
+    let urls = repo_urls();
+    for url in before.iter().filter(|u| !urls.contains(u)) {
+        let _ = std::fs::remove_dir_all(repo_dir(url));
+        ERRORS.lock().unwrap().remove(url);
+        AVAILABLE.lock().unwrap().remove(url);
+    }
+    reload();
 }
 
 async fn sync_repo(url: &str) -> Result<bool> {

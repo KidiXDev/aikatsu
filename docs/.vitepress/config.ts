@@ -26,6 +26,8 @@ export default defineConfig({
           { text: 'Anime4K', link: '/guide/anime4k' },
           { text: 'Downloads and offline viewing', link: '/guide/downloads' },
           { text: 'History and settings', link: '/guide/settings' },
+          { text: 'Sync between devices', link: '/guide/sync' },
+          { text: 'Run your own sync server', link: '/guide/self-hosting' },
           { text: 'Troubleshooting', link: '/guide/troubleshooting' }
         ]
       },

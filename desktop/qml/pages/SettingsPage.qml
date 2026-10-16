@@ -15,12 +15,36 @@ Item {
     readonly property var modes: Api.get("anime4kModes")
     property bool installingShaders
     property bool shadersInstalled: Api.get("anime4kInstalled")
+    property var account: Api.get("syncStatus")
+    property real now: Date.now()
     readonly property var tools: Api.get("tools")
     readonly property int sourcesOn: sources.filter(x => !disabled.includes(x.key)).length
 
     function set(key: string, value: var): void {
         Api.setSetting(key, value);
         s = Api.get("settings");
+    }
+
+    function host(url: string): string {
+        return url.replace(/^https?:\/\//, "");
+    }
+
+    function syncedLabel(): string {
+        if (!account.lastSync)
+            return "Not synced yet";
+        const mins = Math.floor((now - account.lastSync * 1000) / 60000);
+        if (mins < 1)
+            return "Synced just now";
+        if (mins < 60)
+            return `Synced ${mins} min ago`;
+        return mins < 1440 ? `Synced ${Math.floor(mins / 60)} h ago` : `Synced ${new Date(account.lastSync * 1000).toLocaleDateString()}`;
+    }
+
+    Timer {
+        interval: 30000
+        running: root.visible && root.account.signedIn
+        repeat: true
+        onTriggered: root.now = Date.now()
     }
 
     // The Plugins page changes these while Settings stays loaded underneath.
@@ -30,6 +54,12 @@ Item {
         function onPushed(kind: string, data: var): void {
             if (kind === "plugins")
                 root.sources = Api.get("sources");
+            if (kind === "sync") {
+                root.account = data;
+                root.now = Date.now();
+                if (data.settings)
+                    root.s = Api.get("settings");
+            }
         }
 
         function onSettingChanged(key: string, value: string): void {
@@ -109,6 +139,281 @@ Item {
             }))
     }
 
+    StyledDialog {
+        id: accountDialog
+
+        property bool create
+        property bool busy
+        property string error
+
+        function show(create: bool): void {
+            accountDialog.create = create;
+            error = "";
+            userField.text = "";
+            passField.text = "";
+            open();
+        }
+
+        function submit(): void {
+            if (busy || !userField.text.trim() || !passField.text)
+                return;
+            busy = true;
+            error = "";
+            Api.call("syncSignIn", {
+                username: userField.text.trim(),
+                password: passField.text,
+                create: create
+            }, st => {
+                busy = false;
+                root.account = st;
+                close();
+                ApplicationWindow.window.toast(create ? "Account created" : "Signed in");
+            }, e => {
+                busy = false;
+                error = String(e);
+            });
+        }
+
+        icon: "sync"
+        title: create ? "Create account" : "Sign in"
+        onOpened: userField.forceActiveFocus()
+
+        StyledTextField {
+            id: userField
+
+            Layout.fillWidth: true
+            placeholderText: "Username"
+            onAccepted: passField.forceActiveFocus()
+        }
+        StyledTextField {
+            id: passField
+
+            Layout.fillWidth: true
+            placeholderText: "Password"
+            echoMode: TextInput.Password
+            isError: accountDialog.error !== ""
+            errorText: accountDialog.error
+            onAccepted: accountDialog.submit()
+        }
+
+        actions: [
+            TextButton {
+                type: TextButton.Text
+                text: "Cancel"
+                onClicked: accountDialog.close()
+            },
+            TextButton {
+                type: TextButton.Text
+                text: accountDialog.busy ? "Please wait…" : accountDialog.create ? "Create" : "Sign in"
+                disabled: accountDialog.busy || !userField.text.trim() || !passField.text
+                onClicked: accountDialog.submit()
+            }
+        ]
+    }
+
+    StyledDialog {
+        id: serverDialog
+
+        property string error
+
+        function show(): void {
+            error = "";
+            serverUrlField.text = root.account.server;
+            open();
+        }
+
+        function submit(): void {
+            Api.call("syncSetServer", {
+                server: serverUrlField.text
+            }, st => {
+                root.account = st;
+                close();
+            }, e => error = String(e));
+        }
+
+        icon: "dns"
+        title: "Server"
+        onOpened: serverUrlField.forceActiveFocus()
+
+        StyledTextField {
+            id: serverUrlField
+
+            Layout.fillWidth: true
+            placeholderText: "Custom server"
+            supportingText: serverUrlField.text.trim().startsWith("http://") ? "Unencrypted connection" : ""
+            isError: serverDialog.error !== ""
+            errorText: serverDialog.error
+            onAccepted: serverDialog.submit()
+        }
+
+        actions: [
+            TextButton {
+                type: TextButton.Text
+                text: "Cancel"
+                onClicked: serverDialog.close()
+            },
+            TextButton {
+                type: TextButton.Text
+                text: "Save"
+                onClicked: serverDialog.submit()
+            }
+        ]
+    }
+
+    StyledDialog {
+        id: passwordDialog
+
+        property bool busy
+        property string error
+
+        function show(): void {
+            error = "";
+            currentField.text = "";
+            newField.text = "";
+            open();
+        }
+
+        function submit(): void {
+            if (busy || !currentField.text || !newField.text)
+                return;
+            busy = true;
+            error = "";
+            Api.call("syncChangePassword", {
+                current: currentField.text,
+                password: newField.text
+            }, () => {
+                busy = false;
+                close();
+                ApplicationWindow.window.toast("Password changed");
+            }, e => {
+                busy = false;
+                error = String(e);
+            });
+        }
+
+        icon: "password"
+        title: "Change password"
+        text: "Other devices will be signed out."
+        onOpened: currentField.forceActiveFocus()
+
+        StyledTextField {
+            id: currentField
+
+            Layout.fillWidth: true
+            placeholderText: "Current password"
+            echoMode: TextInput.Password
+            onAccepted: newField.forceActiveFocus()
+        }
+        StyledTextField {
+            id: newField
+
+            Layout.fillWidth: true
+            placeholderText: "New password"
+            echoMode: TextInput.Password
+            isError: passwordDialog.error !== ""
+            errorText: passwordDialog.error
+            onAccepted: passwordDialog.submit()
+        }
+
+        actions: [
+            TextButton {
+                type: TextButton.Text
+                text: "Cancel"
+                onClicked: passwordDialog.close()
+            },
+            TextButton {
+                type: TextButton.Text
+                text: passwordDialog.busy ? "Please wait…" : "Change"
+                disabled: passwordDialog.busy || !currentField.text || !newField.text
+                onClicked: passwordDialog.submit()
+            }
+        ]
+    }
+
+    StyledDialog {
+        id: signOutDialog
+
+        icon: "logout"
+        title: "Sign out?"
+        text: "Your history stays on this device."
+        actions: [
+            TextButton {
+                type: TextButton.Text
+                text: "Cancel"
+                onClicked: signOutDialog.close()
+            },
+            TextButton {
+                type: TextButton.Text
+                text: "Sign out"
+                onClicked: {
+                    signOutDialog.close();
+                    Api.call("syncSignOut", {}, st => root.account = st);
+                }
+            }
+        ]
+    }
+
+    StyledDialog {
+        id: deleteAccountDialog
+
+        property bool busy
+        property string error
+
+        function show(): void {
+            error = "";
+            deletePassField.text = "";
+            open();
+        }
+
+        function submit(): void {
+            if (busy || !deletePassField.text)
+                return;
+            busy = true;
+            error = "";
+            Api.call("syncDeleteAccount", {
+                password: deletePassField.text
+            }, st => {
+                busy = false;
+                root.account = st;
+                close();
+                ApplicationWindow.window.toast("Account deleted");
+            }, e => {
+                busy = false;
+                error = String(e);
+            });
+        }
+
+        icon: "delete_forever"
+        title: "Delete account?"
+        text: "Your synced data will be deleted from the server."
+        onOpened: deletePassField.forceActiveFocus()
+
+        StyledTextField {
+            id: deletePassField
+
+            Layout.fillWidth: true
+            placeholderText: "Password"
+            echoMode: TextInput.Password
+            isError: deleteAccountDialog.error !== ""
+            errorText: deleteAccountDialog.error
+            onAccepted: deleteAccountDialog.submit()
+        }
+
+        actions: [
+            TextButton {
+                type: TextButton.Text
+                text: "Cancel"
+                onClicked: deleteAccountDialog.close()
+            },
+            TextButton {
+                type: TextButton.Text
+                text: deleteAccountDialog.busy ? "Please wait…" : "Delete"
+                disabled: deleteAccountDialog.busy || !deletePassField.text
+                onClicked: deleteAccountDialog.submit()
+            }
+        ]
+    }
+
     StyledFlickable {
         id: flick
 
@@ -128,6 +433,93 @@ Item {
             StyledText {
                 text: "Settings"
                 font: Theme.font.headline.large
+            }
+
+            Section {
+                title: "Sync"
+                icon: "sync"
+
+                Row {
+                    visible: !root.account.signedIn
+                    label: "Not signed in"
+                    hint: root.account.error
+
+                    TextButton {
+                        type: TextButton.Text
+                        text: "Create account"
+                        onClicked: accountDialog.show(true)
+                    }
+                    TextButton {
+                        type: TextButton.Tonal
+                        text: "Sign in"
+                        onClicked: accountDialog.show(false)
+                    }
+                }
+                Row {
+                    visible: root.account.signedIn
+                    label: `Signed in as ${root.account.username}`
+                    hint: root.account.error || root.syncedLabel()
+
+                    TextButton {
+                        type: TextButton.Tonal
+                        text: root.account.syncing ? "Syncing…" : "Sync now"
+                        disabled: root.account.syncing
+                        onClicked: {
+                            root.account = Object.assign({}, root.account, {
+                                syncing: true
+                            });
+                            Api.call("syncNow", {}, st => root.account = st);
+                        }
+                    }
+                    IconButton {
+                        type: IconButton.Text
+                        icon: "more_vert"
+                        onClicked: accountMenu.toggle()
+
+                        StyledMenu {
+                            id: accountMenu
+
+                            x: parent.width - width
+                            y: parent.height + 4
+                            model: [
+                                {
+                                    text: "Change password",
+                                    icon: "password",
+                                    value: "password"
+                                },
+                                {
+                                    text: "Sign out",
+                                    icon: "logout",
+                                    value: "signOut"
+                                },
+                                {
+                                    text: "Delete account",
+                                    icon: "delete_forever",
+                                    value: "delete"
+                                }
+                            ]
+                            onTriggered: item => {
+                                if (item.value === "password")
+                                    passwordDialog.show();
+                                else if (item.value === "signOut")
+                                    signOutDialog.open();
+                                else
+                                    deleteAccountDialog.show();
+                            }
+                        }
+                    }
+                }
+                Row {
+                    label: "Server"
+                    hint: root.account.server ? root.host(root.account.server) : "Default"
+
+                    TextButton {
+                        type: TextButton.Text
+                        text: "Change…"
+                        disabled: root.account.signedIn
+                        onClicked: serverDialog.show()
+                    }
+                }
             }
 
             Section {

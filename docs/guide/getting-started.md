@@ -50,5 +50,6 @@ If one source struggles, try the same show from another source. They're separate
 - **Autoplay next episode** controls the end-of-episode countdown.
 - **Skip intro & outro** enables automatic skipping when timing data is available.
 - **Theme** follows your system or stays light or dark.
+- **Sync** keeps your history the same on your phone and computer. See [sync between devices](./sync.md).
 
 You can change these later in [Settings](./settings.md). Nothing here needs to be perfect before your first episode.

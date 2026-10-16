@@ -5,11 +5,13 @@ use anyhow::Result;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)] // rows from other app versions may lack fields
 pub struct Progress {
     pub episode_key: String,
     pub anilist_id: i64,
@@ -102,6 +104,14 @@ fn init(c: &Connection) -> rusqlite::Result<()> {
             meta           TEXT    NOT NULL DEFAULT '{}'
         );
         CREATE INDEX IF NOT EXISTS idx_downloads_series ON downloads(source, series_url);
+        -- Unsent changes. REPLACE gives a changed row a new id, above any already sent.
+        CREATE TABLE IF NOT EXISTS sync_dirty (
+            id   INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind TEXT    NOT NULL,
+            key  TEXT    NOT NULL,
+            at   INTEGER NOT NULL,
+            UNIQUE(kind, key)
+        );
         DELETE FROM cache WHERE expires < strftime('%s', 'now') - 30 * 86400;",
     )?;
     migrate(c)
@@ -190,8 +200,17 @@ fn now() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
 }
 
+/// A row's time only moves forward, so a local change beats the copy it
+/// replaces, even one from a clock running ahead.
 pub fn upsert(p: &Progress) -> Result<()> {
-    upsert_on(&DB.lock().unwrap(), p)
+    let c = DB.lock().unwrap();
+    upsert_on(&c, p)?;
+    queue_change(&c, "progress", &p.episode_key)
+}
+
+fn queue_change(c: &Connection, kind: &str, key: &str) -> Result<()> {
+    c.execute("INSERT OR REPLACE INTO sync_dirty (kind, key, at) VALUES (?1, ?2, ?3)", params![kind, key, now()])?;
+    Ok(())
 }
 
 fn upsert_on(c: &Connection, p: &Progress) -> Result<()> {
@@ -206,7 +225,7 @@ fn upsert_on(c: &Connection, p: &Progress) -> Result<()> {
             total_episodes=MAX(total_episodes, excluded.total_episodes), episode_number=excluded.episode_number,
             playback_time=excluded.playback_time, duration=excluded.duration, title=excluded.title,
             cover=CASE WHEN excluded.cover != '' THEN excluded.cover ELSE cover END,
-            completed=excluded.completed, last_updated=excluded.last_updated",
+            completed=excluded.completed, last_updated=MAX(excluded.last_updated, last_updated + 1)",
         params![
             p.episode_key, p.anilist_id, p.mal_id, p.series_key, p.series_url, p.series_title, p.source, p.episode_url,
             p.total_episodes, p.episode_number, p.playback_time.max(0), p.duration.max(0), p.title, p.cover, p.completed, updated
@@ -222,7 +241,8 @@ pub fn set_completed(p: &Progress, completed: bool) -> Result<()> {
     let mut row = existing.unwrap_or_else(|| p.clone());
     row.completed = completed;
     row.last_updated = 0;
-    upsert_on(&c, &row)
+    upsert_on(&c, &row)?;
+    queue_change(&c, "progress", &row.episode_key)
 }
 
 fn row(r: &rusqlite::Row) -> rusqlite::Result<Progress> {
@@ -273,12 +293,22 @@ pub fn series_episodes(series_key: &str, series_url: &str) -> Result<Vec<Progres
 }
 
 pub fn delete_series(series_key: &str) -> Result<()> {
-    DB.lock().unwrap().execute("DELETE FROM media_progress WHERE series_key = ?1", [series_key])?;
-    Ok(())
+    delete_progress_on(&DB.lock().unwrap(), "WHERE series_key = ?1", &[series_key])
 }
 
 pub fn clear_history() -> Result<()> {
-    DB.lock().unwrap().execute("DELETE FROM media_progress", [])?;
+    delete_progress_on(&DB.lock().unwrap(), "", &[])
+}
+
+/// Queues each deletion, timed after its row so it wins.
+fn delete_progress_on(c: &Connection, filter: &str, args: &[&str]) -> Result<()> {
+    let tx = c.unchecked_transaction()?;
+    tx.execute(
+        &format!("INSERT OR REPLACE INTO sync_dirty (kind, key, at) SELECT 'progress', episode_key, MAX({}, last_updated + 1) FROM media_progress {filter}", now()),
+        rusqlite::params_from_iter(args),
+    )?;
+    tx.execute(&format!("DELETE FROM media_progress {filter}"), rusqlite::params_from_iter(args))?;
+    tx.commit()?;
     Ok(())
 }
 
@@ -406,10 +436,137 @@ pub fn setting(key: &str) -> Option<String> {
 }
 
 pub fn set_setting(key: &str, value: &str) -> Result<()> {
-    DB.lock().unwrap().execute(
-        "INSERT INTO settings(key, value) VALUES(?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        [key, value],
-    )?;
+    let c = DB.lock().unwrap();
+    set_setting_on(&c, key, value)?;
+    if crate::sync::SYNCED_SETTINGS.contains(&key) {
+        queue_change(&c, "setting", key)?;
+    }
+    Ok(())
+}
+
+fn set_setting_on(c: &Connection, key: &str, value: &str) -> Result<()> {
+    c.execute("INSERT INTO settings(key, value) VALUES(?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [key, value])?;
+    Ok(())
+}
+
+fn setting_on(c: &Connection, key: &str) -> Result<Option<String>> {
+    Ok(c.query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| r.get(0)).optional()?)
+}
+
+/// A record on the sync server: a history row (`progress`) or a setting.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Change {
+    pub kind: String,
+    pub key: String,
+    pub updated_at: i64,
+    #[serde(default)]
+    pub deleted: bool,
+    #[serde(default)]
+    pub data: Value,
+}
+
+/// Unsent changes, oldest first, and the id to pass to `sync_ack`.
+pub fn sync_pending(limit: usize) -> Result<(Vec<Change>, i64)> {
+    sync_pending_on(&DB.lock().unwrap(), limit)
+}
+
+fn sync_pending_on(c: &Connection, limit: usize) -> Result<(Vec<Change>, i64)> {
+    let queued: Vec<(i64, String, String, i64)> = c
+        .prepare("SELECT id, kind, key, at FROM sync_dirty ORDER BY id LIMIT ?1")?
+        .query_map([limit as i64], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+        .collect::<rusqlite::Result<_>>()?;
+    let last = queued.last().map_or(0, |q| q.0);
+    let mut out = Vec::with_capacity(queued.len());
+    for (_, kind, key, at) in queued {
+        // Gone locally → sent as a deletion.
+        let (updated_at, data) = match kind.as_str() {
+            "progress" => match get_on(c, &key)? {
+                Some(p) => (p.last_updated, Some(serde_json::to_value(&p)?)),
+                None => (at, None),
+            },
+            _ => (at, setting_on(c, &key)?.map(Value::String)),
+        };
+        out.push(Change { kind, key, updated_at, deleted: data.is_none(), data: data.unwrap_or_default() });
+    }
+    Ok((out, last))
+}
+
+pub fn sync_ack(last: i64) -> Result<()> {
+    sync_ack_on(&DB.lock().unwrap(), last)
+}
+
+fn sync_ack_on(c: &Connection, last: i64) -> Result<()> {
+    c.execute("DELETE FROM sync_dirty WHERE id <= ?1", [last])?;
+    Ok(())
+}
+
+#[derive(Debug, Default, PartialEq)]
+pub struct Applied {
+    pub history: bool,
+    pub settings: Vec<String>,
+}
+
+/// Applies records newer than the local row or its unsent change. Only synced
+/// settings are accepted, so a server can't change device settings.
+pub fn sync_apply(changes: &[Change]) -> Result<Applied> {
+    sync_apply_on(&DB.lock().unwrap(), changes)
+}
+
+fn sync_apply_on(c: &Connection, changes: &[Change]) -> Result<Applied> {
+    let tx = c.unchecked_transaction()?;
+    let mut applied = Applied::default();
+    for ch in changes {
+        let queued: Option<i64> =
+            tx.query_row("SELECT at FROM sync_dirty WHERE kind = ?1 AND key = ?2", [&ch.kind, &ch.key], |r| r.get(0)).optional()?;
+        let local = match ch.kind.as_str() {
+            "progress" => get_on(&tx, &ch.key)?.map(|p| p.last_updated).max(queued),
+            "setting" if crate::sync::SYNCED_SETTINGS.contains(&ch.key.as_str()) => queued,
+            _ => continue,
+        };
+        if local.is_some_and(|at| at >= ch.updated_at) {
+            continue;
+        }
+        match (ch.kind.as_str(), ch.deleted) {
+            ("progress", true) => applied.history |= tx.execute("DELETE FROM media_progress WHERE episode_key = ?1", [&ch.key])? > 0,
+            ("progress", false) => match serde_json::from_value::<Progress>(ch.data.clone()) {
+                Ok(p) => {
+                    upsert_on(&tx, &Progress { episode_key: ch.key.clone(), last_updated: ch.updated_at, ..p })?;
+                    applied.history = true;
+                }
+                Err(e) => tracing::warn!("sync: skipped unreadable history row {} ({e})", ch.key),
+            },
+            _ => {
+                let value = ch.data.as_str().filter(|_| !ch.deleted);
+                if setting_on(&tx, &ch.key)?.as_deref() != value {
+                    match value {
+                        Some(v) => set_setting_on(&tx, &ch.key, v)?,
+                        None => _ = tx.execute("DELETE FROM settings WHERE key = ?1", [&ch.key])?,
+                    }
+                    applied.settings.push(ch.key.clone());
+                }
+            }
+        }
+        tx.execute("DELETE FROM sync_dirty WHERE kind = ?1 AND key = ?2", [&ch.kind, &ch.key])?;
+    }
+    tx.commit()?;
+    Ok(applied)
+}
+
+/// At sign-in, history keeps its own times so the newest copy wins; settings
+/// go in at time 0 so the account's win.
+pub fn sync_seed() -> Result<()> {
+    sync_seed_on(&DB.lock().unwrap())
+}
+
+fn sync_seed_on(c: &Connection) -> Result<()> {
+    let tx = c.unchecked_transaction()?;
+    tx.execute("UPDATE sync_dirty SET at = 0 WHERE kind = 'setting'", [])?;
+    tx.execute("INSERT OR IGNORE INTO sync_dirty (kind, key, at) SELECT 'progress', episode_key, last_updated FROM media_progress", [])?;
+    for key in crate::sync::SYNCED_SETTINGS {
+        tx.execute("INSERT OR IGNORE INTO sync_dirty (kind, key, at) SELECT 'setting', key, 0 FROM settings WHERE key = ?1", [key])?;
+    }
+    tx.commit()?;
     Ok(())
 }
 
@@ -558,6 +715,89 @@ mod tests {
         assert_eq!(group_series(&rows)[0].continue_episode, 2);
         rows.push(Progress { total_episodes: 3, ..ep(2, 1400, true, 30) });
         assert!(group_series(&rows)[0].finished);
+    }
+
+    #[test]
+    fn sync_queues_acks_and_applies_newest() {
+        use serde_json::json;
+        let c = Connection::open_in_memory().unwrap();
+        init(&c).unwrap();
+        let (a, b) = (ep(1, 300, false, 100), ep(2, 600, false, 100));
+        for p in [&a, &b] {
+            upsert_on(&c, p).unwrap();
+            queue_change(&c, "progress", &p.episode_key).unwrap();
+        }
+        set_setting_on(&c, "quality", "720p").unwrap();
+        queue_change(&c, "setting", "quality").unwrap();
+        let (pending, last) = sync_pending_on(&c, 10).unwrap();
+        let summary: Vec<_> = pending.iter().map(|p| (p.kind.as_str(), p.key.as_str(), p.deleted)).collect();
+        assert_eq!(summary, [("progress", a.episode_key.as_str(), false), ("progress", b.episode_key.as_str(), false), ("setting", "quality", false)]);
+        assert_eq!((pending[0].updated_at, &pending[2].data), (100, &json!("720p")));
+        assert_eq!(serde_json::from_value::<Progress>(pending[1].data.clone()).unwrap().playback_time, 600);
+
+        // Changed while the request was out: survives the ack.
+        upsert_on(&c, &Progress { playback_time: 400, last_updated: 150, ..a.clone() }).unwrap();
+        queue_change(&c, "progress", &a.episode_key).unwrap();
+        sync_ack_on(&c, last).unwrap();
+        let (pending, _) = sync_pending_on(&c, 10).unwrap();
+        assert_eq!(pending.iter().map(|p| (p.key.as_str(), p.updated_at)).collect::<Vec<_>>(), [(a.episode_key.as_str(), 150)]);
+
+        let remote = |kind: &str, key: &str, updated_at: i64, data: Value| Change { kind: kind.into(), key: key.into(), updated_at, deleted: false, data };
+        let applied = sync_apply_on(
+            &c,
+            &[
+                remote("progress", &a.episode_key, 120, json!(Progress { playback_time: 50, ..a.clone() })), // older than the local 150
+                remote("progress", &b.episode_key, 200, json!(Progress { playback_time: 900, ..b.clone() })),
+                remote("setting", "quality", 1, json!("1080p")), // nothing queued: the account's value wins
+                remote("setting", "downloadDir", 999, json!("/elsewhere")), // not synced
+                remote("someday", "x", 999, json!(1)),
+            ],
+        )
+        .unwrap();
+        assert_eq!(applied, Applied { history: true, settings: vec!["quality".into()] });
+        assert_eq!(get_on(&c, &a.episode_key).unwrap().unwrap().playback_time, 400);
+        let got_b = get_on(&c, &b.episode_key).unwrap().unwrap();
+        assert_eq!((got_b.playback_time, got_b.last_updated), (900, 200));
+        assert_eq!(setting_on(&c, "quality").unwrap().as_deref(), Some("1080p"));
+        assert_eq!(setting_on(&c, "downloadDir").unwrap(), None);
+        assert_eq!(sync_apply_on(&c, &[remote("setting", "quality", 1, json!("1080p"))]).unwrap(), Applied::default(), "echo changes nothing");
+
+        // A newer remote deletion removes the row and any queued change for it.
+        let gone = Change { deleted: true, ..remote("progress", &a.episode_key, now() + 10, Value::Null) };
+        assert!(sync_apply_on(&c, &[gone]).unwrap().history);
+        assert!(get_on(&c, &a.episode_key).unwrap().is_none());
+        assert!(sync_pending_on(&c, 10).unwrap().0.is_empty());
+
+        // A local deletion is queued, and an older remote copy doesn't bring the row back.
+        delete_progress_on(&c, "WHERE series_key = ?1", &[&b.series_key]).unwrap();
+        let (pending, _) = sync_pending_on(&c, 10).unwrap();
+        assert_eq!(pending.iter().map(|p| (p.key.as_str(), p.deleted)).collect::<Vec<_>>(), [(b.episode_key.as_str(), true)]);
+        assert!(!sync_apply_on(&c, &[remote("progress", &b.episode_key, 300, json!(b))]).unwrap().history);
+        assert!(get_on(&c, &b.episode_key).unwrap().is_none());
+
+        // A row from a clock running ahead: saving or deleting it here still comes out newer.
+        let ahead = now() + 100;
+        sync_apply_on(&c, &[remote("progress", &a.episode_key, ahead, json!(a))]).unwrap();
+        upsert_on(&c, &Progress { last_updated: 0, ..a.clone() }).unwrap();
+        assert_eq!(get_on(&c, &a.episode_key).unwrap().unwrap().last_updated, ahead + 1);
+        delete_progress_on(&c, "", &[]).unwrap();
+        let (pending, _) = sync_pending_on(&c, 10).unwrap();
+        assert_eq!(pending.iter().find(|p| p.key == a.episode_key).map(|p| (p.updated_at, p.deleted)), Some((ahead + 2, true)));
+    }
+
+    #[test]
+    fn sync_seed_offers_history_and_stored_settings() {
+        let c = Connection::open_in_memory().unwrap();
+        init(&c).unwrap();
+        upsert_on(&c, &ep(1, 300, false, 100)).unwrap();
+        set_setting_on(&c, "quality", "720p").unwrap();
+        queue_change(&c, "setting", "quality").unwrap(); // chosen while signed out
+        set_setting_on(&c, "theme", "dark").unwrap(); // per device
+        sync_seed_on(&c).unwrap();
+        let (pending, _) = sync_pending_on(&c, 10).unwrap();
+        let mut summary: Vec<_> = pending.iter().map(|p| (p.kind.as_str(), p.updated_at)).collect();
+        summary.sort();
+        assert_eq!(summary, [("progress", 100), ("setting", 0)], "settings at 0 never beat the account's");
     }
 
     #[test]

@@ -74,6 +74,7 @@ class Shell extends StatefulWidget {
 class _ShellState extends State<Shell> {
   int _tab = 0;
   final _searchKey = GlobalKey<SearchPageState>();
+  final _lifecycle = AppLifecycleListener(onResume: () => Api.call('syncNow').ignore());
 
   @override
   void initState() {
@@ -87,6 +88,7 @@ class _ShellState extends State<Shell> {
   @override
   void dispose() {
     DownloadNotifications.tapped.removeListener(_showDownloads);
+    _lifecycle.dispose();
     super.dispose();
   }
 

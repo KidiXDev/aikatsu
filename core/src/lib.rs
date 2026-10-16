@@ -16,6 +16,7 @@ pub mod plugin_cli;
 mod plugins;
 mod proxy;
 mod sources;
+mod sync;
 
 use serde_json::Value;
 use std::path::PathBuf;
@@ -69,7 +70,9 @@ pub fn init(dirs: Dirs, debug: bool, push: impl Fn(&str, &Value) + Send + Sync +
     assert!(DIRS.set(dirs).is_ok(), "aikatsu_core::init must run first, and once");
     let _ = SINK.set(Box::new(push));
     DEBUG_FLAG.store(debug, Ordering::Relaxed);
-    init_logging()
+    let guard = init_logging();
+    RT.spawn(sync::run());
+    guard
 }
 
 pub fn debug_enabled() -> bool {

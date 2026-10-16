@@ -41,7 +41,8 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   Map<String, dynamic> _s = Api.get('settings');
-  StreamSubscription<(String, dynamic)>? _pluginsSub;
+  Map<String, dynamic> _account = Api.get('syncStatus');
+  StreamSubscription<(String, dynamic)>? _pushSub;
   final List<dynamic> _modes = Api.get('anime4kModes');
   bool _shadersInstalled = Api.get('anime4kInstalled');
   bool _installingShaders = false;
@@ -49,15 +50,201 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void initState() {
     super.initState();
-    _pluginsSub = Api.pushed.listen((e) {
-      if (e.$1 == 'plugins' && mounted) setState(() {});
+    _pushSub = Api.pushed.listen((e) {
+      if (!mounted) return;
+      if (e.$1 == 'plugins') setState(() {});
+      if (e.$1 == 'sync') {
+        setState(() {
+          _account = Map<String, dynamic>.from(e.$2);
+          if (e.$2['settings'] == true) _s = Api.get('settings');
+        });
+      }
     });
   }
 
   @override
   void dispose() {
-    _pluginsSub?.cancel();
+    _pushSub?.cancel();
     super.dispose();
+  }
+
+  bool get _signedIn => _account['signedIn'] == true;
+
+  String get _syncedLabel {
+    final at = toInt(_account['lastSync']);
+    if (at == 0) return 'Not synced yet';
+    final mins = DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(at * 1000)).inMinutes;
+    if (mins < 1) return 'Synced just now';
+    if (mins < 60) return 'Synced $mins min ago';
+    return mins < 1440
+        ? 'Synced ${mins ~/ 60} h ago'
+        : 'Synced ${MaterialLocalizations.of(context).formatShortDate(DateTime.fromMillisecondsSinceEpoch(at * 1000))}';
+  }
+
+  Future<void> _syncNow() async {
+    setState(() => _account = {..._account, 'syncing': true});
+    try {
+      final status = await Api.call('syncNow');
+      if (mounted) setState(() => _account = Map<String, dynamic>.from(status));
+    } catch (e) {
+      toast('$e');
+    }
+  }
+
+  String get _host => '${_account['server']}'.replaceFirst(RegExp(r'^https?://'), '');
+
+  Future<void> _changeServer() async {
+    String url = '${_account['server']}', error = '';
+    final status = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          Future<void> save(String value) async {
+            try {
+              final st = await Api.call('syncSetServer', {'server': value});
+              if (context.mounted) Navigator.pop(context, Map<String, dynamic>.from(st));
+            } catch (e) {
+              if (context.mounted) setDialogState(() => error = '$e');
+            }
+          }
+
+          return AlertDialog(
+            title: const Text('Server'),
+            content: TextFormField(
+              initialValue: url,
+              autofocus: true,
+              autocorrect: false,
+              keyboardType: TextInputType.url,
+              decoration: InputDecoration(
+                labelText: 'Custom server',
+                hintText: 'Empty uses the default',
+                errorText: error.isEmpty ? null : error,
+                errorMaxLines: 3,
+              ),
+              onChanged: (v) => setDialogState(() => url = v),
+              onFieldSubmitted: (_) => save(url),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+              TextButton(onPressed: () => save(url), child: const Text('Save')),
+            ],
+          );
+        },
+      ),
+    );
+    if (status != null && mounted) setState(() => _account = status);
+  }
+
+  /// `fields` are (label, secret). The error from `run` shows under the last field.
+  Future<bool> _form(
+    String title,
+    String actionLabel,
+    List<(String, bool)> fields,
+    Future<void> Function(List<String>) run, {
+    String? message,
+  }) async {
+    final values = List.filled(fields.length, '');
+    String error = '';
+    bool busy = false;
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => StatefulBuilder(
+            builder: (context, setDialogState) {
+              final ready = !busy && values.every((v) => v.trim().isNotEmpty);
+              Future<void> submit() async {
+                if (!ready) return;
+                setDialogState(() {
+                  busy = true;
+                  error = '';
+                });
+                try {
+                  await run(values);
+                  if (context.mounted) Navigator.pop(context, true);
+                } catch (e) {
+                  if (context.mounted) {
+                    setDialogState(() {
+                      busy = false;
+                      error = '$e';
+                    });
+                  }
+                }
+              }
+
+              return AlertDialog(
+                title: Text(title),
+                content: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    spacing: 16,
+                    children: [
+                      if (message != null) Text(message),
+                      for (final (i, (label, secret)) in fields.indexed)
+                        TextField(
+                          autofocus: i == 0,
+                          autocorrect: false,
+                          obscureText: secret,
+                          textInputAction: i < fields.length - 1 ? TextInputAction.next : TextInputAction.done,
+                          decoration: InputDecoration(
+                            labelText: label,
+                            errorText: i == fields.length - 1 && error.isNotEmpty ? error : null,
+                            errorMaxLines: 3,
+                          ),
+                          onChanged: (v) => setDialogState(() => values[i] = v),
+                          onSubmitted: (_) => submit(),
+                        ),
+                    ],
+                  ),
+                ),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+                  TextButton(onPressed: ready ? submit : null, child: Text(busy ? 'Please wait…' : actionLabel)),
+                ],
+              );
+            },
+          ),
+        ) ??
+        false;
+  }
+
+  Future<void> _signIn({required bool create}) async {
+    final done = await _form(create ? 'Create account' : 'Sign in', create ? 'Create' : 'Sign in', [
+      ('Username', false),
+      ('Password', true),
+    ], (v) => Api.call('syncSignIn', {'username': v[0].trim(), 'password': v[1], 'create': create}));
+    if (!done || !mounted) return;
+    setState(() => _account = Api.get('syncStatus'));
+    toast(create ? 'Account created' : 'Signed in');
+  }
+
+  Future<void> _accountAction(String action) async {
+    switch (action) {
+      case 'password':
+        final done = await _form(
+          'Change password',
+          'Change',
+          [('Current password', true), ('New password', true)],
+          (v) => Api.call('syncChangePassword', {'current': v[0], 'password': v[1]}),
+          message: 'Other devices will be signed out.',
+        );
+        if (done) toast('Password changed');
+      case 'signOut':
+        if (!await confirm(context, 'Sign out?', 'Your history stays on this device.', 'Sign out')) return;
+        final status = await Api.call('syncSignOut');
+        if (mounted) setState(() => _account = Map<String, dynamic>.from(status));
+      case 'delete':
+        final done = await _form(
+          'Delete account?',
+          'Delete',
+          [('Password', true)],
+          (v) => Api.call('syncDeleteAccount', {'password': v[0]}),
+          message: 'Your synced data will be deleted from the server.',
+        );
+        if (done && mounted) {
+          setState(() => _account = Api.get('syncStatus'));
+          toast('Account deleted');
+        }
+    }
   }
 
   List<String> get _disabled => '${_s['disabledSources']}'.split(',').map((x) => x.trim()).where((x) => x.isNotEmpty).toList();
@@ -208,6 +395,59 @@ class _SettingsPageState extends State<SettingsPage> {
           child: Text('Settings', style: t.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700)),
         ),
 
+        _SettingsGroup(
+          title: 'Sync',
+          icon: Icons.sync_rounded,
+          children: [
+            if (_signedIn)
+              ListTile(
+                title: Text('Signed in as ${_account['username']}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: Text(text([_account['error'], _syncedLabel])),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _account['syncing'] == true
+                        ? const Padding(
+                            padding: EdgeInsets.all(12),
+                            child: SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                          )
+                        : IconButton(icon: const Icon(Icons.sync_rounded), tooltip: 'Sync now', onPressed: _syncNow),
+                    PopupMenuButton<String>(
+                      onSelected: _accountAction,
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(value: 'password', child: Text('Change password')),
+                        PopupMenuItem(value: 'signOut', child: Text('Sign out')),
+                        PopupMenuItem(value: 'delete', child: Text('Delete account')),
+                      ],
+                    ),
+                  ],
+                ),
+              )
+            else ...[
+              ListTile(
+                title: const Text('Not signed in', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: '${_account['error']}'.isEmpty ? null : Text('${_account['error']}'),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  spacing: 8,
+                  children: [
+                    TextButton(onPressed: () => _signIn(create: true), child: const Text('Create account')),
+                    FilledButton.tonal(onPressed: () => _signIn(create: false), child: const Text('Sign in')),
+                  ],
+                ),
+              ),
+            ],
+            ListTile(
+              title: const Text('Server', style: TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: Text(_host.isEmpty ? 'Default' : _host),
+              trailing: TextButton(onPressed: _signedIn ? null : _changeServer, child: const Text('Change')),
+            ),
+          ],
+        ),
+
         // Appearance Group
         _SettingsGroup(
           title: 'Appearance',
@@ -279,20 +519,13 @@ class _SettingsPageState extends State<SettingsPage> {
           icon: Icons.download_rounded,
           children: [
             ListTile(
-              title: const Text('Download folder', style: TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: Text('${Api.get('downloadDir')}'),
-            ),
-            ListTile(
               title: const Text('TMDB API key', style: TextStyle(fontWeight: FontWeight.w600)),
               subtitle: Padding(
-                padding: const EdgeInsets.only(top: 6),
+                padding: const EdgeInsets.symmetric(vertical: 8),
                 child: TextFormField(
                   initialValue: '${_s['tmdbKey']}',
                   obscureText: true,
-                  decoration: const InputDecoration(
-                    hintText: 'Optional',
-                    helperText: 'Sorts long shows into season folders.',
-                  ),
+                  decoration: const InputDecoration(hintText: 'Optional'),
                   onChanged: (v) => Api.setSetting('tmdbKey', v.trim()),
                 ),
               ),
@@ -441,7 +674,11 @@ class _PluginsPageState extends State<_PluginsPage> {
             content: TextField(
               autofocus: true,
               keyboardType: TextInputType.url,
-              decoration: InputDecoration(hintText: 'https://github.com/user/repo', errorText: error.isEmpty ? null : error, errorMaxLines: 3),
+              decoration: InputDecoration(
+                hintText: 'https://github.com/user/repo',
+                errorText: error.isEmpty ? null : error,
+                errorMaxLines: 3,
+              ),
               onChanged: (v) => url = v,
               onSubmitted: (_) => check(),
             ),
@@ -530,7 +767,11 @@ class _PluginsPageState extends State<_PluginsPage> {
           else
             Padding(
               padding: const EdgeInsets.only(right: 12),
-              child: FilledButton.tonalIcon(onPressed: _syncing ? null : _add, icon: const Icon(Icons.add_rounded), label: const Text('Add')),
+              child: FilledButton.tonalIcon(
+                onPressed: _syncing ? null : _add,
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('Add'),
+              ),
             ),
         ],
       ),
@@ -558,18 +799,26 @@ class _PluginsPageState extends State<_PluginsPage> {
                               )
                             : ListTile(
                                 title: Text(p['name'] as String, style: bold),
-                                subtitle: Text(p['compatible'] == true
-                                    ? p['updateAvailable'] == true ? 'Download to enable' : "Couldn't load"
-                                    : 'Needs a newer Aikatsu'),
+                                subtitle: Text(
+                                  p['compatible'] == true
+                                      ? p['updateAvailable'] == true
+                                            ? 'Download to enable'
+                                            : "Couldn't load"
+                                      : 'Needs a newer Aikatsu',
+                                ),
                               ),
                       ListTile(
                         title: Text(
-                          repo['error'] != null ? "Couldn't check or update" : '${repo['short']}${repo['official'] == true ? '' : '  ·  Third-party'}',
+                          repo['error'] != null
+                              ? "Couldn't check or update"
+                              : '${repo['short']}${repo['official'] == true ? '' : '  ·  Third-party'}',
                           style: t.textTheme.bodySmall?.copyWith(color: repo['error'] != null ? c.error : c.onSurfaceVariant),
                         ),
                         subtitle: repo['error'] != null
                             ? Text('${repo['error']}', maxLines: 2, overflow: TextOverflow.ellipsis)
-                            : toInt(repo['updates']) > 0 ? Text('${repo['updates']} plugin update${repo['updates'] == 1 ? '' : 's'} available') : null,
+                            : toInt(repo['updates']) > 0
+                            ? Text('${repo['updates']} plugin update${repo['updates'] == 1 ? '' : 's'} available')
+                            : null,
                         trailing: TextButton(
                           style: TextButton.styleFrom(foregroundColor: c.error),
                           onPressed: _syncing ? null : () => _remove(Map<String, dynamic>.from(repo)),
@@ -578,7 +827,10 @@ class _PluginsPageState extends State<_PluginsPage> {
                       ),
                     ],
                   ),
-                if (!_repos.any((r) => r['official'] == true)) Center(child: TextButton(onPressed: _syncing ? null : _addKyoko, child: const Text('Add Kyoko'))),
+                if (!_repos.any((r) => r['official'] == true))
+                  Center(
+                    child: TextButton(onPressed: _syncing ? null : _addKyoko, child: const Text('Add Kyoko')),
+                  ),
               ],
             ),
     );

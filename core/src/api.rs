@@ -4,7 +4,7 @@
 use crate::plugins::{self, Plugin};
 use crate::push;
 use crate::sources;
-use crate::{anime4k, db, download, meta, proxy};
+use crate::{anime4k, db, download, meta, proxy, sync};
 use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
 
@@ -133,6 +133,16 @@ pub async fn call(method: &str, args: Value) -> Result<Value> {
             let d = db::cached("discover", std::time::Duration::from_secs(30 * 60), refresh(&args), meta::discover()).await?;
             Ok(serde_json::to_value(d)?)
         }
+        // syncNow never fails; errors are in its status.
+        "syncSetServer" => sync::set_server(s(&args, "server")),
+        "syncSignIn" => sync::sign_in(s(&args, "username"), s(&args, "password"), args["create"].as_bool().unwrap_or(false)).await,
+        "syncSignOut" => Ok(sync::sign_out().await),
+        "syncNow" => Ok(sync::sync().await),
+        "syncChangePassword" => {
+            sync::change_password(s(&args, "current"), s(&args, "password")).await?;
+            Ok(Value::Null)
+        }
+        "syncDeleteAccount" => sync::delete_account(s(&args, "password")).await,
         "skipTimes" => {
             let (mal, ep) = (i(&args, "malId"), i(&args, "episode") as u32);
             let skip = db::cached(&format!("skip:{mal}:{ep}"), DAY * 7, false, meta::skip_times(mal, ep)).await?;
@@ -183,6 +193,7 @@ pub fn get(method: &str, args: Value) -> Result<Value> {
             let series = db::series_key(i(&args, "anilistId"), s(&args, "source"), s(&args, "url"));
             Ok(json!({ "series": series, "episode": db::episode_key(&series, i(&args, "episode")) }))
         }
+        "syncStatus" => Ok(sync::status()),
         "settings" => Ok(Value::Object(SETTING_DEFAULTS.iter().map(|(k, _)| (k.to_string(), Value::String(setting(k)))).collect())),
         "setSetting" => {
             db::set_setting(s(&args, "key"), s(&args, "value"))?;

@@ -1,6 +1,10 @@
 # Make the app feel right
 
-Settings are stored locally. Desktop and Android share most options, but each keeps its own choices and watch history.
+Settings are stored on each device. Desktop and Android share most options. Sign in to [sync](./sync.md), and your history and most settings follow you between them.
+
+## Sync
+
+**Sync** at the top of Settings signs you in to keep watch history and settings the same on your phone and computer. See [sync between devices](./sync.md) for what follows you and what stays per device.
 
 ## Appearance and playback
 
@@ -26,11 +30,11 @@ See [managing plugins](../plugins/managing-plugins.md) for adding repos, trust p
 
 Home has Continue and Recent views. Aikatsu remembers episode progress on this device and lets you remove a series from history through its available menu actions.
 
-There is no account-based sync between your phone and desktop. Metadata from AniList or MyAnimeList doesn't mean Aikatsu is connected to your personal account on those services.
+Signed in to [sync](./sync.md), removing a series removes it on your other devices too. Metadata from AniList or MyAnimeList doesn't mean Aikatsu is connected to your personal account on those services.
 
 ## Downloads
 
-The download folder is shown in Settings. Desktop lets you choose another folder. Android uses its app-specific folder.
+Desktop shows the download folder in Settings and lets you choose another. Android uses its app-specific folder.
 
 The optional **TMDB API key** helps organize season folders for long shows. Leave it empty if you don't need that.
 

@@ -22,7 +22,11 @@ abstract final class Api {
   static final libraryRevision = ValueNotifier(0);
 
   static void init(String dataDir, String videosDir) {
-    rust.init(dataDir: dataDir, videosDir: videosDir).listen((e) => _pushed.add((e.kind, jsonDecode(e.json))));
+    rust.init(dataDir: dataDir, videosDir: videosDir).listen((e) {
+      final data = jsonDecode(e.json);
+      _pushed.add((e.kind, data));
+      if (e.kind == 'sync' && data['history'] == true) historyRevision.value++;
+    });
   }
 
   static Future<dynamic> call(String method, [Map<String, Object?> args = const {}]) async =>
