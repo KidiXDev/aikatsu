@@ -8,7 +8,7 @@ Grab the latest release from [GitHub Releases](https://github.com/KidiXDev/aikat
 
 ### Windows
 
-Download `windows-x64-setup.exe` and run it. It installs Aikatsu for your user account without asking for admin rights, adds Start menu and desktop shortcuts, and can be removed from **Settings > Apps**. Run it again to update. Your history and settings are kept when you update or uninstall.
+Download `windows-x64-setup.exe` and run it. It installs Aikatsu for your user account without asking for admin rights, adds Start menu and desktop shortcuts, and can be removed from **Settings > Apps**. Aikatsu offers [updates](./settings.md#app-updates) itself. Your history and settings are kept when you update or uninstall.
 
 To run Aikatsu without installing it, download the Windows ZIP instead, unpack it, and run `aikatsu.exe` from the extracted folder. Keep the other files beside it. The app needs those libraries to start.
 

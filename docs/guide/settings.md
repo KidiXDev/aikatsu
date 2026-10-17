@@ -30,6 +30,18 @@ On desktop, Theme is in **General** and the rest is in **Watch**. Watch shows ea
 
 See [managing plugins](../plugins/managing-plugins.md) for adding repos, trust prompts, and manual downloads.
 
+## App updates
+
+**Check for Aikatsu updates on startup** is on by default. When a newer release is out, Aikatsu shows its version and asks before downloading anything. **What's new** opens the release notes. To check by hand, use **Check for updates** in **General** on desktop, or **Check now** under **Updates** on Android.
+
+**Update** downloads the new version, checks that it arrived intact, and installs it:
+
+- **Windows, installed with `setup.exe`:** Aikatsu closes, installs the update, and opens again.
+- **Linux AppImage:** the AppImage file is replaced with the new one, then Aikatsu restarts. The folder holding it must be writable.
+- **Android:** the first time, Android asks you to let Aikatsu install apps. Turn that on, go back, and tap **Update** again. Android then asks you to confirm the install.
+
+The Windows ZIP and builds from source can't replace themselves, so the dialog offers **Download** instead, which opens the release page. Updating keeps your history, settings, and downloads.
+
 ## History
 
 Home has Continue and Recent views. Aikatsu remembers episode progress on this device and lets you remove a series from history through its available menu actions.

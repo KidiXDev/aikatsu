@@ -1,6 +1,7 @@
 ; Windows installer, built by .github/workflows/release.yml:
 ;   makensis /DVERSION=0.3.2 /DDIST=<windeployqt folder> /DOUTFILE=<setup.exe> aikatsu.nsi
 ; Per-user, so it needs no admin rights and users can still drop ffmpeg.exe beside aikatsu.exe.
+; The app's updater (core/src/update.rs) runs it with /S /UPDATE just before quitting.
 
 Unicode true
 ManifestDPIAware true
@@ -8,6 +9,8 @@ SetCompressor /SOLID lzma
 RequestExecutionLevel user
 
 !include MUI2.nsh
+!include LogicLib.nsh
+!include FileFunc.nsh
 
 ; Fixed rather than chosen: the uninstaller deletes this whole folder.
 !define DIR "$LOCALAPPDATA\Programs\Aikatsu"
@@ -31,8 +34,36 @@ Function .onInit
     StrCpy $INSTDIR "${DIR}" ; ignore /D=
 FunctionEnd
 
+; Files in use can't be replaced, and a silent install would skip them and leave a mix of versions.
+Function WaitForAikatsu
+    ${IfNot} ${FileExists} "$INSTDIR\aikatsu.exe"
+        Return
+    ${EndIf}
+    StrCpy $0 0
+    ${Do}
+        ClearErrors
+        FileOpen $1 "$INSTDIR\aikatsu.exe" a
+        ${IfNot} ${Errors}
+            FileClose $1
+            Return
+        ${EndIf}
+        ${If} ${Silent}
+            ; An update: the app is still closing. Give up after 30 s rather than install half of it.
+            IntOp $0 $0 + 1
+            ${If} $0 > 150
+                Quit
+            ${EndIf}
+            Sleep 200
+        ${Else}
+            MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "Aikatsu is running. Close it, then choose Retry." IDRETRY +2
+            Quit
+        ${EndIf}
+    ${Loop}
+FunctionEnd
+
 Section
     SetOutPath "$INSTDIR"
+    Call WaitForAikatsu
     File /r "${DIST}\*"
     WriteUninstaller "$INSTDIR\uninstall.exe"
     CreateShortcut "$SMPROGRAMS\Aikatsu.lnk" "$INSTDIR\aikatsu.exe"
@@ -47,6 +78,13 @@ Section
     WriteRegStr HKCU "${UNINST_KEY}" "QuietUninstallString" '"$INSTDIR\uninstall.exe" /S'
     WriteRegDWORD HKCU "${UNINST_KEY}" "NoModify" 1
     WriteRegDWORD HKCU "${UNINST_KEY}" "NoRepair" 1
+
+    ${GetParameters} $0
+    ClearErrors
+    ${GetOptions} $0 "/UPDATE" $1
+    ${IfNot} ${Errors}
+        Exec '"$INSTDIR\aikatsu.exe"'
+    ${EndIf}
 SectionEnd
 
 Section "Uninstall"

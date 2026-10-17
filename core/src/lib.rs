@@ -17,6 +17,7 @@ mod plugins;
 mod proxy;
 mod sources;
 mod sync;
+mod update;
 
 use serde_json::Value;
 use std::path::PathBuf;

@@ -75,6 +75,24 @@ ApplicationWindow {
         snackbar.show(message);
     }
 
+    // release: checkAppUpdate's result.
+    function offerAppUpdate(release: var): void {
+        appUpdateDialog.release = release;
+        appUpdateDialog.open();
+    }
+
+    function checkPluginUpdates(): void {
+        if (Api.setting("autoCheckPluginUpdates") !== "true")
+            return;
+        Api.call("checkPluginUpdates", {}, repos => {
+            const count = repos.reduce((n, r) => n + (r.updates || 0), 0);
+            if (count > 0) {
+                pluginUpdatesDialog.count = count;
+                pluginUpdatesDialog.open();
+            }
+        });
+    }
+
     width: 1360
     height: 840
     minimumWidth: 960
@@ -85,15 +103,65 @@ ApplicationWindow {
 
     Component.onCompleted: {
         Theme.mode = Api.setting("theme");
-        if (Api.setting("autoCheckPluginUpdates") === "true") {
-            Api.call("checkPluginUpdates", {}, repos => {
-                const count = repos.reduce((n, r) => n + (r.updates || 0), 0);
-                if (count > 0) {
-                    pluginUpdatesDialog.count = count;
-                    pluginUpdatesDialog.open();
-                }
-            });
+        // One dialog at a time: plugin updates can wait for the new version.
+        if (Api.setting("autoCheckAppUpdates") === "true")
+            Api.call("checkAppUpdate", {}, r => r.newer ? offerAppUpdate(r) : checkPluginUpdates(), () => checkPluginUpdates());
+        else
+            checkPluginUpdates();
+    }
+
+    StyledDialog {
+        id: appUpdateDialog
+        objectName: "appUpdateDialog"
+
+        property var release: ({})
+        property real progress: -1 // 0..1 while downloading
+        readonly property bool busy: progress >= 0
+
+        icon: "system_update"
+        title: `Aikatsu ${release.version} is available`
+        text: busy ? `Downloading… ${Math.round(progress * 100)}%` : `You have ${release.current}. ` + (release.installable ? "Aikatsu closes to install it, then opens again." : "Download it from the release page.")
+        closePolicy: busy ? Popup.NoAutoClose : Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+        LinearProgress {
+            Layout.fillWidth: true
+            visible: appUpdateDialog.busy
+            value: appUpdateDialog.progress
         }
+
+        actions: [
+            TextButton {
+                type: TextButton.Text
+                text: "What's new"
+                onClicked: Qt.openUrlExternally(appUpdateDialog.release.page)
+            },
+            TextButton {
+                type: TextButton.Text
+                text: "Later"
+                disabled: appUpdateDialog.busy
+                onClicked: appUpdateDialog.close()
+            },
+            TextButton {
+                type: TextButton.Text
+                text: appUpdateDialog.release.installable ? "Update" : "Download"
+                disabled: appUpdateDialog.busy
+                onClicked: {
+                    if (!appUpdateDialog.release.installable) {
+                        Qt.openUrlExternally(appUpdateDialog.release.page);
+                        appUpdateDialog.close();
+                        return;
+                    }
+                    appUpdateDialog.progress = 0;
+                    Api.call("installAppUpdate", {}, r => {
+                        if (r.quit)
+                            Qt.quit();
+                    }, e => {
+                        appUpdateDialog.progress = -1;
+                        win.toast(`Couldn't update: ${e}`);
+                    });
+                }
+            }
+        ]
     }
 
     StyledDialog {
@@ -159,6 +227,8 @@ ApplicationWindow {
         function onPushed(kind: string, data: var): void {
             if (kind === "sync" && data.history)
                 win.historyRevision++;
+            else if (kind === "appUpdate")
+                appUpdateDialog.progress = data.done / Math.max(1, data.total);
         }
     }
 

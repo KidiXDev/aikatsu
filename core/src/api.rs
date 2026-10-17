@@ -4,7 +4,7 @@
 use crate::plugins::{self, Plugin};
 use crate::push;
 use crate::sources;
-use crate::{anime4k, db, download, meta, proxy, sync};
+use crate::{anime4k, db, download, meta, proxy, sync, update};
 use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
 
@@ -32,6 +32,7 @@ pub const SETTING_DEFAULTS: &[(&str, &str)] = &[
     ("quality", "best"),
     ("disabledSources", ""),
     ("autoCheckPluginUpdates", "true"),
+    ("autoCheckAppUpdates", "true"),
     ("downloadDir", ""),
     ("tmdbKey", ""),
     ("discord", "true"),
@@ -74,6 +75,9 @@ pub async fn call(method: &str, args: Value) -> Result<Value> {
         // Third-party repos: shown with a trust warning before `addRepo`.
         "previewRepo" => plugins::preview(s(&args, "url")).await,
         "checkPluginUpdates" => Ok(plugins::check_updates().await),
+        "checkAppUpdate" => update::check().await,
+        // Progress arrives as `appUpdate` pushes.
+        "installAppUpdate" => update::install().await,
         "addRepo" => {
             plugins::add(s(&args, "url")).await?;
             Ok(plugins::repos())

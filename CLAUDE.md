@@ -53,6 +53,13 @@ The UIs only see the settings listed in `SETTING_DEFAULTS` in `api.rs`. Other ke
 
 **Sources are plugins.** Each site is a Rhai script that `core/src/plugins.rs` loads from plugin repos. The official repo is Kyoko (https://github.com/KidiXDev/kyoko). Fix a broken site in its plugin repo, not in the core. Plugin updates are checked automatically but downloaded only when the user chooses. `core/src/sources.rs` holds the search and playback contract; the plugin API is documented in `docs/developers/`.
 
+**App updates.** `core/src/update.rs` checks GitHub's latest release and picks the asset for this install by the end of its file name, as `release.yml` names them. Renaming a release file breaks updates for copies already out there. It verifies the asset's SHA-256 against the release's `digest`, then:
+- Windows: runs the setup.exe with `/S /UPDATE` (see `desktop/packaging/aikatsu.nsi`);
+- Linux: replaces the AppImage;
+- Android: hands the APK to `PackageInstaller` in `MainActivity.kt`.
+
+The Windows ZIP and source builds only get a link to the release page.
+
 **HTTP.** `core/src/http.rs` has two clients:
 - `CHROME` (wreq with a Chrome emulation) for scraping sites that block non-browsers;
 - `PLAIN` for APIs.

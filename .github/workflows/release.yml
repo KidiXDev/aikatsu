@@ -215,6 +215,7 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
+          # The in-app updater (core/src/update.rs) finds its file by the end of these names.
           files: dist/*
           generate_release_notes: true
           body: |

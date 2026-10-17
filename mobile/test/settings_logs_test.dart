@@ -100,6 +100,64 @@ void main() {
     });
   }
 
+  group('app update', () {
+    const channel = MethodChannel('io.github.kidixdev.aikatsu/update');
+    late List<MethodCall> calls;
+    late bool allowed;
+
+    Future<void> offer(WidgetTester tester, {required bool installable}) async {
+      calls = [];
+      allowed = false;
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
+        calls.add(call);
+        return call.method == 'canInstall' ? allowed : null;
+      });
+      addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, null));
+      final release = {'version': '0.4.0', 'current': '0.3.3', 'installable': installable, 'page': 'https://example.com/v0.4.0'};
+      await tester.pumpWidget(MaterialApp(
+        theme: buildTheme(Brightness.light),
+        scaffoldMessengerKey: messenger,
+        home: Scaffold(body: Builder(builder: (context) => TextButton(
+          onPressed: () => offerAppUpdate(context, release),
+          child: const Text('Open app'),
+        ))),
+      ));
+      await tester.tap(find.text('Open app'));
+      await tester.pumpAndSettle();
+      expect(find.text('Aikatsu 0.4.0 is available'), findsOneWidget);
+    }
+
+    testWidgets('downloads only after Update, once Android allows installing', (tester) async {
+      await offer(tester, installable: true);
+      await tester.tap(find.text('Update'));
+      await tester.pumpAndSettle();
+      expect(backend.called, isNull, reason: 'nothing downloads before Android allows the install');
+      expect(find.text('Allow Aikatsu to install apps, then tap Update again.'), findsOneWidget);
+
+      allowed = true;
+      backend.pending = Completer<String>();
+      await tester.tap(find.text('Update'));
+      await tester.pump();
+      expect(backend.called, 'installAppUpdate');
+      expect(tester.widget<TextButton>(find.widgetWithText(TextButton, 'Later')).onPressed, isNull, reason: 'busy while downloading');
+      backend.pending!.complete(jsonEncode({'apk': '/data/update/Aikatsu-v0.4.0-android-arm64-v8a.apk'}));
+      await tester.pumpAndSettle();
+      expect(calls.last.method, 'install');
+      expect(calls.last.arguments, {'path': '/data/update/Aikatsu-v0.4.0-android-arm64-v8a.apk'});
+      expect(find.byType(AlertDialog), findsNothing);
+    });
+
+    testWidgets('a copy that cannot update itself opens the release page', (tester) async {
+      await offer(tester, installable: false);
+      await tester.tap(find.text('Download'));
+      await tester.pumpAndSettle();
+      expect(backend.called, isNull);
+      expect(calls.single.method, 'open');
+      expect(calls.single.arguments, {'url': 'https://example.com/v0.4.0'});
+      expect(find.byType(AlertDialog), findsNothing);
+    });
+  });
+
   testWidgets('creating an account asks for the password twice and can show it', (tester) async {
     backend.pending = Completer<String>();
     await tester.pumpWidget(MaterialApp(theme: buildTheme(Brightness.light), home: const Scaffold(body: SettingsPage())));

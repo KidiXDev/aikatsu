@@ -6,7 +6,113 @@ import 'package:flutter/services.dart';
 import '../api.dart';
 import '../widgets.dart';
 
-/// Called once the app's first frame is ready; checks never install plugins.
+/// Called once the app's first frame is ready; nothing downloads without asking.
+/// One dialog at a time: plugin updates can wait for the new version.
+Future<void> checkUpdatesOnOpen(BuildContext context) async {
+  if (Api.setting('autoCheckAppUpdates') == 'true') {
+    try {
+      final release = await Api.call('checkAppUpdate');
+      if (release['newer'] == true) {
+        if (context.mounted) await offerAppUpdate(context, release);
+        return;
+      }
+    } catch (_) {
+      // Offline: the plugin check below stays quiet too.
+    }
+  }
+  if (context.mounted) await checkPluginUpdatesOnOpen(context);
+}
+
+/// release: checkAppUpdate's result.
+Future<void> offerAppUpdate(BuildContext context, Map<String, dynamic> release) =>
+    showDialog(context: context, barrierDismissible: false, builder: (_) => _AppUpdateDialog(release));
+
+class _AppUpdateDialog extends StatefulWidget {
+  const _AppUpdateDialog(this.release);
+
+  final Map<String, dynamic> release;
+
+  @override
+  State<_AppUpdateDialog> createState() => _AppUpdateDialogState();
+}
+
+class _AppUpdateDialogState extends State<_AppUpdateDialog> {
+  static const _platform = MethodChannel('io.github.kidixdev.aikatsu/update');
+  StreamSubscription<(String, dynamic)>? _sub;
+  double? _progress; // set while downloading
+
+  @override
+  void initState() {
+    super.initState();
+    _sub = Api.pushed.listen((e) {
+      if (e.$1 != 'appUpdate' || !mounted) return;
+      final total = toInt(e.$2['total']);
+      setState(() => _progress = total > 0 ? toInt(e.$2['done']) / total : 0);
+    });
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  void _openPage() => _platform.invokeMethod('open', {'url': widget.release['page']}).ignore();
+
+  Future<void> _update() async {
+    if (widget.release['installable'] != true) {
+      _openPage();
+      Navigator.pop(context);
+      return;
+    }
+    try {
+      // Android asks once to let Aikatsu install apps; ask before downloading.
+      if (await _platform.invokeMethod<bool>('canInstall') != true) {
+        toast('Allow Aikatsu to install apps, then tap Update again.');
+        return;
+      }
+      setState(() => _progress = 0);
+      final result = await Api.call('installAppUpdate');
+      await _platform.invokeMethod('install', {'path': result['apk']});
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) setState(() => _progress = null);
+      toast("Couldn't update: $e");
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final busy = _progress != null;
+    final release = widget.release;
+    return PopScope(
+      canPop: !busy,
+      child: AlertDialog(
+        title: Text('Aikatsu ${release['version']} is available'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              busy
+                  ? 'Downloading… ${(_progress! * 100).round()}%'
+                  : 'You have ${release['current']}. '
+                        '${release['installable'] == true ? 'Android asks you to confirm the install.' : 'Download it from the release page.'}',
+            ),
+            if (busy) ...[const SizedBox(height: 16), LinearProgressIndicator(value: _progress)],
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: _openPage, child: const Text("What's new")),
+          TextButton(onPressed: busy ? null : () => Navigator.pop(context), child: const Text('Later')),
+          TextButton(onPressed: busy ? null : _update, child: Text(release['installable'] == true ? 'Update' : 'Download')),
+        ],
+      ),
+    );
+  }
+}
+
+/// Checks never install plugins.
 Future<void> checkPluginUpdatesOnOpen(BuildContext context) async {
   if (Api.setting('autoCheckPluginUpdates') != 'true') return;
   try {
@@ -47,6 +153,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _shadersInstalled = Api.get('anime4kInstalled');
   bool _installingShaders = false;
   bool _showTmdb = false;
+  bool _checkingApp = false;
 
   @override
   void initState() {
@@ -310,6 +417,23 @@ class _SettingsPageState extends State<SettingsPage> {
     ),
   );
 
+  Future<void> _checkAppUpdate() async {
+    setState(() => _checkingApp = true);
+    try {
+      final release = await Api.call('checkAppUpdate');
+      if (!mounted) return;
+      if (release['newer'] == true) {
+        await offerAppUpdate(context, release);
+      } else {
+        toast('Aikatsu ${release['current']} is up to date');
+      }
+    } catch (e) {
+      toast('$e');
+    } finally {
+      if (mounted) setState(() => _checkingApp = false);
+    }
+  }
+
   Future<void> _openPlugins() async {
     await Navigator.push(context, MaterialPageRoute(builder: (_) => const _PluginsPage()));
     if (mounted) setState(() => _s = Api.get('settings'));
@@ -560,6 +684,26 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                   onChanged: (v) => Api.setSetting('tmdbKey', v.trim()),
                 ),
+              ),
+            ),
+          ],
+        ),
+
+        _SettingsGroup(
+          title: 'Updates',
+          icon: Icons.system_update_rounded,
+          children: [
+            SwitchListTile(
+              title: const Text('Check for Aikatsu updates on startup', style: TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: const Text('Asks before downloading anything.'),
+              value: _s['autoCheckAppUpdates'] == 'true',
+              onChanged: (v) => _set('autoCheckAppUpdates', v),
+            ),
+            ListTile(
+              title: const Text('Aikatsu updates', style: TextStyle(fontWeight: FontWeight.w600)),
+              trailing: TextButton(
+                onPressed: _checkingApp ? null : _checkAppUpdate,
+                child: Text(_checkingApp ? 'Checking…' : 'Check now'),
               ),
             ),
           ],

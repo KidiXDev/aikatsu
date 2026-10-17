@@ -16,6 +16,7 @@ Item {
     property bool installingShaders
     property bool shadersInstalled: Api.get("anime4kInstalled")
     property bool checkingPlugins
+    property bool checkingApp
     property var account: Api.get("syncStatus")
     property real now: Date.now()
     property var tools: Api.get("tools")
@@ -97,6 +98,20 @@ Item {
             ApplicationWindow.window.toast(repos.some(r => r.error) ? "Some repos couldn't be checked" : count > 0 ? `${count} plugin update${count === 1 ? "" : "s"} available` : "Plugins are up to date");
         }, e => {
             checkingPlugins = false;
+            ApplicationWindow.window.toast(e);
+        });
+    }
+
+    function checkApp(): void {
+        checkingApp = true;
+        Api.call("checkAppUpdate", {}, r => {
+            checkingApp = false;
+            if (r.newer)
+                ApplicationWindow.window.offerAppUpdate(r);
+            else
+                ApplicationWindow.window.toast(`Aikatsu ${r.current} is up to date`);
+        }, e => {
+            checkingApp = false;
             ApplicationWindow.window.toast(e);
         });
     }
@@ -1439,9 +1454,30 @@ Item {
                     }
                     IconTextButton {
                         type: TextButton.Tonal
+                        icon: "update"
+                        text: root.checkingApp ? "Checking…" : "Check for updates"
+                        disabled: root.checkingApp
+                        onClicked: root.checkApp()
+                    }
+                    IconTextButton {
+                        type: TextButton.Tonal
                         icon: "open_in_new"
                         text: "GitHub"
                         onClicked: Qt.openUrlExternally("https://github.com/KidiXDev/aikatsu")
+                    }
+                }
+
+                Group {
+                    title: "Updates"
+
+                    SettingRow {
+                        label: "Check for Aikatsu updates on startup"
+                        hint: "Asks before downloading anything."
+
+                        StyledSwitch {
+                            checked: root.s.autoCheckAppUpdates === "true"
+                            onToggled: root.set("autoCheckAppUpdates", checked)
+                        }
                     }
                 }
 
