@@ -486,13 +486,14 @@ async fn hls(url: &str, referer: &str, dest: &Path, id: u64, progress: &(impl Fn
     }
     out.flush().await?;
     drop(out);
-    if which("ffmpeg").is_some() {
+    if let Some(ffmpeg) = which("ffmpeg") {
         update(id, |j| j.state = "remuxing".into());
-        let status = command("ffmpeg")
+        let status = command(ffmpeg)
             .args(["-hide_banner", "-loglevel", "error", "-y", "-i"])
             .arg(&ts)
             .args(["-c", "copy", "-bsf:a", "aac_adtstoasc"])
             .arg(dest)
+            .kill_on_drop(true)
             .status()
             .await?;
         if status.success() {
@@ -515,9 +516,12 @@ fn command(bin: impl AsRef<std::ffi::OsStr>) -> tokio::process::Command {
     cmd
 }
 
+/// The app's own folder first: Windows users are told to drop ffmpeg.exe next to aikatsu.exe.
 pub fn which(bin: &str) -> Option<PathBuf> {
     let exe = if cfg!(windows) { format!("{bin}.exe") } else { bin.to_owned() };
-    std::env::var_os("PATH").and_then(|p| std::env::split_paths(&p).map(|d| d.join(&exe)).find(|p| p.is_file()))
+    let app_dir = std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf));
+    let path = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect::<Vec<_>>()).unwrap_or_default();
+    app_dir.into_iter().chain(path).map(|d| d.join(&exe)).find(|p| p.is_file())
 }
 
 fn ytdlp_local() -> PathBuf {
@@ -527,14 +531,26 @@ fn ytdlp_local() -> PathBuf {
 
 /// System yt-dlp, else a copy fetched from its GitHub releases.
 pub async fn ensure_ytdlp() -> Result<PathBuf> {
+    // Parallel downloads would otherwise fetch it twice and overwrite a copy that is already running.
+    static FETCH: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
     if let Some(p) = which("yt-dlp") {
         return Ok(p);
     }
     let local = ytdlp_local();
+    let _fetching = FETCH.lock().await;
     if local.is_file() {
         return Ok(local);
     }
-    let asset = if cfg!(windows) { "yt-dlp.exe" } else if cfg!(target_os = "macos") { "yt-dlp_macos" } else { "yt-dlp" };
+    // The plain `yt-dlp` asset is a Python zipapp without curl_cffi; these are standalone.
+    let asset = if cfg!(windows) {
+        "yt-dlp.exe"
+    } else if cfg!(target_os = "macos") {
+        "yt-dlp_macos"
+    } else if cfg!(target_arch = "aarch64") {
+        "yt-dlp_linux_aarch64"
+    } else {
+        "yt-dlp_linux"
+    };
     let body = http::PLAIN
         .get(format!("https://github.com/yt-dlp/yt-dlp/releases/latest/download/{asset}"))
         .send()
@@ -543,12 +559,15 @@ pub async fn ensure_ytdlp() -> Result<PathBuf> {
         .bytes()
         .await?;
     tokio::fs::create_dir_all(local.parent().unwrap()).await?;
-    tokio::fs::write(&local, body).await?;
+    // Renamed into place, so an interrupted write never leaves a truncated binary behind.
+    let part = local.with_extension("part");
+    tokio::fs::write(&part, body).await?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        tokio::fs::set_permissions(&local, std::fs::Permissions::from_mode(0o755)).await?;
+        tokio::fs::set_permissions(&part, std::fs::Permissions::from_mode(0o755)).await?;
     }
+    tokio::fs::rename(&part, &local).await?;
     Ok(local)
 }
 
@@ -673,6 +692,16 @@ mod tests {
         }
         server.abort();
         tokio::fs::remove_dir(&dir).await.unwrap();
+    }
+
+    #[test]
+    fn which_checks_the_app_folder() {
+        let name = format!("aikatsu-which-test-{}", std::process::id());
+        let file = std::env::current_exe().unwrap().with_file_name(if cfg!(windows) { format!("{name}.exe") } else { name.clone() });
+        std::fs::write(&file, b"").unwrap();
+        let found = which(&name);
+        std::fs::remove_file(&file).unwrap();
+        assert_eq!(found, Some(file));
     }
 
     #[test]
