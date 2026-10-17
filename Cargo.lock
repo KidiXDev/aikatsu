@@ -81,6 +81,7 @@ dependencies = [
  "tracing-appender",
  "tracing-subscriber",
  "url",
+ "webpki-root-certs",
  "wreq",
  "wreq-util",
  "zip",

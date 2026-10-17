@@ -32,15 +32,17 @@ static CHROME_H1: LazyLock<wreq::Client> = LazyLock::new(|| {
         .expect("proxy client")
 });
 
-static H3: LazyLock<reqwest::Client> = LazyLock::new(|| {
-    reqwest::Client::builder()
+pub(crate) static H3: LazyLock<reqwest::Client> = LazyLock::new(|| {
+    let builder = reqwest::Client::builder()
         .http3_prior_knowledge()
         // Unread data up to the window sits in RAM once mpv's cache is full;
         // 16 MiB still covers hundreds of Mbit/s at high RTT.
         .http3_stream_receive_window(16 << 20)
-        .http3_conn_receive_window(32 << 20)
-        .build()
-        .expect("h3 client")
+        .http3_conn_receive_window(32 << 20);
+    // reqwest's default verifier (rustls-platform-verifier) panics on Android without a JNI init.
+    #[cfg(target_os = "android")]
+    let builder = builder.tls_certs_only(webpki_root_certs::TLS_SERVER_ROOT_CERTS.iter().filter_map(|c| reqwest::Certificate::from_der(c).ok()));
+    builder.build().expect("h3 client")
 });
 
 async fn port() -> Result<u16> {

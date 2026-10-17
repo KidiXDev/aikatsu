@@ -265,7 +265,6 @@ static CHROME_H1: LazyLock<wreq::Client> = LazyLock::new(|| {
         .build()
         .expect("download client")
 });
-static H3: LazyLock<reqwest::Client> = LazyLock::new(|| reqwest::Client::builder().http3_prior_knowledge().build().expect("h3 client"));
 
 fn origin(referer: &str) -> Option<String> {
     url::Url::parse(referer).ok().map(|u| u.origin().ascii_serialization()).filter(|o| o != "null")
@@ -276,7 +275,7 @@ impl Fetcher {
     async fn open(&self, url: &str, range: Option<(u64, u64)>) -> Result<(u16, u64, BoxStream<'static, Result<Bytes>>)> {
         let range = range.map(|(a, b)| format!("bytes={a}-{b}"));
         if let Fetcher::H3(referer) = self {
-            let mut rb = H3.get(url).header("Referer", referer.as_str());
+            let mut rb = proxy::H3.get(url).header("Referer", referer.as_str());
             if let Some(r) = &range {
                 rb = rb.header("Range", r);
             }
