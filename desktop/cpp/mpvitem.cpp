@@ -15,7 +15,9 @@
 #include <stdexcept>
 
 #ifdef Q_OS_WIN
+#include <QtCore/QAbstractNativeEventFilter>
 #include <QtCore/qt_windows.h> // windows.h without the min/max macros
+#include <dwmapi.h>
 #elif defined(Q_OS_LINUX)
 #include <QtDBus/QDBusConnection>
 #include <QtDBus/QDBusMessage>
@@ -260,6 +262,33 @@ public:
     }
 };
 
+#ifdef Q_OS_WIN
+// Fullscreen keeps a 1px border (see aikatsu_engine_init) that Windows paints grey; repaint it black so it
+// blends into the player.
+class FullScreenBorder : public QAbstractNativeEventFilter {
+    HWND hwnd;
+
+public:
+    explicit FullScreenBorder(HWND h) : hwnd(h) {}
+
+    bool nativeEventFilter(const QByteArray &, void *message, qintptr *result) override {
+        const auto *msg = static_cast<MSG *>(message);
+        // Qt gives the window WS_POPUP only while fullscreen.
+        if (msg->hwnd != hwnd || (msg->message != WM_NCPAINT && msg->message != WM_NCACTIVATE)
+            || !(GetWindowLongPtrW(hwnd, GWL_STYLE) & WS_POPUP))
+            return false;
+        *result = DefWindowProcW(hwnd, msg->message, msg->wParam, msg->lParam);
+        RECT r;
+        GetWindowRect(hwnd, &r);
+        OffsetRect(&r, -r.left, -r.top);
+        HDC dc = GetWindowDC(hwnd);
+        FrameRect(dc, &r, static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
+        ReleaseDC(hwnd, dc);
+        return true;
+    }
+};
+#endif
+
 } // namespace
 
 void aikatsu_engine_init(QQmlApplicationEngine &engine) {
@@ -271,6 +300,18 @@ void aikatsu_engine_init(QQmlApplicationEngine &engine) {
             // Read when the platform window is created, which WindowState does.
             window->setProperty("_q_has_border_in_fullscreen", true);
             new WindowState(window, QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation) + "/window.ini");
+#ifdef Q_OS_WIN
+            const auto hwnd = reinterpret_cast<HWND>(window->winId()); // created by WindowState's show()
+            static FullScreenBorder border(hwnd);
+            qGuiApp->installNativeEventFilter(&border);
+            // Leaving fullscreen for maximized, Qt restores the normal geometry and then maximizes. With DWM's
+            // restore and maximize animations the window visibly passes through its windowed size, so they are
+            // off while fullscreen. Queued, so they come back only after Qt's state change has finished.
+            QObject::connect(window, &QWindow::windowStateChanged, window, [hwnd](Qt::WindowState state) {
+                const BOOL off = state == Qt::WindowFullScreen;
+                DwmSetWindowAttribute(hwnd, DWMWA_TRANSITIONS_FORCEDISABLED, &off, sizeof off);
+            }, Qt::QueuedConnection);
+#endif
         }
     });
 }

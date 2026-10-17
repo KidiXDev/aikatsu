@@ -83,6 +83,10 @@ fn main() {
         let dir = PathBuf::from(std::env::var("MPV_DIR").expect("set MPV_DIR to the mpv-dev folder"));
         println!("cargo::rustc-link-search=native={}", dir.display());
         println!("cargo::rustc-link-lib=mpv");
+        // Win32 calls in cpp/mpvitem.cpp (fullscreen border and window animations)
+        for lib in ["user32", "gdi32", "dwmapi"] {
+            println!("cargo::rustc-link-lib={lib}");
+        }
         println!("cargo::rerun-if-env-changed=MPV_DIR");
         dir.join("include")
     } else {

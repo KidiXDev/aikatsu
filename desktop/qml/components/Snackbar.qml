@@ -11,16 +11,18 @@ StyledRect {
     }
 
     property bool open
+    // Animated instead of y: animating y would also animate window resizes, sliding a closed snackbar into view.
+    property real lift: open ? height + 24 : -12
 
     anchors.horizontalCenter: parent.horizontalCenter
-    y: open ? parent.height - height - 24 : parent.height + 12
+    y: parent.height - lift
     z: 1000
     implicitWidth: Math.min(560, label.implicitWidth + Theme.padding.large * 2)
     implicitHeight: label.implicitHeight + Theme.padding.medium * 2
     radius: Theme.rounding.small
     color: Theme.palette.inverseSurface
 
-    Behavior on y {
+    Behavior on lift {
         Anim {
             type: Anim.FastSpatial
         }
