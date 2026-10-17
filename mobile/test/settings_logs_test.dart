@@ -15,12 +15,14 @@ class _Backend extends Fake implements RustLibApi {
   bool fail = false;
   Completer<String>? pending;
   String? called;
+  String? calledArgs;
   String autoCheck = 'true';
   List<dynamic>? reposOverride;
 
   @override
   Future<String> crateApiCall({required String method, required String args}) {
     called = method;
+    calledArgs = args;
     return pending!.future;
   }
 
@@ -48,6 +50,7 @@ class _Backend extends Fake implements RustLibApi {
           ],
         },
       ],
+      'syncStatus' => {'signedIn': false, 'server': '', 'error': ''},
       'anime4kInstalled' => true,
       'downloadDir' => '/downloads',
       'version' => 'test',
@@ -96,6 +99,49 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets('creating an account asks for the password twice and can show it', (tester) async {
+    backend.pending = Completer<String>();
+    await tester.pumpWidget(MaterialApp(theme: buildTheme(Brightness.light), home: const Scaffold(body: SettingsPage())));
+    await tester.tap(find.text('Create account'));
+    await tester.pumpAndSettle();
+    final fields = find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextField));
+    expect(fields, findsNWidgets(3));
+    VoidCallback? create() => tester.widget<TextButton>(find.widgetWithText(TextButton, 'Create')).onPressed;
+    bool hidden(int i) => tester.widget<TextField>(fields.at(i)).obscureText;
+
+    await tester.enterText(fields.at(0), 'kidix');
+    await tester.enterText(fields.at(1), 'hunter22');
+    await tester.enterText(fields.at(2), 'hunter');
+    await tester.pump();
+    expect(find.text("Passwords don't match"), findsNothing, reason: 'still typing the repeat');
+    expect(create(), isNull);
+    await tester.enterText(fields.at(2), 'hunter2x');
+    await tester.pump();
+    expect(find.text("Passwords don't match"), findsOneWidget);
+    expect(create(), isNull);
+
+    expect(hidden(1), isTrue);
+    await tester.tap(find.descendant(of: fields.at(1), matching: find.byTooltip('Show')));
+    await tester.pump();
+    expect(hidden(1), isFalse);
+    expect(hidden(2), isTrue, reason: 'each field has its own toggle');
+
+    await tester.enterText(fields.at(2), 'hunter22');
+    await tester.pump();
+    expect(find.text("Passwords don't match"), findsNothing);
+    await tester.tap(find.widgetWithText(TextButton, 'Create'));
+    expect(backend.called, 'syncSignIn');
+    expect(jsonDecode(backend.calledArgs!), {'username': 'kidix', 'password': 'hunter22', 'create': true});
+  });
+
+  testWidgets('signing in asks for the password once', (tester) async {
+    await tester.pumpWidget(MaterialApp(theme: buildTheme(Brightness.light), home: const Scaffold(body: SettingsPage())));
+    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await tester.pumpAndSettle();
+    expect(find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextField)), findsNWidgets(2));
+    expect(find.text('Confirm password'), findsNothing);
+  });
 
   testWidgets('startup check can be disabled from Settings', (tester) async {
     await tester.pumpWidget(MaterialApp(

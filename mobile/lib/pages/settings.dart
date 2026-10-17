@@ -46,6 +46,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final List<dynamic> _modes = Api.get('anime4kModes');
   bool _shadersInstalled = Api.get('anime4kInstalled');
   bool _installingShaders = false;
+  bool _showTmdb = false;
 
   @override
   void initState() {
@@ -135,22 +136,31 @@ class _SettingsPageState extends State<SettingsPage> {
     if (status != null && mounted) setState(() => _account = status);
   }
 
-  /// `fields` are (label, secret). The error from `run` shows under the last field.
+  /// `fields` are (label, secret). The error from `run` shows under the last of them. `confirm` adds a field, with that
+  /// label, that must repeat the last one; `run` still gets only `fields`' values.
   Future<bool> _form(
     String title,
     String actionLabel,
     List<(String, bool)> fields,
     Future<void> Function(List<String>) run, {
     String? message,
+    String? confirm,
   }) async {
-    final values = List.filled(fields.length, '');
+    final all = [...fields, if (confirm != null) (confirm, true)];
+    final values = List.filled(all.length, '');
+    final shown = List.filled(all.length, false);
     String error = '';
     bool busy = false;
     return await showDialog<bool>(
           context: context,
           builder: (context) => StatefulBuilder(
             builder: (context, setDialogState) {
-              final ready = !busy && values.every((v) => v.trim().isNotEmpty);
+              final last = fields.length - 1;
+              final repeat = confirm == null ? '' : values.last;
+              final matches = confirm == null || repeat == values[last];
+              // Only once the repeat can no longer turn into a match, so typing it doesn't flash an error.
+              final mismatch = !matches && repeat.isNotEmpty && (repeat.length >= values[last].length || !values[last].startsWith(repeat));
+              final ready = !busy && values.every((v) => v.trim().isNotEmpty) && matches;
               Future<void> submit() async {
                 if (!ready) return;
                 setDialogState(() {
@@ -158,7 +168,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   error = '';
                 });
                 try {
-                  await run(values);
+                  await run(values.sublist(0, fields.length));
                   if (context.mounted) Navigator.pop(context, true);
                 } catch (e) {
                   if (context.mounted) {
@@ -179,16 +189,22 @@ class _SettingsPageState extends State<SettingsPage> {
                     spacing: 16,
                     children: [
                       if (message != null) Text(message),
-                      for (final (i, (label, secret)) in fields.indexed)
+                      for (final (i, (label, secret)) in all.indexed)
                         TextField(
                           autofocus: i == 0,
                           autocorrect: false,
-                          obscureText: secret,
-                          textInputAction: i < fields.length - 1 ? TextInputAction.next : TextInputAction.done,
+                          enableSuggestions: !secret,
+                          obscureText: secret && !shown[i],
+                          textInputAction: i < all.length - 1 ? TextInputAction.next : TextInputAction.done,
                           decoration: InputDecoration(
                             labelText: label,
-                            errorText: i == fields.length - 1 && error.isNotEmpty ? error : null,
+                            errorText: i == last && error.isNotEmpty
+                                ? error
+                                : i == fields.length && mismatch
+                                ? "Passwords don't match"
+                                : null,
                             errorMaxLines: 3,
+                            suffixIcon: secret ? _revealButton(shown[i], () => setDialogState(() => shown[i] = !shown[i])) : null,
                           ),
                           onChanged: (v) => setDialogState(() => values[i] = v),
                           onSubmitted: (_) => submit(),
@@ -207,11 +223,20 @@ class _SettingsPageState extends State<SettingsPage> {
         false;
   }
 
+  Widget _revealButton(bool shown, VoidCallback toggle) => IconButton(
+    tooltip: shown ? 'Hide' : 'Show',
+    icon: Icon(shown ? Icons.visibility_off_rounded : Icons.visibility_rounded),
+    onPressed: toggle,
+  );
+
   Future<void> _signIn({required bool create}) async {
-    final done = await _form(create ? 'Create account' : 'Sign in', create ? 'Create' : 'Sign in', [
-      ('Username', false),
-      ('Password', true),
-    ], (v) => Api.call('syncSignIn', {'username': v[0].trim(), 'password': v[1], 'create': create}));
+    final done = await _form(
+      create ? 'Create account' : 'Sign in',
+      create ? 'Create' : 'Sign in',
+      [('Username', false), ('Password', true)],
+      (v) => Api.call('syncSignIn', {'username': v[0].trim(), 'password': v[1], 'create': create}),
+      confirm: create ? 'Confirm password' : null,
+    );
     if (!done || !mounted) return;
     setState(() => _account = Api.get('syncStatus'));
     toast(create ? 'Account created' : 'Signed in');
@@ -226,6 +251,7 @@ class _SettingsPageState extends State<SettingsPage> {
           [('Current password', true), ('New password', true)],
           (v) => Api.call('syncChangePassword', {'current': v[0], 'password': v[1]}),
           message: 'Other devices will be signed out.',
+          confirm: 'Confirm new password',
         );
         if (done) toast('Password changed');
       case 'signOut':
@@ -430,8 +456,9 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
+                child: OverflowBar(
+                  alignment: MainAxisAlignment.end,
+                  overflowAlignment: OverflowBarAlignment.end,
                   spacing: 8,
                   children: [
                     TextButton(onPressed: () => _signIn(create: true), child: const Text('Create account')),
@@ -524,8 +551,13 @@ class _SettingsPageState extends State<SettingsPage> {
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 child: TextFormField(
                   initialValue: '${_s['tmdbKey']}',
-                  obscureText: true,
-                  decoration: const InputDecoration(hintText: 'Optional'),
+                  obscureText: !_showTmdb,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  decoration: InputDecoration(
+                    hintText: 'Optional',
+                    suffixIcon: _revealButton(_showTmdb, () => setState(() => _showTmdb = !_showTmdb)),
+                  ),
                   onChanged: (v) => Api.setSetting('tmdbKey', v.trim()),
                 ),
               ),
