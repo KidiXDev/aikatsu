@@ -266,8 +266,12 @@ void aikatsu_engine_init(QQmlApplicationEngine &engine) {
     static CachingNamFactory factory;
     engine.setNetworkAccessManagerFactory(&factory);
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreated, &engine, [](QObject *object, const QUrl &) {
-        if (auto *window = qobject_cast<QWindow *>(object))
+        if (auto *window = qobject_cast<QWindow *>(object)) {
+            // Windows: a borderless fullscreen GL window hides native dialogs (log export) and system overlays.
+            // Read when the platform window is created, which WindowState does.
+            window->setProperty("_q_has_border_in_fullscreen", true);
             new WindowState(window, QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation) + "/window.ini");
+        }
     });
 }
 
