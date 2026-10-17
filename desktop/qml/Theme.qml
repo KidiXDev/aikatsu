@@ -97,6 +97,9 @@ QtObject {
             family: family,
             pointSize: size,
             weight: weight,
+            // Windows' default hints small text to the pixel grid (GDI classic), which looks harsh;
+            // this is DirectWrite's natural mode there and FreeType's light hinting on Linux.
+            hintingPreference: Font.PreferVerticalHinting,
             variableAxes: {
                 "ROND": 25,
                 "opsz": size

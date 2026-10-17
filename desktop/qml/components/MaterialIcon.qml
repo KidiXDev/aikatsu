@@ -7,7 +7,8 @@ StyledText {
     property real size: 15
     property int weight: 400
 
-    renderType: Text.QtRendering
+    // Not QtRendering: its distance fields show the overlapping outlines of filled symbols as seams.
+    renderType: Text.CurveRendering
     font.family: Theme.iconFamily
     font.pointSize: size
     font.variableAxes: ({
