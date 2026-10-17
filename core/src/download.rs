@@ -524,7 +524,7 @@ pub fn which(bin: &str) -> Option<PathBuf> {
     app_dir.into_iter().chain(path).map(|d| d.join(&exe)).find(|p| p.is_file())
 }
 
-fn ytdlp_local() -> PathBuf {
+pub fn ytdlp_local() -> PathBuf {
     let name = if cfg!(windows) { "yt-dlp.exe" } else { "yt-dlp" };
     crate::dirs().data.join("bin").join(name)
 }

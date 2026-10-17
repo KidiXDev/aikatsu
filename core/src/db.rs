@@ -196,6 +196,11 @@ pub fn clear_cache() -> Result<()> {
     Ok(())
 }
 
+/// Bytes of cached lookups.
+pub fn cache_size() -> Result<i64> {
+    Ok(DB.lock().unwrap().query_row("SELECT COALESCE(SUM(LENGTH(value)), 0) FROM cache", [], |r| r.get(0))?)
+}
+
 fn now() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
 }

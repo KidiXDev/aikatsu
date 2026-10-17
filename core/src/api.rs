@@ -231,12 +231,14 @@ pub fn get(method: &str, args: Value) -> Result<Value> {
         "tools" => Ok(json!({
             "ffmpeg": download::which("ffmpeg").is_some(),
             "ytdlp": download::which("yt-dlp").is_some(),
+            "ytdlpFetched": download::ytdlp_local().is_file(),
         })),
         "presence" => {
             #[cfg(feature = "desktop")]
             crate::discord::update(serde_json::from_value(args)?);
             Ok(Value::Null)
         }
+        "cacheSize" => Ok(json!(db::cache_size()?)),
         "clearCache" => {
             db::clear_cache()?;
             crate::http::clear_pages();
