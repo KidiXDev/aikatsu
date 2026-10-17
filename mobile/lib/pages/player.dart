@@ -34,6 +34,8 @@ class _PlayerPageState extends State<PlayerPage> {
   VideoController? _video; // after the emulator check in _setup
   final _scaffold = GlobalKey<ScaffoldState>();
   final _subs = <StreamSubscription<Object?>>[];
+  late final AppLifecycleListener _lifecycle;
+  static const _audio = MethodChannel('io.github.kidixdev.aikatsu/audio'); // "noisy": headphones unplugged
 
   late int _index = widget.index;
   late final String _source = Api.sourceName(d.anime['source']);
@@ -122,7 +124,17 @@ class _PlayerPageState extends State<PlayerPage> {
     _saveTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (_phase == _Phase.playing && _player.state.playing && _duration > 0) _save();
     });
+    _lifecycle = AppLifecycleListener(onHide: _pause);
+    _audio.setMethodCallHandler((call) async {
+      if (call.method == 'noisy') _pause();
+    });
     _setup();
+  }
+
+  /// Leaving the app or losing the headphones; Android may kill the app once it's in the background.
+  void _pause() {
+    _player.pause();
+    if (_phase == _Phase.playing) _save();
   }
 
   Future<void> _setup() async {
@@ -174,6 +186,8 @@ class _PlayerPageState extends State<PlayerPage> {
       s.cancel();
     }
     d.removeListener(_dataChanged);
+    _lifecycle.dispose();
+    _audio.setMethodCallHandler(null);
     _player.dispose();
     Api.get('stopStreams');
     // Not while the tree is being torn down: listeners rebuild other pages.

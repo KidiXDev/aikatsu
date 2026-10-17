@@ -1,7 +1,12 @@
 package io.github.kidixdev.aikatsu
 
 import android.app.Activity
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.media.AudioManager
+import android.os.Bundle
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -9,9 +14,23 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private var exportResult: MethodChannel.Result? = null
     private var exportContents = ""
+    private var audio: MethodChannel? = null
+
+    // Headphones unplugged or Bluetooth audio gone: the player pauses instead of going on through the speaker.
+    private val noisy = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            audio?.invokeMethod("noisy", null)
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        registerReceiver(noisy, IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY))
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        audio = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "io.github.kidixdev.aikatsu/audio")
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "io.github.kidixdev.aikatsu/logs")
             .setMethodCallHandler { call, result ->
                 if (call.method != "exportLog") {
@@ -72,6 +91,7 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        unregisterReceiver(noisy)
         exportResult?.error("EXPORT_CANCELLED", "The log export was closed", null)
         exportResult = null
         exportContents = ""

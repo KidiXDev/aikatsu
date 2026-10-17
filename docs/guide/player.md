@@ -45,7 +45,7 @@ With **Autoplay next episode** enabled, the player shows a short countdown at th
 
 Tap the video to show or hide controls. Double-tap the left or right side to jump back or forward 10 seconds. Use the seek bar to move further through the episode.
 
-Double-tapping the middle toggles play and pause.
+Double-tapping the middle toggles play and pause. Playback pauses when you leave the app or unplug your headphones.
 
 Long-press an episode or anime card outside the player for extra actions where available.
 
