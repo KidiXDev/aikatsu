@@ -71,7 +71,12 @@ Drawer {
                 Accessible.name: "Export log"
                 ToolTip.visible: hovered
                 ToolTip.text: "Export log"
-                onClicked: exportDialog.open()
+                onClicked: {
+                    // Windows may not show a native dialog over the fullscreen GL window (see aikatsu_engine_init).
+                    if (Qt.platform.os === "windows" && ApplicationWindow.window.visibility === Window.FullScreen)
+                        ApplicationWindow.window.toggleFullScreen();
+                    exportDialog.open();
+                }
             }
             IconButton {
                 type: IconButton.Text

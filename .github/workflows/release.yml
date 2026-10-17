@@ -122,10 +122,19 @@ jobs:
           Copy-Item "$env:QT_ROOT_DIR\plugins\imageformats\qsvg.dll" dist\imageformats
           Compress-Archive dist\* "Aikatsu-${{ github.ref_name }}-windows-x64.zip"
 
+      - name: Installer
+        run: |
+          choco install nsis -y --no-progress # windows-2025 runners no longer ship it
+          # Last, so its exit code fails the step.
+          & "${env:ProgramFiles(x86)}\NSIS\makensis.exe" /V2 "/DVERSION=$('${{ github.ref_name }}'.TrimStart('v'))" "/DDIST=$PWD\dist" `
+            "/DOUTFILE=$PWD\Aikatsu-${{ github.ref_name }}-windows-x64-setup.exe" desktop\packaging\aikatsu.nsi
+
       - uses: actions/upload-artifact@v4
         with:
           name: release-windows
-          path: Aikatsu-*.zip
+          path: |
+            Aikatsu-*.zip
+            Aikatsu-*-setup.exe
           if-no-files-found: error
 
   android:
@@ -210,6 +219,6 @@ jobs:
           generate_release_notes: true
           body: |
             **Which file?**
-            - Windows: `…-windows-x64.zip` · Linux: `…-x86_64.AppImage`
+            - Windows: `…-windows-x64-setup.exe` to install, or `…-windows-x64.zip` to run without installing · Linux: `…-x86_64.AppImage`
             - Android: `…-android-arm64-v8a.apk` for almost every phone; `…-armeabi-v7a.apk` for older 32-bit phones; `…-x86_64.apk` for emulators and Chromebooks.
           prerelease: ${{ contains(github.ref_name, '-') }} # e.g. v0.2.0-beta.1

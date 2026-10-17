@@ -16,6 +16,7 @@
 
 #ifdef Q_OS_WIN
 #include <QtCore/qt_windows.h> // windows.h without the min/max macros
+#include <dwmapi.h>
 #elif defined(Q_OS_LINUX)
 #include <QtDBus/QDBusConnection>
 #include <QtDBus/QDBusMessage>
@@ -267,10 +268,19 @@ void aikatsu_engine_init(QQmlApplicationEngine &engine) {
     engine.setNetworkAccessManagerFactory(&factory);
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreated, &engine, [](QObject *object, const QUrl &) {
         if (auto *window = qobject_cast<QWindow *>(object)) {
-            // Windows: a borderless fullscreen GL window hides native dialogs (log export) and system overlays.
-            // Read when the platform window is created, which WindowState does.
-            window->setProperty("_q_has_border_in_fullscreen", true);
+            // No _q_has_border_in_fullscreen: the 1px border it adds shows as a line around the video. The cost is that
+            // Windows may stop compositing other windows over the fullscreen GL window, see LogDrawer's export.
             new WindowState(window, QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation) + "/window.ini");
+#ifdef Q_OS_WIN
+            const auto hwnd = reinterpret_cast<HWND>(window->winId()); // created by WindowState's show()
+            // Leaving fullscreen for maximized, Qt restores the normal geometry and then maximizes. With DWM's
+            // restore and maximize animations the window visibly passes through its windowed size, so they are
+            // off while fullscreen. Queued, so they come back only after Qt's state change has finished.
+            QObject::connect(window, &QWindow::windowStateChanged, window, [hwnd](Qt::WindowState state) {
+                const BOOL off = state == Qt::WindowFullScreen;
+                DwmSetWindowAttribute(hwnd, DWMWA_TRANSITIONS_FORCEDISABLED, &off, sizeof off);
+            }, Qt::QueuedConnection);
+#endif
         }
     });
 }
