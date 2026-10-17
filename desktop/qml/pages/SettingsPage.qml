@@ -31,6 +31,11 @@ Item {
     property int room: Qt.application.arguments.includes("--room") ? parseInt(Qt.application.arguments[Qt.application.arguments.indexOf("--room") + 1]) : 0
     readonly property var rooms: [
         {
+            icon: "tune",
+            title: "General",
+            status: `${({ system: "System", dark: "Dark", light: "Light" })[s.theme] ?? "System"} theme`
+        },
+        {
             icon: "play_circle",
             title: "Watch",
             status: (s.quality === "best" ? "Auto quality" : s.quality) + (!s.anime4k || s.anime4k === "off" ? "" : ` · ${modes.find(m => m.key === s.anime4k)?.name ?? s.anime4k}`)
@@ -51,11 +56,6 @@ Item {
             title: "Account",
             status: account.signedIn ? account.error || syncedLabel() : "Not signed in",
             error: !!account.error
-        },
-        {
-            icon: "tune",
-            title: "General",
-            status: `${({ system: "System", dark: "Dark", light: "Light" })[s.theme] ?? "System"} theme`
         }
     ]
     readonly property var shortcuts: [
@@ -962,6 +962,138 @@ Item {
                 index: 0
 
                 Band {
+                    Item {
+                        implicitWidth: 44
+                        implicitHeight: 44
+
+                        Image {
+                            anchors.fill: parent
+                            source: "qrc:/icon.svg"
+                            sourceSize: Qt.size(88, 88)
+                        }
+                    }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+
+                        StyledText {
+                            Layout.fillWidth: true
+                            text: `Aikatsu ${root.version}`
+                            font: Theme.font.title.medium
+                        }
+                        StyledText {
+                            text: "GPL-3.0  ·  (ﾉ´ヮ`)ﾉ*: ･ﾟ"
+                            color: Theme.palette.onSurfaceVariant
+                            font: Theme.font.body.medium
+                        }
+                    }
+                    IconTextButton {
+                        type: TextButton.Tonal
+                        icon: "update"
+                        text: root.checkingApp ? "Checking…" : "Check for updates"
+                        disabled: root.checkingApp
+                        onClicked: root.checkApp()
+                    }
+                    IconTextButton {
+                        type: TextButton.Tonal
+                        icon: "open_in_new"
+                        text: "GitHub"
+                        onClicked: Qt.openUrlExternally("https://github.com/KidiXDev/aikatsu")
+                    }
+                }
+
+                Group {
+                    title: "Updates"
+
+                    SettingRow {
+                        label: "Check for Aikatsu updates on startup"
+                        hint: "Asks before downloading anything."
+
+                        StyledSwitch {
+                            checked: root.s.autoCheckAppUpdates === "true"
+                            onToggled: root.set("autoCheckAppUpdates", checked)
+                        }
+                    }
+                }
+
+                Group {
+                    title: "Appearance"
+
+                    SettingRow {
+                        label: "Theme"
+
+                        Segmented {
+                            options: [["system", "System"], ["dark", "Dark"], ["light", "Light"]]
+                            value: root.s.theme
+                            onPicked: v => root.set("theme", v)
+                        }
+                    }
+                }
+
+                Group {
+                    title: "Integrations"
+
+                    SettingRow {
+                        label: "Discord status"
+                        hint: "Shows what you're watching on your profile."
+
+                        StyledSwitch {
+                            checked: root.s.discord === "true"
+                            onToggled: {
+                                root.set("discord", checked);
+                                if (!checked)
+                                    Api.get("presence", {
+                                        clear: true
+                                    });
+                            }
+                        }
+                    }
+                }
+
+                Group {
+                    title: "Storage and logs"
+
+                    SettingRow {
+                        label: "Cached lookups"
+                        hint: root.cacheBytes > 0 ? Theme.formatBytes(root.cacheBytes) : "Empty"
+
+                        TextButton {
+                            type: TextButton.Tonal
+                            text: "Clear"
+                            disabled: root.cacheBytes <= 0
+                            onClicked: {
+                                Api.get("clearCache");
+                                root.cacheBytes = Api.get("cacheSize");
+                                ApplicationWindow.window.toast("Cache cleared");
+                            }
+                        }
+                    }
+                    SettingRow {
+                        label: "Debug logging"
+                        hint: "Applies after a restart."
+
+                        StyledSwitch {
+                            checked: root.s.debug === "true"
+                            onToggled: root.set("debug", checked)
+                        }
+                    }
+                    SettingRow {
+                        label: "Log"
+                        hint: "Also opens with Ctrl+L."
+
+                        TextButton {
+                            type: TextButton.Tonal
+                            text: "View"
+                            onClicked: ApplicationWindow.window.openLog()
+                        }
+                    }
+                }
+            }
+
+            Room {
+                index: 1
+
+                Band {
                     IconTile {
                         icon: "auto_awesome"
                         tint: Theme.palette.secondaryContainer
@@ -1140,7 +1272,7 @@ Item {
             }
 
             Room {
-                index: 1
+                index: 2
 
                 Band {
                     IconTile {
@@ -1228,7 +1360,7 @@ Item {
             }
 
             Room {
-                index: 2
+                index: 3
 
                 Band {
                     ColumnLayout {
@@ -1299,7 +1431,7 @@ Item {
             }
 
             Room {
-                index: 3
+                index: 4
 
                 Band {
                     StyledRect {
@@ -1418,138 +1550,6 @@ Item {
                             text: "Change…"
                             disabled: root.account.signedIn
                             onClicked: serverDialog.show()
-                        }
-                    }
-                }
-            }
-
-            Room {
-                index: 4
-
-                Band {
-                    Item {
-                        implicitWidth: 44
-                        implicitHeight: 44
-
-                        Image {
-                            anchors.fill: parent
-                            source: "qrc:/icon.svg"
-                            sourceSize: Qt.size(88, 88)
-                        }
-                    }
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 2
-
-                        StyledText {
-                            Layout.fillWidth: true
-                            text: `Aikatsu ${root.version}`
-                            font: Theme.font.title.medium
-                        }
-                        StyledText {
-                            text: "GPL-3.0  ·  (ﾉ´ヮ`)ﾉ*: ･ﾟ"
-                            color: Theme.palette.onSurfaceVariant
-                            font: Theme.font.body.medium
-                        }
-                    }
-                    IconTextButton {
-                        type: TextButton.Tonal
-                        icon: "update"
-                        text: root.checkingApp ? "Checking…" : "Check for updates"
-                        disabled: root.checkingApp
-                        onClicked: root.checkApp()
-                    }
-                    IconTextButton {
-                        type: TextButton.Tonal
-                        icon: "open_in_new"
-                        text: "GitHub"
-                        onClicked: Qt.openUrlExternally("https://github.com/KidiXDev/aikatsu")
-                    }
-                }
-
-                Group {
-                    title: "Updates"
-
-                    SettingRow {
-                        label: "Check for Aikatsu updates on startup"
-                        hint: "Asks before downloading anything."
-
-                        StyledSwitch {
-                            checked: root.s.autoCheckAppUpdates === "true"
-                            onToggled: root.set("autoCheckAppUpdates", checked)
-                        }
-                    }
-                }
-
-                Group {
-                    title: "Appearance"
-
-                    SettingRow {
-                        label: "Theme"
-
-                        Segmented {
-                            options: [["system", "System"], ["dark", "Dark"], ["light", "Light"]]
-                            value: root.s.theme
-                            onPicked: v => root.set("theme", v)
-                        }
-                    }
-                }
-
-                Group {
-                    title: "Integrations"
-
-                    SettingRow {
-                        label: "Discord status"
-                        hint: "Shows what you're watching on your profile."
-
-                        StyledSwitch {
-                            checked: root.s.discord === "true"
-                            onToggled: {
-                                root.set("discord", checked);
-                                if (!checked)
-                                    Api.get("presence", {
-                                        clear: true
-                                    });
-                            }
-                        }
-                    }
-                }
-
-                Group {
-                    title: "Storage and logs"
-
-                    SettingRow {
-                        label: "Cached lookups"
-                        hint: root.cacheBytes > 0 ? Theme.formatBytes(root.cacheBytes) : "Empty"
-
-                        TextButton {
-                            type: TextButton.Tonal
-                            text: "Clear"
-                            disabled: root.cacheBytes <= 0
-                            onClicked: {
-                                Api.get("clearCache");
-                                root.cacheBytes = Api.get("cacheSize");
-                                ApplicationWindow.window.toast("Cache cleared");
-                            }
-                        }
-                    }
-                    SettingRow {
-                        label: "Debug logging"
-                        hint: "Applies after a restart."
-
-                        StyledSwitch {
-                            checked: root.s.debug === "true"
-                            onToggled: root.set("debug", checked)
-                        }
-                    }
-                    SettingRow {
-                        label: "Log"
-                        hint: "Also opens with Ctrl+L."
-
-                        TextButton {
-                            type: TextButton.Tonal
-                            text: "View"
-                            onClicked: ApplicationWindow.window.openLog()
                         }
                     }
                 }

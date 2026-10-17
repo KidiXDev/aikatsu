@@ -1,5 +1,5 @@
 import QtQuick
-import QtQuick.Effects
+import QtQuick.Shapes
 import Aikatsu
 
 // Rounded image with a placeholder while loading.
@@ -7,7 +7,6 @@ Item {
     id: root
 
     property alias source: img.source
-    property alias fillMode: img.fillMode
     property alias status: img.status
     property real radius: Theme.rounding.medium
     property color placeholder: Theme.palette.surfaceContainerHighest
@@ -32,7 +31,6 @@ Item {
 
         anchors.fill: parent
         visible: false
-        layer.enabled: true // else MultiEffect samples the raw texture, ignoring fillMode, and stretches it
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
         cache: true
@@ -40,32 +38,31 @@ Item {
         sourceSize.height: height * Screen.devicePixelRatio
     }
 
-    MultiEffect {
+    // Fills from the image's texture directly; a layer mask would cost two offscreen buffers per image.
+    Shape {
         anchors.fill: parent
-        source: img
-        maskEnabled: true
-        maskSource: mask
-        maskThresholdMin: 0.5
-        maskSpreadAtMin: 1
+        preferredRendererType: Shape.CurveRenderer
         opacity: img.status === Image.Ready ? 1 : 0
+
+        ShapePath {
+            // The fill is the whole picture at its own size, so crop it here as PreserveAspectCrop would.
+            readonly property real crop: img.implicitWidth > 0 ? Math.max(root.width / img.implicitWidth, root.height / img.implicitHeight) : 1
+
+            strokeWidth: -1
+            fillItem: img
+            fillTransform: PlanarTransform.fromAffineMatrix(crop, 0, 0, crop, (root.width - img.implicitWidth * crop) / 2, (root.height - img.implicitHeight * crop) / 2)
+
+            PathRectangle {
+                width: root.width
+                height: root.height
+                radius: root.radius
+            }
+        }
 
         Behavior on opacity {
             Anim {
                 type: Anim.SlowEffects
             }
-        }
-    }
-
-    Item {
-        id: mask
-
-        anchors.fill: parent
-        layer.enabled: true
-        visible: false
-
-        Rectangle {
-            anchors.fill: parent
-            radius: root.radius
         }
     }
 }

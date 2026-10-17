@@ -9,9 +9,11 @@ ApplicationWindow {
     id: win
 
     property int tab: 0
+    property int openedTabs: 1 // bit per tab: a tab is built the first time it's opened, then kept
     readonly property bool playing: playerLoader.active
     property int windowedVisibility: Window.Windowed
 
+    onTabChanged: openedTabs |= 1 << tab
     onVisibilityChanged: {
         if (visibility === Window.Windowed || visibility === Window.Maximized)
             windowedVisibility = visibility;
@@ -200,6 +202,8 @@ ApplicationWindow {
             const t = args.indexOf("--tab");
             if (t > 0)
                 win.tab = parseInt(args[t + 1]);
+            if (args.includes("--search"))
+                win.tab = 1; // Search runs it once it's built
             if (args.includes("--plugins"))
                 win.openPlugins();
         }
@@ -308,10 +312,22 @@ ApplicationWindow {
         StackLayout {
             currentIndex: win.tab
 
-            HomePage {}
-            SearchPage {}
-            DownloadsPage {}
-            SettingsPage {}
+            Loader {
+                active: (win.openedTabs & 1) !== 0
+                sourceComponent: HomePage {}
+            }
+            Loader {
+                active: (win.openedTabs & 2) !== 0
+                sourceComponent: SearchPage {}
+            }
+            Loader {
+                active: (win.openedTabs & 4) !== 0
+                sourceComponent: DownloadsPage {}
+            }
+            Loader {
+                active: (win.openedTabs & 8) !== 0
+                sourceComponent: SettingsPage {}
+            }
         }
     }
 

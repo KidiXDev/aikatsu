@@ -2,7 +2,7 @@
 
 Settings are stored on each device. Desktop and Android share most options. Sign in to [sync](./sync.md), and your history and most settings follow you between them.
 
-On desktop, Settings is split into five rooms: **Watch**, **Library**, **Sources**, **Account**, and **General**. The list shows each room's state at a glance, such as your preferred quality, how much you've downloaded, how many sources are on, and when you last synced.
+On desktop, Settings is split into five rooms: **General**, **Watch**, **Library**, **Sources**, and **Account**. The list shows each room's state at a glance, such as your preferred quality, how much you've downloaded, how many sources are on, and when you last synced.
 
 ## Sync
 

@@ -44,6 +44,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Icon font
+        run: |
+          pip install fonttools brotli
+          python desktop/assets/fonts/subset_icons.py
+
       - name: Build
         run: cargo build --release --locked
         env:
@@ -105,6 +114,15 @@ jobs:
           Set-Content mpv.def (@("EXPORTS") + $exports)
           lib /nologo /def:mpv.def /name:libmpv-2.dll /out:mpv.lib /machine:x64
           "MPV_DIR=$PWD" | Out-File $env:GITHUB_ENV -Append
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Icon font
+        run: |
+          pip install fonttools brotli
+          python desktop/assets/fonts/subset_icons.py
 
       - name: Build
         run: cargo build --release --locked
