@@ -60,7 +60,7 @@ export default defineConfig({
       text: 'Help improve this page'
     },
     footer: {
-      message: 'Aikatsu is free software, licensed under GPL-3.0-only.',
+      message: 'Aikatsu is free software, licensed under GPL-3.0.',
       copyright: 'Copyright © 2026 Aikatsu'
     }
   }
