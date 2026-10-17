@@ -517,19 +517,26 @@ FocusScope {
             lastPoke = Qt.point(mouse.x, mouse.y);
             root.poke();
         }
-        onClicked: if (root.started && root.phase === "playing")
-            clickDelay.restart()
+        onClicked: if (root.started && root.phase === "playing") {
+            osd.show(mpv.paused ? "play_arrow" : "pause", "");
+            clickDelay.restart();
+        }
         onDoubleClicked: {
-            clickDelay.stop();
+            if (clickDelay.running) {
+                clickDelay.stop();
+                osdAnim.stop();
+                osd.opacity = 0;
+            } else if (root.started && root.phase === "playing")
+                root.togglePause();
             ApplicationWindow.window.toggleFullScreen();
         }
 
         Timer {
             id: clickDelay
 
-            interval: Qt.styleHints.mouseDoubleClickInterval
+            interval: 200
             onTriggered: if (root.started && root.phase === "playing")
-                root.togglePause()
+                mpv.paused = !mpv.paused
         }
     }
 
