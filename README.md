@@ -43,7 +43,7 @@ On Android, tap the video for the controls, double-tap its left or right side to
 
 Get the latest version from the [Releases](../../releases) page:
 
-- **Windows:** download the `.zip`, unpack it anywhere, and run `aikatsu.exe`.
+- **Windows:** download the `-setup.exe` and run it (no admin needed), or download the `.zip`, unpack it anywhere, and run `aikatsu.exe`.
 - **Linux:** download the `.AppImage`, make it executable (`chmod +x Aikatsu-*.AppImage`), and run it.
 - **Android:** download the `-android-arm64-v8a.apk` on your phone and open it (allow installing from your browser when asked). Older 32-bit phones need the `-armeabi-v7a.apk` instead.
 
