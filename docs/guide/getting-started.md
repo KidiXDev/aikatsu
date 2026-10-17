@@ -27,7 +27,7 @@ Download the `android-arm64-v8a.apk` for most current phones. Older 32-bit devic
 
 ## Install your first sources
 
-1. Open **Settings > Plugins**. On desktop, use **Manage** next to Plugins.
+1. Open **Settings > Plugins**. On desktop, open **Sources** and choose **Manage**.
 2. Kyoko, the official source repo, is listed by default.
 3. If its sources haven't been downloaded yet, use **Check for updates**, then tap or click the **download icon**.
 4. Wait for installation to finish. The source list updates as soon as it's ready.

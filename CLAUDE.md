@@ -23,8 +23,10 @@ cd docs && npm ci && npm run dev                    # VitePress docs; `npm run b
 - `.cargo/config.toml` sets `--cfg reqwest_unstable` (reqwest's HTTP/3, used by `core/src/proxy.rs`). Anything that builds the core outside this workspace's config, such as FRB codegen or a scratch crate depending on `aikatsu-core`, must pass that `RUSTFLAGS` itself. It also needs this repo's `Cargo.lock`, since some locked versions have since been yanked.
 - **Run the desktop app headless and isolated:** `XDG_DATA_HOME=<scratch> QT_QPA_PLATFORM=offscreen ./target/debug/aikatsu --screenshot out.png --tab 3 --delay 3000`.
   - `--tab` selects a page: 0 Home, 1 Search, 2 Downloads, 3 Settings.
-  - Other dev flags: `--plugins`, `--search <q> --open --play`, `--debug`.
-  - `XDG_DATA_HOME` keeps runs out of the real history database.
+  - Other dev flags: `--room <n>` (Settings room: 0 Watch, 1 Library, 2 Sources, 3 Account, 4 General), `--plugins`, `--search <q> --open --play`, `--debug`.
+  - `XDG_DATA_HOME` keeps runs out of the real history database; also set `XDG_CONFIG_HOME` and `XDG_CACHE_HOME`, or the run overwrites the real `window.ini`. All three must be absolute paths: relative ones are silently ignored and the run uses the real data.
+  - QML `console.*` output goes to the systemd journal when stderr isn't a terminal; set `QT_FORCE_STDERR_LOGGING=1` to see it.
+  - `--screenshot` grabs the page, not popups; dialogs don't appear in it.
 - **QML is compiled in.** `desktop/build.rs` registers every file under `desktop/qml/` in the `Aikatsu` QML module. A file containing `pragma Singleton` becomes a singleton. QML loads from qrc, so a QML edit needs `cargo build`.
 
 ## Architecture

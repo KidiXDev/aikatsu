@@ -4,7 +4,7 @@ Anime4K is optional video processing for sharper lines and cleaner-looking upsca
 
 ## Turn it on
 
-Open **Settings > Sharpen video (Anime4K)**. If the shaders aren't installed, choose **Download** first. Then select a preset. You can also change the preset from the player's Anime4K menu.
+Open **Settings > Sharpen video (Anime4K)**, or **Settings > Watch** on desktop, where each preset shows a short description. Select a preset. If the shaders aren't installed yet, they download the first time a preset is used; choose **Download** (**Download now** on desktop) to get them ahead of time. You can also change the preset from the player's Anime4K menu.
 
 The standard shader pack is downloaded once. The Experimental preset needs additional shaders, which the app fetches when needed.
 

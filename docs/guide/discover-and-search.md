@@ -47,6 +47,6 @@ The details page also has refresh and download actions. Refresh fetches a fresh 
 
 ## Choose which sites Search uses
 
-Open **Settings > Plugins** and switch individual sources on or off. Turning one off keeps its repo installed, but leaves it out of searches.
+Open **Settings > Plugins** and switch individual sources on or off. On desktop, click a source in **Settings > Sources**. Turning one off keeps its repo installed, but leaves it out of searches.
 
 If a source goes missing after a repo was removed, add that repo again. Existing history can still refer to the old source, but online playback needs the plugin to be installed.

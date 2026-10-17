@@ -4,9 +4,9 @@ Sign in on each device to keep your history in step. Stop an episode on your com
 
 ## Sign in
 
-1. Open **Settings**. **Sync** is at the top.
+1. Open **Settings**. On desktop, choose **Account**. On Android, **Sync** is at the top.
 2. Choose **Create account** the first time, or **Sign in** on your other devices.
-3. Enter a username and a password of at least 8 characters.
+3. Enter a username and a password of at least 8 characters. When you create an account, enter the password a second time to confirm it. The eye button in a password field shows what you typed.
 
 Signing in never throws away a device's history. It's merged into the account, and each episode keeps its newest progress. For settings, the account's choices win, and the device's own fill in any the account doesn't have yet.
 
@@ -44,12 +44,12 @@ If the same thing changes on two devices, **the newest change wins**. That goes 
 Use the **⋮** menu next to **Sync now**.
 
 - **Sign out** stops syncing on that device. Its history and settings stay where they are.
-- **Change password** signs out your other devices. Sign in there again with the new password.
+- **Change password** asks for your current password and the new one twice. It signs out your other devices. Sign in there again with the new password.
 - **Delete account** removes your account and everything synced to it from the server. Each device keeps its own history.
 
 ## Use your own server
 
-Aikatsu uses its own sync server unless you choose another. To keep your history on your own machine, [run the sync server yourself](./self-hosting.md). Then, before signing in, choose **Change** next to **Server** in **Settings > Sync** and enter its address. Clear the address to use the default server again.
+Aikatsu uses its own sync server unless you choose another. To keep your history on your own machine, [run the sync server yourself](./self-hosting.md). Then, before signing in, choose **Change** next to the server in **Settings > Sync** (**Settings > Account** on desktop) and enter its address. Clear the address to use the default server again.
 
 An account belongs to the server it was created on. To switch servers, sign out first. Your history stays on the device and merges into the account you sign in to next.
 

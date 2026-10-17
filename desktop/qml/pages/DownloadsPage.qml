@@ -14,12 +14,6 @@ Item {
         return Object.values(jobs).sort((a, b) => b.id - a.id);
     }
 
-    function fmtBytes(n: real): string {
-        if (!n)
-            return "0 MB";
-        return n > 1073741824 ? (n / 1073741824).toFixed(2) + " GB" : (n / 1048576).toFixed(1) + " MB";
-    }
-
     Component.onCompleted: {
         const map = {};
         for (const j of Api.get("downloads"))
@@ -136,7 +130,7 @@ Item {
                         }
                         StyledText {
                             Layout.fillWidth: true
-                            text: row.modelData.state === "failed" ? Api.describe(row.modelData.error) : row.modelData.state === "downloading" ? `${root.fmtBytes(row.modelData.bytes)} of ${root.fmtBytes(row.modelData.total)}  ·  ${root.fmtBytes(row.modelData.speed)}/s` : row.modelData.state === "done" ? row.modelData.path : ({
+                            text: row.modelData.state === "failed" ? Api.describe(row.modelData.error) : row.modelData.state === "downloading" ? `${Theme.formatBytes(row.modelData.bytes)} of ${Theme.formatBytes(row.modelData.total)}  ·  ${Theme.formatBytes(row.modelData.speed)}/s` : row.modelData.state === "done" ? row.modelData.path : ({
                                     queued: "Queued",
                                     resolving: "Finding video…",
                                     remuxing: "Finishing…",

@@ -14,7 +14,7 @@ You can cancel a queued or running job. If a download fails, check the error and
 
 ## Where the files go
 
-**Desktop:** Settings shows the download folder and lets you change it. Finished files are named and organized for media servers such as Plex and Jellyfin. Some longer shows can use metadata-based season folders.
+**Desktop:** **Settings > Library** shows the download folder and lets you change it. Finished files are named and organized for media servers such as Plex and Jellyfin. Some longer shows can use metadata-based season folders.
 
 **Android:** downloads use the app's external storage folder, `Android/data/io.github.kidixdev.aikatsu/files/Anime`. Android can remove app-specific files when you uninstall the app, so copy anything you want to keep before uninstalling.
 

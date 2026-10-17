@@ -67,6 +67,10 @@ ApplicationWindow {
         visibility = visibility === Window.FullScreen ? windowedVisibility : Window.FullScreen;
     }
 
+    function openLog(): void {
+        logs.open();
+    }
+
     function toast(message: string): void {
         snackbar.show(message);
     }

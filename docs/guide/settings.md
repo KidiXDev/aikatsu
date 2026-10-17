@@ -2,9 +2,11 @@
 
 Settings are stored on each device. Desktop and Android share most options. Sign in to [sync](./sync.md), and your history and most settings follow you between them.
 
+On desktop, Settings is split into five rooms: **Watch**, **Library**, **Sources**, **Account**, and **General**. The list shows each room's state at a glance, such as your preferred quality, how much you've downloaded, how many sources are on, and when you last synced.
+
 ## Sync
 
-**Sync** at the top of Settings signs you in to keep watch history and settings the same on your phone and computer. See [sync between devices](./sync.md) for what follows you and what stays per device.
+**Sync** signs you in to keep watch history and settings the same on your phone and computer. It's under **Account** on desktop and at the top of Settings on Android. See [sync between devices](./sync.md) for what follows you and what stays per device.
 
 ## Appearance and playback
 
@@ -18,11 +20,13 @@ Settings are stored on each device. Desktop and Android share most options. Sign
 
 Player quality changes are remembered too. Available resolutions and tracks still depend on the source.
 
+On desktop, Theme is in **General** and the rest is in **Watch**. Watch shows each sharpening preset with a short description, and lists the player's keyboard shortcuts.
+
 ## Sources and updates
 
-**Plugins** opens your repo and source list. Turn sources on or off there to decide which sites Search uses.
+**Plugins** opens your repo and source list. Turn sources on or off there to decide which sites Search uses. On desktop, the **Sources** room lists your sources; click one to turn it on or off, or choose **Manage** for the full list.
 
-**Check for plugin updates on startup** is on by default. It checks for changes and shows an update-count dialog when something is available. It doesn't download plugin updates. Turn it off if you'd rather use the Plugins page's manual check button.
+**Check for plugin updates on startup** is on by default. It checks for changes and shows an update-count dialog when something is available. It doesn't download plugin updates. Turn it off if you'd rather check by hand: on desktop, **Check now** in **Sources** does the same check.
 
 See [managing plugins](../plugins/managing-plugins.md) for adding repos, trust prompts, and manual downloads.
 
@@ -34,7 +38,7 @@ Signed in to [sync](./sync.md), removing a series removes it on your other devic
 
 ## Downloads
 
-Desktop shows the download folder in Settings and lets you choose another. Android uses its app-specific folder.
+Desktop's **Library** room shows the download folder and how much you've downloaded there, and lets you choose another folder. It also shows whether ffmpeg and yt-dlp are available. Android uses its app-specific folder.
 
 The optional **TMDB API key** helps organize season folders for long shows. Leave it empty if you don't need that.
 
@@ -48,6 +52,6 @@ This option isn't part of the Android settings.
 
 **Debug logging** records extra detail and applies after a restart. Use it when you're trying to reproduce a problem.
 
-**Logs** lets you read and export a diagnostic report. Desktop also opens the log with **Ctrl+L**. A report includes the app version, platform, and log text. Check it before sharing, since URLs and other playback details can appear in it.
+**Logs** lets you read and export a diagnostic report. On desktop, choose **View** next to **Log** in **General**, or press **Ctrl+L**. A report includes the app version, platform, and log text. Check it before sharing, since URLs and other playback details can appear in it.
 
-**Clear cache** removes cached lookup data and fetched pages. It doesn't delete watch history or downloaded videos. It's useful when metadata or a source page seems stuck on an older response.
+**Clear cache** removes cached lookup data and fetched pages. It doesn't delete watch history or downloaded videos. It's useful when metadata or a source page seems stuck on an older response. On desktop it's **Cached lookups** in **General**, which shows how much is cached.

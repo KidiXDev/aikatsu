@@ -4,7 +4,7 @@ Start with the part that failed. A metadata problem, a source problem, and a vid
 
 ## Search has no sources or no results
 
-Open **Settings > Plugins**. Make sure at least one source is installed and switched on. If Kyoko's scripts haven't been downloaded yet, check for updates and use the download icon.
+Open **Settings > Plugins** (**Settings > Sources** on desktop). Make sure at least one source is installed and switched on. If Kyoko's scripts haven't been downloaded yet, check for updates and use the download icon.
 
 Try a shorter query or a different title spelling. A failed source filter is a clue that the site had a problem, rather than proof that the anime doesn't exist.
 

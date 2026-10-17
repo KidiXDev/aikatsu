@@ -29,7 +29,7 @@ Either way, the server listens on port 3000. Check it with `curl http://localhos
 
 ## Connect the app
 
-In Aikatsu, open **Settings > Sync**, choose **Change** next to **Server**, and enter your server's address, such as `http://192.168.1.20:3000`. Then choose **Create account** and pick a username and password.
+In Aikatsu, open **Settings > Sync** (**Settings > Account** on desktop), choose **Change** next to the server, and enter your server's address, such as `http://192.168.1.20:3000`. Then choose **Create account** and pick a username and password.
 
 On your other devices, set the same server, then choose **Sign in** with the same username and password.
 

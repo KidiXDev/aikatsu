@@ -135,6 +135,12 @@ QtObject {
         return Qt.alpha(c, a);
     }
 
+    function formatBytes(n: real): string {
+        if (!n)
+            return "0 MB";
+        return n > 1073741824 ? (n / 1073741824).toFixed(2) + " GB" : (n / 1048576).toFixed(1) + " MB";
+    }
+
     function formatTime(sec: real): string {
         sec = Math.max(0, Math.floor(sec || 0));
         const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
