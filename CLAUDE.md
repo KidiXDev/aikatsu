@@ -23,7 +23,7 @@ cd docs && npm ci && npm run dev                    # VitePress docs; `npm run b
 - `.cargo/config.toml` sets `--cfg reqwest_unstable` (reqwest's HTTP/3, used by `core/src/proxy.rs`). Anything that builds the core outside this workspace's config, such as FRB codegen or a scratch crate depending on `aikatsu-core`, must pass that `RUSTFLAGS` itself. It also needs this repo's `Cargo.lock`, since some locked versions have since been yanked.
 - **Run the desktop app headless and isolated:** `XDG_DATA_HOME=<scratch> QT_QPA_PLATFORM=offscreen ./target/debug/aikatsu --screenshot out.png --tab 3 --delay 3000`.
   - `--tab` selects a page: 0 Home, 1 Search, 2 Downloads, 3 Settings.
-  - Other dev flags: `--room <n>` (Settings room: 0 Watch, 1 Library, 2 Sources, 3 Account, 4 General), `--plugins`, `--search <q> --open --play`, `--debug`.
+  - Other dev flags: `--room <n>` (Settings room: 0 General, 1 Watch, 2 Library, 3 Sources, 4 Account), `--plugins`, `--search <q> --open --play`, `--debug`.
   - `XDG_DATA_HOME` keeps runs out of the real history database; also set `XDG_CONFIG_HOME` and `XDG_CACHE_HOME`, or the run overwrites the real `window.ini`. All three must be absolute paths: relative ones are silently ignored and the run uses the real data.
   - QML `console.*` output goes to the systemd journal when stderr isn't a terminal; set `QT_FORCE_STDERR_LOGGING=1` to see it.
   - `--screenshot` grabs the page, not popups; dialogs don't appear in it.
@@ -76,6 +76,7 @@ Hosts that mpv can't play directly go through local relays in `core/src/proxy.rs
 ## Conventions
 
 - **Formatting:** no rustfmt config. Neither the Rust nor the Dart sources are formatter-clean, so running `cargo fmt` or `dart format` on a whole file reflows unrelated code. Match the surrounding style (lines up to about 140 columns; `mobile/analysis_options.yaml` sets `page_width: 140`) and keep diffs to the lines you change.
+- **Icons:** the repo keeps the full Material Symbols font (14 MB of RAM). `release.yml` runs `desktop/assets/fonts/subset_icons.py` to cut it down to the icon names in the QML, so name each icon as a whole string literal somewhere in the QML; a name assembled at runtime ends up missing from releases.
 - **Comments and UI copy:** comments explain a non-obvious *why*, not what the code does. Keep UI text short. `DESIGN.md` has the visual tokens: colours, radii, motion.
 - **Docs:** user-visible behaviour is described in `docs/guide/*.md`. Update the matching page when behaviour changes.
 - **Versions:** the root `Cargo.toml` `version` drives every crate. Keep `mobile/pubspec.yaml` and the workspace entries in `Cargo.lock` in step. A `v*` tag runs `.github/workflows/release.yml`, which builds Windows, Linux and Android.
