@@ -326,6 +326,9 @@ FocusScope {
 
     Keys.onPressed: e => {
         poke();
+        // Held keys repeat seeks and volume steps only; a held N would skip through episodes.
+        if (e.isAutoRepeat && ![Qt.Key_Left, Qt.Key_Right, Qt.Key_J, Qt.Key_L, Qt.Key_Up, Qt.Key_Down].includes(e.key))
+            return;
         switch (e.key) {
         case Qt.Key_Space:
         case Qt.Key_K:

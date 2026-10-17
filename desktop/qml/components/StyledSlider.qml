@@ -18,6 +18,8 @@ T.Slider {
     implicitWidth: 200
     implicitHeight: 36
     padding: 0
+    // A clicked slider would keep the arrow keys the player uses for seeking and volume.
+    focusPolicy: Qt.NoFocus
 
     readonly property real handleGap: 5
     readonly property real px: visualPosition * width
