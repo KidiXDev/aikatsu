@@ -4,6 +4,8 @@ Test parsing with saved HTML or JSON so you can find bugs even when the site is 
 
 ## Build the CLI
 
+Complete [the CLI prerequisites](./first-plugin.md#before-you-start) first. You don't need to build either app interface to run these checks.
+
 From the Aikatsu checkout:
 
 ```sh
