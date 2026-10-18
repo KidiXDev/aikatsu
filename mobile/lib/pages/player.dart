@@ -273,7 +273,7 @@ class _PlayerPageState extends State<PlayerPage> {
     final duration = _duration;
     if (duration <= 0 || !d.metaLoaded) return;
     final done = completed || _completedMarked || _position / duration >= 0.9;
-    if (done && !_completedMarked && _hasNext) {
+    if (done && !_completedMarked && _hasNext && d.anime['source'] != 'local' && _localFile == null) {
       // Warm the page cache so the next episode starts fast.
       Api.call('qualities', {'source': d.anime['source'], 'url': d.episodes[_index + 1]['url']}).ignore();
     }
