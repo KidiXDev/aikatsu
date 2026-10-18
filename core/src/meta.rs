@@ -288,6 +288,17 @@ pub async fn discover() -> Result<Discover> {
     Ok(parse_discover(&v["data"]))
 }
 
+pub async fn search(query: &str) -> Result<Vec<Meta>> {
+    let query = query.trim();
+    if query.is_empty() {
+        return Ok(Vec::new());
+    }
+    let q = format!("query ($search: String) {{ Page(perPage: 12) {{ media(search: $search, type: ANIME) {{ {LIST_FIELDS} }} }} }}");
+    let v = anilist(&q, json!({ "search": query })).await?;
+    anyhow::ensure!(v["data"].is_object(), "AniList returned no data: {}", v["errors"]);
+    Ok(v["data"]["Page"]["media"].as_array().into_iter().flatten().filter_map(parse_media).collect())
+}
+
 fn parse_discover(d: &Value) -> Discover {
     let media = |page: &Value| -> Vec<Meta> { page["media"].as_array().into_iter().flatten().filter_map(parse_media).collect() };
     let mut schedule: Vec<Airing> = ["aired", "next"]

@@ -1,6 +1,7 @@
 //! Search / episodes / qualities / stream for a source key ("kyoko/otakudesu"),
 //! answered by that plugin's script (see `plugins`).
 
+use crate::local;
 use crate::plugins::{self, Plugin};
 use anyhow::{Result, anyhow};
 use regex::Regex;
@@ -64,6 +65,10 @@ pub async fn search(src: &str, query: &str) -> Result<Vec<Anime>> {
 }
 
 pub async fn episodes(src: &str, anime_url: &str) -> Result<Vec<Episode>> {
+    if src == local::SOURCE {
+        let folder = anime_url.to_owned();
+        return tokio::task::spawn_blocking(move || local::episodes(&folder)).await?;
+    }
     let p = plugin(src)?;
     let v = plugins::call(&p, "episodes", (anime_url.to_owned(),), RESOLVE_TIMEOUT).await?;
     let mut eps: Vec<Episode> = decode(&p, "episodes", v)?;
@@ -74,6 +79,9 @@ pub async fn episodes(src: &str, anime_url: &str) -> Result<Vec<Episode>> {
 
 /// Offered resolutions, highest first ("1080p", "720p", …).
 pub async fn qualities(src: &str, episode_url: &str) -> Result<Vec<String>> {
+    if src == local::SOURCE {
+        return Ok(Vec::new());
+    }
     let p = plugin(src)?;
     let v = plugins::call(&p, "heights", (episode_url.to_owned(),), RESOLVE_TIMEOUT).await?;
     Ok(quality_labels(decode(&p, "heights", v)?))
@@ -81,6 +89,9 @@ pub async fn qualities(src: &str, episode_url: &str) -> Result<Vec<String>> {
 
 /// Resolves an episode to a playable URL. `quality` is "best"/"" or e.g. "720p".
 pub async fn stream(src: &str, episode_url: &str, quality: &str) -> Result<Stream> {
+    if src == local::SOURCE {
+        return local::stream(episode_url);
+    }
     let p = plugin(src)?;
     let res = async {
         let v = plugins::call(&p, "stream", (episode_url.to_owned(), quality.to_owned()), RESOLVE_TIMEOUT).await?;

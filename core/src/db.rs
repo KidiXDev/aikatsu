@@ -104,6 +104,7 @@ fn init(c: &Connection) -> rusqlite::Result<()> {
             meta           TEXT    NOT NULL DEFAULT '{}'
         );
         CREATE INDEX IF NOT EXISTS idx_downloads_series ON downloads(source, series_url);
+        CREATE TABLE IF NOT EXISTS local_series (path TEXT PRIMARY KEY NOT NULL, meta TEXT NOT NULL DEFAULT '{}');
         -- Unsent changes. REPLACE gives a changed row a new id, above any already sent.
         CREATE TABLE IF NOT EXISTS sync_dirty (
             id   INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -385,7 +386,7 @@ fn downloads_on(c: &Connection, filter: &str, args: &[&str]) -> Result<Vec<Downl
         })?
         .collect::<rusqlite::Result<_>>()?;
     let (present, missing): (Vec<_>, Vec<_>) = rows.into_iter().partition(|d| std::path::Path::new(&d.path).is_file());
-    for d in missing {
+    for d in missing.iter().filter(|d| std::path::Path::new(&d.path).parent().is_some_and(std::path::Path::is_dir)) {
         c.execute("DELETE FROM downloads WHERE path = ?1", [&d.path])?;
     }
     Ok(present)
@@ -434,6 +435,18 @@ pub fn local_episodes(source: &str, series_url: &str) -> Result<HashMap<String, 
 /// never delete files the app didn't download).
 pub fn remove_download(path: &str) -> Result<bool> {
     Ok(DB.lock().unwrap().execute("DELETE FROM downloads WHERE path = ?1", [path])? > 0)
+}
+
+pub fn local_links() -> Result<HashMap<String, Meta>> {
+    let c = DB.lock().unwrap();
+    let mut st = c.prepare("SELECT path, meta FROM local_series")?;
+    let rows = st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows.into_iter().map(|(path, meta)| (path, serde_json::from_str(&meta).unwrap_or_default())).collect())
+}
+
+pub fn set_local_link(path: &str, meta: &Meta) -> Result<()> {
+    DB.lock().unwrap().execute("INSERT OR REPLACE INTO local_series (path, meta) VALUES (?1, ?2)", params![path, serde_json::to_string(meta)?])?;
+    Ok(())
 }
 
 pub fn setting(key: &str) -> Option<String> {
@@ -830,13 +843,16 @@ mod tests {
         for d in &rows {
             add_download_on(&c, d).unwrap();
         }
+        let unplugged = Download { path: dir.join("unplugged-drive").join("d-1.mp4").display().to_string(), ..dl("d", "https://s/d", 1, 1) };
+        add_download_on(&c, &unplugged).unwrap();
         std::fs::remove_file(&rows[1].path).unwrap(); // deleted outside the app
         let lib = group_library(downloads_on(&c, "", &[]).unwrap());
         let summary: Vec<(&str, Vec<i64>, i64)> =
             lib.iter().map(|s| (s.series_name.as_str(), s.episodes.iter().map(|e| e.episode_number).collect(), s.size)).collect();
         assert_eq!(summary, [("a", vec![1, 2], 20), ("c", vec![1], 10)], "newest series first, episodes in order");
-        let left: i64 = c.query_row("SELECT COUNT(*) FROM downloads", [], |r| r.get(0)).unwrap();
-        assert_eq!(left, 3, "the missing file's row is gone");
+        let left: Vec<String> = c.prepare("SELECT path FROM downloads").unwrap().query_map([], |r| r.get(0)).unwrap().collect::<rusqlite::Result<_>>().unwrap();
+        assert_eq!(left.len(), 4, "the missing file's row is gone");
+        assert!(left.contains(&unplugged.path), "a file whose folder is gone too (an unplugged drive) keeps its row");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

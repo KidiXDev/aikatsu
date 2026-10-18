@@ -4,7 +4,7 @@
 use crate::plugins::{self, Plugin};
 use crate::push;
 use crate::sources;
-use crate::{anime4k, db, download, meta, proxy, sync, update};
+use crate::{anime4k, db, download, local, meta, proxy, sync, update};
 use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
 
@@ -91,20 +91,7 @@ pub async fn call(method: &str, args: Value) -> Result<Value> {
             let updated = plugins::sync_all().await;
             Ok(json!({ "repos": plugins::repos(), "updated": updated }))
         }
-        "enrich" => {
-            let id = i(&args, "anilistId");
-            let key = if id > 0 { format!("meta:anilist:{id}") } else { format!("meta:{}", meta::clean_title(s(&args, "name")).to_lowercase()) };
-            let m = db::cached(&key, DAY * 3, refresh(&args), async {
-                let mut m = if id > 0 { meta::by_anilist_id(id).await? } else { meta::enrich(s(&args, "name"), s(&args, "url")).await? };
-                let tmdb = setting("tmdbKey");
-                if m.season_map.is_empty() && m.episodes > 13 && m.mal_id > 0 && !tmdb.is_empty() {
-                    m.season_map = meta::tmdb_season_map(m.mal_id, &tmdb).await;
-                }
-                Ok(m)
-            })
-            .await?;
-            Ok(serde_json::to_value(m)?)
-        }
+        "enrich" => Ok(serde_json::to_value(enrich(i(&args, "anilistId"), s(&args, "name"), s(&args, "url"), refresh(&args)).await?)?),
         "episodes" => {
             if refresh(&args) {
                 crate::http::clear_pages();
@@ -153,8 +140,25 @@ pub async fn call(method: &str, args: Value) -> Result<Value> {
             let skip = db::cached(&format!("skip:{mal}:{ep}"), DAY * 7, false, meta::skip_times(mal, ep)).await?;
             Ok(serde_json::to_value(skip)?)
         }
+        "localLibrary" => Ok(serde_json::to_value(tokio::task::spawn_blocking(local::library).await?)?),
+        "matchLocal" => Ok(json!(local::match_all().await?)),
+        "linkLocal" => Ok(serde_json::to_value(local::link(s(&args, "path"), i(&args, "anilistId")).await?)?),
+        "searchAnime" => Ok(serde_json::to_value(meta::search(s(&args, "query")).await?)?),
         _ => bail!("unknown method {method}"),
     }
+}
+
+pub(crate) async fn enrich(id: i64, name: &str, url: &str, refresh: bool) -> Result<meta::Meta> {
+    let key = if id > 0 { format!("meta:anilist:{id}") } else { format!("meta:{}", meta::clean_title(name).to_lowercase()) };
+    db::cached(&key, DAY * 3, refresh, async {
+        let mut m = if id > 0 { meta::by_anilist_id(id).await? } else { meta::enrich(name, url).await? };
+        let tmdb = setting("tmdbKey");
+        if m.season_map.is_empty() && m.episodes > 13 && m.mal_id > 0 && !tmdb.is_empty() {
+            m.season_map = meta::tmdb_season_map(m.mal_id, &tmdb).await;
+        }
+        Ok(m)
+    })
+    .await
 }
 
 /// Source stream → something mpv can open. Blogger and Wibufile go through
@@ -220,6 +224,14 @@ pub fn get(method: &str, args: Value) -> Result<Value> {
         "library" => Ok(serde_json::to_value(db::library()?)?),
         // Episode URL → file for one series, so those episodes play offline.
         "localEpisodes" => Ok(serde_json::to_value(db::local_episodes(s(&args, "source"), s(&args, "url"))?)?),
+        "addLocalFolder" => {
+            local::add_root(s(&args, "path"))?;
+            Ok(Value::Null)
+        }
+        "removeLocalFolder" => {
+            local::remove_root(s(&args, "path"))?;
+            Ok(Value::Null)
+        }
         "deleteDownloads" => {
             download::delete(&serde_json::from_value::<Vec<String>>(args["paths"].clone())?)?;
             Ok(Value::Null)
