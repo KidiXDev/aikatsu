@@ -16,6 +16,14 @@ The app installs the scripts and refreshes the list when it's done. You don't ne
 
 GitHub links use the repo's default branch. Pasting a `/tree/some-branch` link doesn't pin that branch. Developers can also use a direct HTTPS link ending in `index.json`.
 
+### Test a local repo
+
+Enable **Developer Mode** in Settings first; it is off by default. Then choose **Add** and paste a file URL such as `file:///F:/APPS/kyoko/index.json`. On desktop, **Choose folder** opens the system folder picker; select the repo folder containing `index.json`. Local repos use the same trust confirmation and checksum checks as remote repos.
+
+Repo IDs must be unique. If your local Kyoko copy uses the `kyoko` ID, remove the installed Kyoko repo entry before adding it, or give the test repo its own ID.
+
+After editing a script, regenerate its index checksum with `aikatsu-plugin index <repo folder>`, then check for updates and download them in Aikatsu. Local installs and updates require Developer Mode; already installed sources keep working after you turn it off.
+
 ## Check, then download
 
 The refresh icon is **Check for updates**. It fetches repo metadata and leaves installed scripts alone.

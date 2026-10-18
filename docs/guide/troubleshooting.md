@@ -53,6 +53,6 @@ If you moved or deleted the file outside Aikatsu, the saved library record may n
 
 For jagged or overly sharp text on Windows, include your display scaling percentage and a screenshot at its original size. Windows builds use Qt's scalable text renderer for labels and text fields.
 
-Include your app version, platform, source name, anime title, and the steps that led to the problem. If it's repeatable, enable debug logging, restart, reproduce it, then export the log.
+Include your app version, platform, source name, anime title, and the steps that led to the problem. If it's repeatable, enable Developer Mode and debug logging in Settings, restart, reproduce it, then export the log.
 
 Read the report before posting it. Remove anything you don't want to share. You can report app bugs in [Aikatsu issues](https://github.com/KidiXDev/aikatsu/issues); source-specific bugs may belong in the plugin repo instead.

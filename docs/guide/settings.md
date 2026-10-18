@@ -62,8 +62,10 @@ This option isn't part of the Android settings.
 
 ## Logs and cache
 
+**Developer Mode** is off by default. Turn it on in **General** on desktop or **Other** on Android to unlock the log viewer and local plugin installs. This setting stays on the current device. Turning it off closes the desktop log viewer and disables **Ctrl+L**; installed sources remain available.
+
 **Debug logging** records extra detail and applies after a restart. Use it when you're trying to reproduce a problem.
 
-**Logs** lets you read and export a diagnostic report. On desktop, choose **View** next to **Log** in **General**, or press **Ctrl+L**. A report includes the app version, platform, and log text. Check it before sharing, since URLs and other playback details can appear in it.
+With Developer Mode enabled, **Logs** lets you read and export a diagnostic report. On desktop, choose **View** next to **Log** in **General**, or press **Ctrl+L**. A report includes the app version, platform, and log text. Check it before sharing, since URLs and other playback details can appear in it.
 
 **Clear cache** removes cached lookup data and fetched pages. It doesn't delete watch history or downloaded videos. It's useful when metadata or a source page seems stuck on an older response. On desktop it's **Cached lookups** in **General**, which shows how much is cached.

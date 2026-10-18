@@ -1069,6 +1069,15 @@ Item {
                         }
                     }
                     SettingRow {
+                        label: "Developer Mode"
+                        hint: "Enables advance feature"
+
+                        StyledSwitch {
+                            checked: root.s.developerMode === "true"
+                            onToggled: root.set("developerMode", checked)
+                        }
+                    }
+                    SettingRow {
                         label: "Debug logging"
                         hint: "Applies after a restart."
 
@@ -1079,6 +1088,7 @@ Item {
                     }
                     SettingRow {
                         label: "Log"
+                        visible: root.s.developerMode === "true"
                         hint: "Also opens with Ctrl+L."
 
                         TextButton {

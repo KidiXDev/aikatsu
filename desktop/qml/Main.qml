@@ -11,6 +11,7 @@ ApplicationWindow {
     property int tab: 0
     property int openedTabs: 1 // bit per tab: a tab is built the first time it's opened, then kept
     readonly property bool playing: playerLoader.active
+    property bool developerMode: Api.setting("developerMode") === "true"
     property int windowedVisibility: Window.Windowed
 
     onTabChanged: openedTabs |= 1 << tab
@@ -70,7 +71,8 @@ ApplicationWindow {
     }
 
     function openLog(): void {
-        logs.open();
+        if (developerMode)
+            logs.open();
     }
 
     function toast(message: string): void {
@@ -226,6 +228,11 @@ ApplicationWindow {
         function onSettingChanged(key: string, value: string): void {
             if (key === "theme")
                 Theme.mode = value;
+            if (key === "developerMode") {
+                win.developerMode = value === "true";
+                if (!win.developerMode)
+                    logs.close();
+            }
         }
 
         function onPushed(kind: string, data: var): void {
@@ -360,10 +367,12 @@ ApplicationWindow {
 
     LogDrawer {
         id: logs
+        interactive: win.developerMode
     }
 
     Shortcut {
         sequence: "Ctrl+L"
+        enabled: win.developerMode
         onActivated: logs.visible ? logs.close() : logs.open()
     }
 

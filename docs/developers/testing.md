@@ -72,7 +72,7 @@ This compiles every indexed source and updates its `sha256`. Run it after the fi
 
 Publish a test repo on its default branch and add it in **Settings > Plugins**. Check that the source appears without a manual page refresh, then try search, episode selection, quality changes, and playback on the platforms you support.
 
-For local development, the core also accepts a `file://` link ending in `index.json`. That's a development path, not a practical distribution method for phone users. The CLI is usually the easier way to iterate locally.
+For local development, enable **Developer Mode** in Settings to install or update a repo through a `file://` link ending in `index.json`. On desktop, the Add plugins dialog also offers **Choose folder**. That's a development path, not a practical distribution method for phone users. The CLI works independently of this setting and is usually the easier way to iterate locally.
 
 ## Read the error, then the log
 

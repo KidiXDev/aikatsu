@@ -39,7 +39,7 @@ With **Autoplay next episode** enabled, the player shows a short countdown at th
 | N / P | Next or previous episode |
 | S | Skip the current opening or ending segment |
 | Esc | Leave fullscreen first, then close the player |
-| Ctrl+L | Open the app log |
+| Ctrl+L | Open the app log (Developer Mode) |
 
 ## Android controls
 

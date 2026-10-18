@@ -36,6 +36,7 @@ pub const SETTING_DEFAULTS: &[(&str, &str)] = &[
     ("downloadDir", ""),
     ("tmdbKey", ""),
     ("discord", "true"),
+    ("developerMode", "false"),
     ("debug", "false"),
     ("anime4k", "off"),
     ("volume", "100"),

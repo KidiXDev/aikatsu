@@ -715,16 +715,23 @@ class _SettingsPageState extends State<SettingsPage> {
           icon: Icons.tune_rounded,
           children: [
             SwitchListTile(
+              title: const Text('Developer Mode', style: TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: const Text('Enables advance feature'),
+              value: _s['developerMode'] == 'true',
+              onChanged: (v) => _set('developerMode', v),
+            ),
+            SwitchListTile(
               title: const Text('Debug logging', style: TextStyle(fontWeight: FontWeight.w600)),
               subtitle: const Text('Applies after a restart.'),
               value: _s['debug'] == 'true',
               onChanged: (v) => _set('debug', v),
             ),
-            ListTile(
-              title: const Text('Logs', style: TextStyle(fontWeight: FontWeight.w600)),
-              trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
-              onTap: _showLogs,
-            ),
+            if (_s['developerMode'] == 'true')
+              ListTile(
+                title: const Text('Logs', style: TextStyle(fontWeight: FontWeight.w600)),
+                trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                onTap: _showLogs,
+              ),
             ListTile(
               title: const Text('Cache', style: TextStyle(fontWeight: FontWeight.w600)),
               trailing: TextButton(
