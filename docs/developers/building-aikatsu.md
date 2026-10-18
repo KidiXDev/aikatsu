@@ -114,6 +114,18 @@ Ignored tests that contact real sources are separate:
 cargo test -p aikatsu-core live_ -- --ignored --nocapture
 ```
 
+### Desktop renderer regression
+
+The stats test opens a small window and plays a generated video through the real Qt threaded OpenGL renderer. It checks that playback continues while stats are shown, toggled, and disabled, and times out if the GUI freezes. Run it in a desktop session, not with the offscreen or software Qt backend.
+
+With Qt and libmpv runtime libraries on your library path (`PATH` on Windows), and `MPV_DIR` set for Windows builds:
+
+```sh
+cmake -S desktop/tests -B target/mpv-stats-test -DCMAKE_PREFIX_PATH="/path/to/Qt/kit"
+cmake --build target/mpv-stats-test --config Release
+ctest --test-dir target/mpv-stats-test -C Release --output-on-failure
+```
+
 ## Releases and versions
 
 The root `Cargo.toml` supplies the desktop, core, and mobile Rust package version. Keep `mobile/pubspec.yaml` and the workspace entries in `Cargo.lock` in step.

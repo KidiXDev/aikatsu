@@ -75,6 +75,8 @@ public:
 
     void render() override {
         QQuickOpenGLUtils::resetOpenGLState();
+        // Advanced control also queues renderer work for requests such as the stats overlay.
+        mpv_render_context_update(core->gl);
         auto *fbo = framebufferObject();
         mpv_opengl_fbo mpfbo{static_cast<int>(fbo->handle()), fbo->width(), fbo->height(), 0};
         int flipY = 0;
@@ -125,8 +127,7 @@ MpvItem::~MpvItem() {
         std::lock_guard lock(core->glLock);
         if (core->gl) mpv_render_context_set_update_callback(core->gl, nullptr, nullptr);
     }
-    const char *stop[]{"stop", nullptr};
-    mpv_command(core->mpv, stop);
+    command({"stop"});
 }
 
 QQuickFramebufferObject::Renderer *MpvItem::createRenderer() const {
@@ -168,6 +169,10 @@ void MpvItem::drainEvents() {
                 m_lastError = QString::fromUtf8(msg->text).trimmed();
             break;
         }
+        case MPV_EVENT_COMMAND_REPLY:
+            if (ev->error < 0)
+                qWarning("mpv command failed: %s", mpv_error_string(ev->error));
+            break;
         case MPV_EVENT_PROPERTY_CHANGE: {
             auto *p = static_cast<mpv_event_property *>(ev->data);
             QByteArray name(p->name);
@@ -205,13 +210,13 @@ void MpvItem::command(const QStringList &args) {
     for (const auto &a : args) utf8.append(a.toUtf8());
     for (const auto &a : utf8) argv.push_back(a.constData());
     argv.push_back(nullptr);
-    if (int err = mpv_command(core->mpv, argv.data()); err < 0)
+    // Qt's render thread waits for the GUI thread during scene synchronization.
+    if (int err = mpv_command_async(core->mpv, 0, argv.data()); err < 0)
         qWarning("mpv command %s failed: %s", qPrintable(args.join(' ')), mpv_error_string(err));
 }
 
 void MpvItem::setProp(const QString &name, const QString &value) {
-    if (int err = mpv_set_property_string(core->mpv, name.toUtf8().constData(), value.toUtf8().constData()); err < 0)
-        qWarning("mpv set %s failed: %s", qPrintable(name), mpv_error_string(err));
+    command({"set", name, value});
 }
 
 QString MpvItem::getProp(const QString &name) const {
