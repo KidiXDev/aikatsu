@@ -12,27 +12,30 @@ RequestExecutionLevel user
 !include LogicLib.nsh
 !include FileFunc.nsh
 
-; Fixed rather than chosen: the uninstaller deletes this whole folder.
-!define DIR "$LOCALAPPDATA\Programs\Aikatsu"
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\Aikatsu"
+
+; Generate exact file removals so a custom folder's other files survive uninstall.
+!tempfile UNINSTALL_FILES
+!system 'python "installer_files.py" "${DIST}" "${UNINSTALL_FILES}"' = 0
+!include "${UNINSTALL_FILES}"
+!delfile "${UNINSTALL_FILES}"
 
 Name "Aikatsu"
 OutFile "${OUTFILE}"
-InstallDir "${DIR}"
+InstallDir "$LOCALAPPDATA\Programs\Aikatsu"
+InstallDirRegKey HKCU "${UNINST_KEY}" "InstallLocation"
 
 !define MUI_ICON "..\assets\icon.ico"
 !define MUI_UNICON "..\assets\icon.ico"
 !define MUI_FINISHPAGE_RUN "$INSTDIR\aikatsu.exe"
 
+!insertmacro MUI_PAGE_LICENSE "..\..\LICENSE"
+!insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "English"
-
-Function .onInit
-    StrCpy $INSTDIR "${DIR}" ; ignore /D=
-FunctionEnd
 
 ; Files in use can't be replaced, and a silent install would skip them and leave a mix of versions.
 Function WaitForAikatsu
@@ -88,9 +91,11 @@ Section
 SectionEnd
 
 Section "Uninstall"
+    SetOutPath "$TEMP"
     Delete "$SMPROGRAMS\Aikatsu.lnk"
     Delete "$DESKTOP\Aikatsu.lnk"
-    ; Not $INSTDIR: that is wherever uninstall.exe runs from. History and settings live elsewhere and stay.
-    RMDir /r "${DIR}"
+    !insertmacro UninstallFiles
+    Delete "$INSTDIR\uninstall.exe"
+    RMDir "$INSTDIR"
     DeleteRegKey HKCU "${UNINST_KEY}"
 SectionEnd
