@@ -8,6 +8,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../api.dart';
+import '../playback_stats.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'anime.dart';
@@ -69,6 +70,8 @@ class _PlayerPageState extends State<PlayerPage> {
   final bool _autoplay = Api.setting('autoplay') == 'true';
   final bool _autoSkip = Api.setting('autoSkip') == 'true';
   bool _controlsVisible = true;
+  bool _showStats = false;
+  final bool _developerMode = Api.setting('developerMode') == 'true';
   double? _dragValue; // seek bar position while dragging
   (IconData, String)? _osd;
   Timer? _hideTimer, _slowTimer, _resumeHide, _countdown, _osdTimer, _saveTimer;
@@ -581,6 +584,17 @@ class _PlayerPageState extends State<PlayerPage> {
           if (_osd case (final icon, final label))
             Center(child: _pill([Icon(icon, color: Colors.white, size: 32), if (label.isNotEmpty) _white(label)])),
           if (_showControls) ..._controls(),
+          if (_developerMode && _showStats)
+            Positioned(
+              top: _showControls ? 72 : 16,
+              left: 16,
+              bottom: _showControls ? 110 : 16,
+              child: SafeArea(
+                child: SingleChildScrollView(
+                  child: PlaybackStats(readProperty: (_player.platform as NativePlayer).getProperty),
+                ),
+              ),
+            ),
           if (_started && playing && (_inOp || _inEd))
             Positioned(
               right: 24,
@@ -791,6 +805,13 @@ class _PlayerPageState extends State<PlayerPage> {
                             icon: const Icon(Icons.settings_rounded),
                             label: Text(_quality.isNotEmpty && _quality != 'best' ? _quality : 'Auto'),
                             onPressed: _qualityMenu,
+                          ),
+                        if (_developerMode)
+                          IconButton(
+                            tooltip: 'Playback information',
+                            color: _showStats ? Theme.of(context).colorScheme.primary : Colors.white,
+                            icon: const Icon(Icons.info_outline_rounded),
+                            onPressed: () => setState(() => _showStats = !_showStats),
                           ),
                         TextButton.icon(
                           style: TextButton.styleFrom(foregroundColor: Colors.white),

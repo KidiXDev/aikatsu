@@ -67,6 +67,7 @@ Item {
         { what: "Fullscreen", keys: ["F", "/", "Double-click"] },
         { what: "Next or previous episode", keys: ["N", "/", "P"] },
         { what: "Skip intro or outro", keys: ["S"] },
+        ...(s.developerMode === "true" ? [{ what: "Show or toggle playback information", keys: ["I", "/", "Shift+I"] }] : []),
         { what: "Leave fullscreen, then close", keys: ["Esc"] }
     ]
 

@@ -325,7 +325,8 @@ FocusScope {
     }
 
     Keys.onPressed: e => {
-        poke();
+        if (e.key !== Qt.Key_I)
+            poke();
         // Held keys repeat seeks and volume steps only; a held N would skip through episodes.
         if (e.isAutoRepeat && ![Qt.Key_Left, Qt.Key_Right, Qt.Key_J, Qt.Key_L, Qt.Key_Up, Qt.Key_Down].includes(e.key))
             return;
@@ -365,6 +366,12 @@ FocusScope {
         case Qt.Key_S:
             skipSegment();
             break;
+        case Qt.Key_I:
+            if (!ApplicationWindow.window.developerMode || (e.modifiers & ~Qt.ShiftModifier))
+                return;
+            controlsVisible = false;
+            mpv.command(["script-binding", e.modifiers & Qt.ShiftModifier ? "stats/display-stats-toggle" : "stats/display-stats"]);
+            break;
         case Qt.Key_Escape:
             if (ApplicationWindow.window.visibility === Window.FullScreen)
                 ApplicationWindow.window.toggleFullScreen();
@@ -382,6 +389,16 @@ FocusScope {
         color: "black"
     }
 
+    Connections {
+        target: ApplicationWindow.window
+
+        function onDeveloperModeChanged(): void {
+            mpv.setProp("load-stats-overlay", ApplicationWindow.window.developerMode ? "yes" : "no");
+            if (!ApplicationWindow.window.developerMode)
+                mpv.command(["show-text", "", "0"]);
+        }
+    }
+
     MpvItem {
         id: mpv
 
@@ -389,6 +406,7 @@ FocusScope {
         // Through playback, buffering, the next episode's lookup and the autoplay countdown; not when paused or on the end/error card.
         keepAwake: (root.phase === "playing" || root.phase === "resolving") && !mpv.paused
         Component.onCompleted: {
+            setProp("load-stats-overlay", ApplicationWindow.window.developerMode ? "yes" : "no");
             setProp("cache", "yes");
             // The demuxer cache lives in RAM: a few minutes ahead and ~1 minute back is plenty.
             setProp("demuxer-max-bytes", "128MiB");

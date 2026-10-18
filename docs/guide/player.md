@@ -39,6 +39,8 @@ With **Autoplay next episode** enabled, the player shows a short countdown at th
 | N / P | Next or previous episode |
 | S | Skip the current opening or ending segment |
 | Esc | Leave fullscreen first, then close the player |
+| I | Show playback statistics briefly (Developer Mode) |
+| Shift+I | Toggle playback statistics (Developer Mode) |
 | Ctrl+L | Open the app log (Developer Mode) |
 
 ## Android controls
@@ -46,6 +48,8 @@ With **Autoplay next episode** enabled, the player shows a short countdown at th
 Tap the video to show or hide controls. Double-tap the left or right side to jump back or forward 10 seconds. Use the seek bar to move further through the episode.
 
 Double-tapping the middle toggles play and pause. Playback pauses when you leave the app or unplug your headphones.
+
+With **Developer Mode** enabled, the **info** button next to resolution toggles a live playback information overlay. It shows codec, dimensions, frame rates, hardware decoding, dropped frames, audio, and cache information. Unavailable values appear as a dash. Desktop uses mpv's built-in stats overlay; press **i** for a brief view or **Shift+I** to keep it visible until toggled off.
 
 Long-press an episode or anime card outside the player for extra actions where available.
 
