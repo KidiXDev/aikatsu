@@ -1368,6 +1368,21 @@ Item {
                         }
                     }
                 }
+
+                Group {
+                    title: "Your phone"
+
+                    SettingRow {
+                        label: "Share your folders"
+                        hint: root.account.signedIn ? "Phones signed in to your account can play them on this network." : "Sign in to share with your phone."
+
+                        StyledSwitch {
+                            enabled: root.account.signedIn
+                            checked: root.s.shareLibrary === "true"
+                            onToggled: root.set("shareLibrary", checked)
+                        }
+                    }
+                }
             }
 
             Room {
