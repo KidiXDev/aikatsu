@@ -49,6 +49,18 @@ Adding a folder asks for permission to read your videos. Pick a folder on the ph
 
 On Android 14 and later, choosing **Select videos** instead of allowing all videos limits Aikatsu to the videos you picked.
 
+## Watch your desktop folders on your phone
+
+Your phone can play the desktop's folders over your home network, with nothing copied.
+
+1. Sign in to the same [account](./sync.md) on both devices.
+2. On the desktop, turn on **Settings → Library → Share your folders**.
+3. Keep both devices on the same network. The desktop's shows appear in the phone's **Your folders**, marked **On** and the computer's name.
+
+The desktop must be running. On Windows, allow Aikatsu through the firewall on private networks when asked. Choose the anime for a folder on the desktop; the phone uses its pick.
+
+Video goes over your network unencrypted. Only devices signed in to your account get the address and key. Signing out on the desktop changes the key.
+
 ## On other devices
 
-Watch progress syncs like any other history. A show you watched from a folder still shows up in **Continue watching** on your other devices. It only opens there if the same folder is in that device's library; otherwise, search for the anime to keep watching from a source. The folder's location is part of the synced history.
+Watch progress syncs like any other history. A show you watched from a folder still shows up in **Continue watching** on your other devices. It opens there if the same folder is in that device's library, or if the desktop that has it is sharing on the same network. Otherwise, search for the anime to keep watching from a source. The folder's location is part of the synced history.
