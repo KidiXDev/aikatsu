@@ -14,6 +14,7 @@ Item {
     readonly property var disabled: (s.disabledSources || "").split(",").map(x => x.trim()).filter(x => x)
     readonly property var modes: Api.get("anime4kModes")
     property bool installingShaders
+    property real shaderProgress
     property bool shadersInstalled: Api.get("anime4kInstalled")
     property bool checkingPlugins
     property bool checkingApp
@@ -149,6 +150,8 @@ Item {
         function onPushed(kind: string, data: var): void {
             if (kind === "plugins")
                 root.sources = Api.get("sources");
+            if (kind === "anime4k")
+                root.shaderProgress = data.progress;
             if (kind === "download" && data.state === "done")
                 root.library = root.listOf(Api.get("library"));
             if (kind === "sync") {
@@ -1126,13 +1129,20 @@ Item {
                             font: Theme.font.body.medium
                             wrapMode: Text.Wrap
                         }
+                        LinearProgress {
+                            Layout.fillWidth: true
+                            Layout.topMargin: Theme.spacing.small
+                            visible: root.installingShaders
+                            value: root.shaderProgress
+                        }
                     }
                     TextButton {
                         visible: !root.shadersInstalled
                         type: TextButton.Tonal
-                        text: root.installingShaders ? "Downloading…" : "Download now"
+                        text: root.installingShaders ? `Downloading… ${Math.round(root.shaderProgress * 100)}%` : "Download now"
                         disabled: root.installingShaders
                         onClicked: {
+                            root.shaderProgress = 0;
                             root.installingShaders = true;
                             Api.call("installShaders", {
                                 gan: false

@@ -49,6 +49,7 @@ FocusScope {
     property int request: 0
     property real unmuteVolume: 100
     property string anime4k: Api.setting("anime4k")
+    property bool downloadingShaders
     property var anime4kModes: Api.get("anime4kModes")
     readonly property bool autoplay: Api.setting("autoplay") === "true"
     readonly property bool autoSkip: Api.setting("autoSkip") === "true"
@@ -240,21 +241,42 @@ FocusScope {
         status = "Retrying…";
     }
 
+    function modeName(mode: string): string {
+        return mode === "off" ? "Sharpening off" : (anime4kModes.find(m => m.key === mode)?.name ?? mode);
+    }
+
+    // The first use downloads the shaders. A reply for a mode switched away from meanwhile is
+    // dropped; a failure turns sharpening off for this session and keeps the saved choice.
     function applyShaders(): void {
-        if (!anime4k || anime4k === "off") {
+        const mode = anime4k;
+        if (!mode || mode === "off") {
             mpv.command(["change-list", "glsl-shaders", "clr", ""]);
             return;
         }
         Api.call("shaders", {
-            mode: anime4k
-        }, r => mpv.command(["change-list", "glsl-shaders", "set", r.list]), e => ApplicationWindow.window.toast("Couldn't turn on sharpening: " + Api.describe(e)));
+            mode: mode
+        }, r => {
+            if (mode !== anime4k)
+                return;
+            mpv.command(["change-list", "glsl-shaders", "set", r.list]);
+            if (downloadingShaders)
+                osd.show("auto_awesome", modeName(mode));
+            downloadingShaders = false;
+        }, e => {
+            if (mode !== anime4k)
+                return;
+            downloadingShaders = false;
+            anime4k = "off";
+            mpv.command(["change-list", "glsl-shaders", "clr", ""]);
+            ApplicationWindow.window.toast("Couldn't turn on sharpening: " + Api.describe(e));
+        });
     }
 
     function setAnime4k(mode: string): void {
         anime4k = mode;
         Api.setSetting("anime4k", mode);
         applyShaders();
-        osd.show("auto_awesome", mode === "off" ? "Sharpening off" : (anime4kModes.find(m => m.key === mode)?.name ?? mode));
+        osd.show("auto_awesome", modeName(mode));
     }
 
     function seek(sec: real): void {
@@ -396,6 +418,17 @@ FocusScope {
             mpv.setProp("load-stats-overlay", ApplicationWindow.window.developerMode ? "yes" : "no");
             if (!ApplicationWindow.window.developerMode)
                 mpv.command(["show-text", "", "0"]);
+        }
+    }
+
+    Connections {
+        target: Api
+
+        function onPushed(kind: string, data: var): void {
+            if (kind !== "anime4k")
+                return;
+            root.downloadingShaders = true;
+            osd.show("auto_awesome", `Downloading Anime4K… ${Math.round(data.progress * 100)}%`);
         }
     }
 
@@ -775,7 +808,7 @@ FocusScope {
                 NumberAnimation {
                     target: osd
                     property: "scale"
-                    from: 0.85
+                    from: osd.opacity > 0 ? 1 : 0.85 // pops in once, not on every update
                     to: 1
                     duration: 160
                     easing.type: Easing.OutBack

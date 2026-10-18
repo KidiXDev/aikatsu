@@ -30,9 +30,18 @@ class PlayerPage extends StatefulWidget {
 }
 
 class _PlayerPageState extends State<PlayerPage> {
-  // Desktop uses 300 MiB; phones have less memory to spare.
-  final _player = Player(configuration: const PlayerConfiguration(bufferSize: 150 << 20));
+  // Desktop uses 300 MiB; phones have less memory to spare. libass draws each file's own subtitle styles, like the
+  // desktop; it can't see Android's fonts, so the app font covers subtitles that don't embed theirs.
+  final _player = Player(
+    configuration: const PlayerConfiguration(
+      bufferSize: 150 << 20,
+      libass: true,
+      libassAndroidFont: 'assets/fonts/GoogleSansFlex.ttf',
+      libassAndroidFontName: 'Google Sans Flex',
+    ),
+  );
   VideoController? _video; // after the emulator check in _setup
+  bool _emulator = false;
   final _scaffold = GlobalKey<ScaffoldState>();
   final _subs = <StreamSubscription<Object?>>[];
   late final AppLifecycleListener _lifecycle;
@@ -66,6 +75,7 @@ class _PlayerPageState extends State<PlayerPage> {
   int _countdownLeft = 0;
   int _request = 0; // bumped per lookup; stale answers are dropped
   String _anime4k = Api.setting('anime4k');
+  bool _downloadingShaders = false;
   final List<dynamic> _anime4kModes = Api.get('anime4kModes');
   final bool _autoplay = Api.setting('autoplay') == 'true';
   final bool _autoSkip = Api.setting('autoSkip') == 'true';
@@ -130,6 +140,11 @@ class _PlayerPageState extends State<PlayerPage> {
       s.tracks.listen(_refresh),
       s.track.listen(_refresh),
       s.rate.listen(_refresh),
+      Api.pushed.listen((e) {
+        if (e.$1 != 'anime4k' || !mounted) return;
+        _downloadingShaders = true;
+        _showOsd(Icons.auto_awesome_rounded, 'Downloading Anime4K… ${(e.$2['progress'] * 100).round()}%');
+      }),
     ]);
     _saveTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (_phase == _Phase.playing && _player.state.playing && _duration > 0) _save();
@@ -155,6 +170,7 @@ class _PlayerPageState extends State<PlayerPage> {
         .catchError((_) => false);
     if (!mounted) return;
     setState(() {
+      _emulator = emulator == true;
       _video = VideoController(
         _player,
         configuration: emulator == true
@@ -461,22 +477,36 @@ class _PlayerPageState extends State<PlayerPage> {
     _setStatus('Retrying…');
   }
 
+  String _modeName(String mode) => mode == 'off' ? 'Sharpening off' : _anime4kModes.firstWhere((m) => m['key'] == mode)['name'];
+
+  /// The first use downloads the shaders. A reply for a mode switched away from meanwhile is
+  /// dropped; a failure turns sharpening off for this session and keeps the saved choice.
   void _applyShaders() {
     final mpv = _player.platform as NativePlayer;
-    if (_anime4k.isEmpty || _anime4k == 'off') {
+    final mode = _anime4k;
+    if (mode.isEmpty || mode == 'off') {
       mpv.command(['change-list', 'glsl-shaders', 'clr', '']);
       return;
     }
-    Api.call('shaders', {'mode': _anime4k}).then((r) {
-      if (mounted) mpv.command(['change-list', 'glsl-shaders', 'set', r['list']]);
-    }, onError: (e) => toast("Couldn't turn on sharpening: ${Api.describe(e)}"));
+    Api.call('shaders', {'mode': mode}).then((r) {
+      if (!mounted || mode != _anime4k) return;
+      mpv.command(['change-list', 'glsl-shaders', 'set', r['list']]);
+      if (_downloadingShaders) _showOsd(Icons.auto_awesome_rounded, _modeName(mode));
+      _downloadingShaders = false;
+    }, onError: (e) {
+      if (!mounted || mode != _anime4k) return;
+      _downloadingShaders = false;
+      setState(() => _anime4k = 'off');
+      mpv.command(['change-list', 'glsl-shaders', 'clr', '']);
+      toast("Couldn't turn on sharpening: ${Api.describe(e)}");
+    });
   }
 
   void _setAnime4k(String mode) {
     _anime4k = mode;
     Api.setSetting('anime4k', mode);
     _applyShaders();
-    _showOsd(Icons.auto_awesome_rounded, mode == 'off' ? 'Sharpening off' : _anime4kModes.firstWhere((m) => m['key'] == mode)['name']);
+    _showOsd(Icons.auto_awesome_rounded, _modeName(mode));
   }
 
   void _seek(num sec) => _player.seek(Duration(milliseconds: (sec * 1000).round()));
@@ -573,6 +603,20 @@ class _PlayerPageState extends State<PlayerPage> {
         fit: StackFit.expand,
         children: [
           if (_video case final video?) Video(controller: video, controls: NoVideoControls),
+          // mediacodec_embed can't draw subtitles, so the emulator gets them as text.
+          if (_video case final video? when _emulator)
+            SubtitleView(
+              controller: video,
+              configuration: const SubtitleViewConfiguration(
+                style: TextStyle(
+                  height: 1.4,
+                  fontSize: 32,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  shadows: [Shadow(blurRadius: 3), Shadow(blurRadius: 6)],
+                ),
+              ),
+            ),
           // Series art behind the loading screen and the end/error card.
           if (!_started || card) _backdrop(),
           GestureDetector(
@@ -589,7 +633,10 @@ class _PlayerPageState extends State<PlayerPage> {
           if (_started && (_phase == _Phase.resolving || (playing && _player.state.buffering)))
             const Center(child: CircularProgressIndicator(color: Colors.white)),
           if (_osd case (final icon, final label))
-            Center(child: _pill([Icon(icon, color: Colors.white, size: 32), if (label.isNotEmpty) _white(label)])),
+            Align(
+              alignment: _showControls ? const Alignment(0, 0.4) : Alignment.center, // clear of the play button and resume prompt
+              child: _pill([Icon(icon, color: Colors.white, size: 32), if (label.isNotEmpty) _white(label)]),
+            ),
           if (_showControls) ..._controls(),
           if (_developerMode && _showStats)
             Positioned(

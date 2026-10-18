@@ -29,4 +29,4 @@ There isn't one best setting for every show. Try a scene with faces, line work, 
 
 Switch to Light or Off. Shader processing can use a lot of GPU power, especially on phones. If the video becomes smooth with Anime4K off, the source connection probably wasn't the problem.
 
-You need an internet connection for the shader download. Once the files are installed, applying them doesn't need another download for each episode.
+You need an internet connection for the shader download. The player shows its progress, then the preset's name once it's on. If the download fails, sharpening stays off until you close the player; the next time you start watching, it tries again. Once the files are installed, applying them doesn't need another download for each episode.
