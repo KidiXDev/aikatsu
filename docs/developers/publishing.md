@@ -4,7 +4,7 @@ Aikatsu needs a repo index and the scripts it points to. You can host them in a 
 
 ## The index
 
-Here's the starter's complete index, including its real script checksum:
+The starter includes this index with its script's checksum:
 
 <<< @/public/examples/hello-source/index.json
 
@@ -42,9 +42,9 @@ Aikatsu requests:
 https://raw.githubusercontent.com/your-name/your-plugin-repo/HEAD/index.json
 ```
 
-That means the default branch. A GitHub `/tree/branch-name` URL is normalized back to the repo; it doesn't select a custom branch. Release tags alone don't publish an update to that default-branch index.
+Both plain repo links and GitHub `/tree/branch-name` links use the default branch. Release tags alone don't publish an update to that default-branch index.
 
-For another HTTPS host, share a direct index URL ending in `.json`, with script paths that resolve from it. This isn't an authenticated-repo login flow, so don't assume a user's browser session or GitHub login will be available to the app.
+For another HTTPS host, share a direct index URL ending in `.json`, with script paths that resolve from it. Use URLs the app can access without a browser session or GitHub login.
 
 ## Ship an update
 
@@ -57,13 +57,13 @@ For another HTTPS host, share a direct index URL ending in `.json`, with script 
 
 The host compares metadata and actual file hashes. A script can be recognized as changed even if you forgot to bump its version, but keeping the version meaningful makes maintenance easier.
 
-Never change the script after hashing it without regenerating the index. Line-ending changes count too, because the hash covers bytes rather than how the code looks.
+Never change the script after hashing it without regenerating the index. Even line-ending changes alter the hash.
 
 ## What users see
 
 A startup or manual check fetches your index and reports the number of available changes. It doesn't install your script.
 
-The Plugins page's download action fetches changed scripts, checks their hashes, compiles them, and reloads the source registry. Files whose hashes already match don't need another script download. Source removals in the new index are applied during installation too.
+When users download updates from Plugins, Aikatsu fetches changed scripts, checks their hashes, compiles them, and loads the updated sources. Files whose hashes already match don't need another script download. Source removals in the new index are applied during installation too.
 
 A bad checksum or compilation failure doesn't replace the previous working script. A repo can still show partial errors when some sources updated and another failed. Offline users keep the scripts they already have.
 
@@ -73,8 +73,8 @@ Don't raise `api` just because your own source changed. It describes the host fu
 
 If a feature needs a host API that isn't available yet, it requires an Aikatsu change first. Scripts asking for an API newer than the installed app supports are skipped and shown as needing a newer Aikatsu.
 
-## A small CI checklist
+## Check updates in CI
 
 Your repo's CI can build the Aikatsu plugin CLI and run `test` against your repo. It's also useful to run `index` and check that it leaves no diff, which catches forgotten checksum updates.
 
-Keep live tests separate from fixture tests. A site's downtime shouldn't hide a real parser regression, and a passing fixture test shouldn't pretend the site is reachable.
+Run live tests separately from fixture tests so you can tell a site outage from a parser bug. Passing fixture tests do not confirm that the site is reachable.

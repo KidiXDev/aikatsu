@@ -17,6 +17,7 @@ class _Backend extends Fake implements RustLibApi {
   String? called;
   String? calledArgs;
   String autoCheck = 'true';
+  String developerMode = 'false';
   List<dynamic>? reposOverride;
 
   @override
@@ -30,8 +31,11 @@ class _Backend extends Fake implements RustLibApi {
   String crateApiGet({required String method, required String args}) {
     if ((method == 'logTail' || method == 'logReport') && fail) throw 'Permission denied reading the log';
     return jsonEncode(switch (method) {
-      'settings' => {'theme': 'system', 'anime4k': 'off', 'debug': 'false', 'tmdbKey': '', 'disabledSources': '', 'autoCheckPluginUpdates': autoCheck},
-      'setSetting' => autoCheck = jsonDecode(args)['value'] as String,
+      'settings' => {'theme': 'system', 'anime4k': 'off', 'debug': 'false', 'developerMode': developerMode, 'tmdbKey': '', 'disabledSources': '', 'autoCheckPluginUpdates': autoCheck},
+      'setSetting' => switch (jsonDecode(args)['key']) {
+        'developerMode' => developerMode = jsonDecode(args)['value'] as String,
+        _ => autoCheck = jsonDecode(args)['value'] as String,
+      },
       'anime4kModes' => [],
       'officialRepo' => 'https://github.com/KidiXDev/kyoko',
       'sources' => [
@@ -349,8 +353,25 @@ void main() {
     });
   }
 
+  testWidgets('Developer Mode unlocks the log viewer and hides it again when disabled', (tester) async {
+    await tester.pumpWidget(MaterialApp(theme: buildTheme(Brightness.light), home: const Scaffold(body: SettingsPage())));
+    await tester.scrollUntilVisible(find.text('Developer Mode'), 300, scrollable: find.byType(Scrollable).first);
+    await tester.ensureVisible(find.text('Developer Mode'));
+    await tester.pumpAndSettle();
+    expect(find.text('Logs'), findsNothing);
+    await tester.tap(find.text('Developer Mode'));
+    await tester.pumpAndSettle();
+    expect(backend.developerMode, 'true');
+    expect(find.text('Logs'), findsOneWidget);
+    await tester.tap(find.text('Developer Mode'));
+    await tester.pumpAndSettle();
+    expect(backend.developerMode, 'false');
+    expect(find.text('Logs'), findsNothing);
+  });
+
   for (final size in [const Size(320, 700), const Size(800, 500)]) {
     testWidgets('logs stay wide and refresh empty, error, and populated states at $size', (tester) async {
+      backend.developerMode = 'true';
       const channel = MethodChannel('io.github.kidixdev.aikatsu/logs');
       final exported = <String>[];
       Completer<bool>? pendingExport;

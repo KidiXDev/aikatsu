@@ -38,6 +38,7 @@ jobs:
         with:
           version: ${{ env.QT_VERSION }}
           arch: linux_gcc_64
+          modules: qtimageformats
           aqtsource: ${{ env.AQT_SOURCE }}
           cache: true
 
@@ -92,6 +93,7 @@ jobs:
         with:
           version: ${{ env.QT_VERSION }}
           arch: win64_msvc2022_64
+          modules: qtimageformats
           aqtsource: ${{ env.AQT_SOURCE }}
           cache: true
 
@@ -138,6 +140,7 @@ jobs:
           New-Item -ItemType Directory -Force dist\imageformats | Out-Null
           Copy-Item "$env:QT_ROOT_DIR\bin\Qt6Svg.dll" dist
           Copy-Item "$env:QT_ROOT_DIR\plugins\imageformats\qsvg.dll" dist\imageformats
+          Copy-Item "$env:QT_ROOT_DIR\plugins\imageformats\qwebp.dll" dist\imageformats
           Compress-Archive dist\* "Aikatsu-${{ github.ref_name }}-windows-x64.zip"
 
       - name: Installer

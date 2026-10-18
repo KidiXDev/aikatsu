@@ -11,6 +11,8 @@ mod db;
 mod discord;
 mod download;
 mod http;
+mod lan;
+mod local;
 mod meta;
 pub mod plugin_cli;
 mod plugins;

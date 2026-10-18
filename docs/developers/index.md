@@ -1,12 +1,12 @@
-# Build a source, or work on Aikatsu
+# Develop plugins and app features
 
-A new source usually needs a plugin, not changes to the app. Plugins are Rhai scripts with four required functions, and the CLI runs them through the same engine that desktop and Android use.
+To add an anime site, write a Rhai plugin with four required functions. Test it with the CLI, which uses the same engine as desktop and Android.
 
 ## If you're adding a site
 
 Start with [your first plugin](./first-plugin.md). It walks through a small repo you can copy, run offline, and adapt to a real site.
 
-Keep these pages nearby:
+Use these references as you work:
 
 - [Plugin function contract](./plugin-contract.md) for inputs and return values.
 - [Host API](./host-api.md) for network, parsing, URL, and cache helpers.
@@ -19,7 +19,7 @@ You don't need Qt or Flutter just to write a plugin. You do need a working Rust 
 
 The [app build guide](./building-aikatsu.md) covers the shared core, both interfaces, and their build commands.
 
-Most shared behavior lives in `core/`. Desktop and mobile talk to it through JSON methods and receive events. A plugin change is usually the right fix for a site's new HTML layout; a new host function or player feature belongs in the app.
+Most shared behavior lives in `core/`. Desktop and mobile talk to it through JSON methods and receive events. Fix site layout changes in the plugin. Add host functions and player features in the app.
 
 ## Useful source links
 

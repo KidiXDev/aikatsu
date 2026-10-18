@@ -1,14 +1,16 @@
-# Let's get you watching
+# Get started
 
-You need the app and at least one installed source plugin. That's it. You don't need to sign in to start watching.
+Install Aikatsu and a source plugin to start watching. No account is needed.
 
 ## Install Aikatsu
 
-Grab the latest release from [GitHub Releases](https://github.com/KidiXDev/aikatsu/releases/latest).
+Download the latest release from [GitHub Releases](https://github.com/KidiXDev/aikatsu/releases/latest).
 
 ### Windows
 
-Download `windows-x64-setup.exe` and run it. It installs Aikatsu for your user account without asking for admin rights, adds Start menu and desktop shortcuts, and can be removed from **Settings > Apps**. Aikatsu offers [updates](./settings.md#app-updates) itself. Your history and settings are kept when you update or uninstall.
+Download `windows-x64-setup.exe` and run it. Read and accept the license agreement, then choose an installation folder. No admin rights are needed for the default folder. The installer adds Start menu and desktop shortcuts.
+
+Aikatsu offers [updates](./settings.md#app-updates) in the app. To uninstall, open **Settings > Apps** in Windows. Updating or uninstalling keeps your history and settings.
 
 To run Aikatsu without installing it, download the Windows ZIP instead, unpack it, and run `aikatsu.exe` from the extracted folder. Keep the other files beside it. The app needs those libraries to start.
 
@@ -44,9 +46,9 @@ At startup, Aikatsu can tell you how many plugin updates are available. Choose *
 
 Open **Search**, enter at least two characters, and submit your search. Results arrive source by source. Pick a show, choose an episode, and press play.
 
-If one source struggles, try the same show from another source. They're separate sites, so one can work while another is down.
+If a source fails, try another. Each source uses a separate site.
 
-## A few settings worth knowing
+## Choose your settings
 
 - **Preferred quality** sets your starting preference. Auto lets the app pick.
 - **Autoplay next episode** controls the end-of-episode countdown.
@@ -54,4 +56,4 @@ If one source struggles, try the same show from another source. They're separate
 - **Theme** follows your system or stays light or dark.
 - **Sync** keeps your history the same on your phone and computer. See [sync between devices](./sync.md).
 
-You can change these later in [Settings](./settings.md). Nothing here needs to be perfect before your first episode.
+You can change these anytime in [Settings](./settings.md).

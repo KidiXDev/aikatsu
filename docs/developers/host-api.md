@@ -1,12 +1,12 @@
 # Host API reference
 
-This is the API that Aikatsu exposes to source scripts at **API 1**. Rhai's normal language features are available too, but the host helpers below are what connect a plugin to websites and the player.
+Use these **API 1** helpers to fetch pages, parse data, and resolve video URLs in your source plugin. Rhai's standard language features are also available.
 
 ## Network
 
 ### `page(url)` and `page(url, referer)`
 
-GET a page through the Chrome-like HTTP client and return its body as a string. Successful, challenge-free responses are cached for 10 minutes. Cloudflare-style challenge pages are rejected rather than passed to your parser as normal HTML.
+GET a page through the Chrome-like HTTP client and return its body as a string. Successful, challenge-free responses are cached for 10 minutes. Cloudflare-style challenge pages cause an error.
 
 ```rust
 let html = page("https://example.org/anime/test", "https://example.org/");
@@ -34,7 +34,7 @@ Header names are lowercase. `url` is the final URL after redirects. Status codes
 | `client` | `"chrome"` by default, or `"plain"` for hosts that need it |
 | `redirect: false` | Return the redirect response itself |
 
-The method defaults to GET, or POST when `form` or `json` is present. Pick the body format the endpoint expects rather than supplying both.
+The method defaults to GET, or POST when `form` or `json` is present. Supply only the body format the endpoint expects.
 
 ```rust
 let response = fetch("https://example.org/player", #{
@@ -46,11 +46,11 @@ let response = fetch("https://example.org/player", #{
 let player = json_parse(response.body);
 ```
 
-The shared HTTP helper retries server errors and dropped connections up to twice. It doesn't retry ordinary 4xx responses. Keep this in mind for requests that have side effects: source requests should generally just read data.
+The shared HTTP helper retries server errors and dropped connections up to twice. It doesn't retry ordinary 4xx responses. Use requests that only read data where possible, since retries can repeat an action.
 
 ### `fetch_all(urls)` and `fetch_all(urls, opts)`
 
-Make the same kind of request to several URLs, with up to four requests running at once. Responses come back in the input order. A failed request makes the call fail; this isn't a list of mixed success and error values.
+Make the same kind of request to several URLs, with up to four requests running at once. Responses come back in the input order. If any request fails, the whole call fails.
 
 ```rust
 let responses = fetch_all([
@@ -61,7 +61,7 @@ let responses = fetch_all([
 
 ### `playable(url)` and `playable(url, referer)`
 
-Ask the host for one byte. Return `true` for a 200 or 206 response, otherwise `false`. This is a useful availability probe, not a full video-decoding test.
+Ask the host for one byte. Return `true` for a 200 or 206 response, otherwise `false`. Use it to check availability. It does not test video decoding.
 
 ## HTML and text
 
@@ -70,11 +70,11 @@ Ask the host for one byte. Return `true` for a 200 or 206 response, otherwise `f
 | `select(html, css)` | Array of matched elements as `#{ text, html, attrs }` |
 | `attr(element, name)` | Attribute value, or `""` if it's missing |
 | `regex_match(text, pattern)` | First match as `[whole, group1, ...]`, or `()` |
-| `regex_replace(text, pattern, replacement)` | Replace every match; `$1` refers to a capture group |
-| `json_parse(text)` | Rhai maps, arrays, and other values; JSON null becomes `()` |
+| `regex_replace(text, pattern, replacement)` | Replace every match. `$1` refers to a capture group |
+| `json_parse(text)` | Rhai maps, arrays, and other values. JSON null becomes `()` |
 | `base64_decode(text)` | Decode standard Base64 to text |
 | `html_decode(text)` | Decode HTML entities |
-| `clean_sub_indo(title)` | Remove a trailing “Subtitle Indonesia” or “Sub Indo” label |
+| `clean_sub_indo(title)` | Remove a trailing "Subtitle Indonesia" or "Sub Indo" label |
 
 `select` trims the result's text and attribute values. Its `html` field is the element's **inner HTML**, so it doesn't include the selected element's outer tag. Use `attr` for attributes on that selected element, or call `select(element.html, selector)` to search inside it.
 
@@ -110,7 +110,7 @@ let parsed = url_parse(selected);
 
 ## Resolutions
 
-`height_of(label)` extracts a numeric height from a label. For example, `height_of("MKV 1080p")` returns `1080`; `height_of("best")` returns `0`.
+`height_of(label)` extracts a numeric height from a label. For example, `height_of("MKV 1080p")` returns `1080`, and `height_of("best")` returns `0`.
 
 `sort_by_height(items, quality)` returns a sorted array. Items can be strings with a height in them or maps with a numeric `height` field.
 
@@ -126,7 +126,7 @@ let preferred = sort_by_height(options, "720p");
 
 `cache_set(key, value, seconds)` stores a value. `cache_get(key)` returns it, or `()` if it expired or wasn't there.
 
-Keys are namespaced by plugin, so one source's `"player"` entry doesn't collide with another's. Entries live in memory for at most one hour. The host limits the combined cache to 128 entries and may evict entries before their requested lifetime. Plugin reloads clear it too.
+Each plugin has its own cache keys, so one source's `"player"` entry doesn't collide with another's. Entries live in memory for at most one hour. The host limits the combined cache to 128 entries and may evict entries before their requested lifetime. Plugin reloads clear it too.
 
 ```rust
 cache_set("player:" + episode_url, player_data, 120);
@@ -142,4 +142,4 @@ Don't use the cache as permanent storage, and don't assume `heights` always runs
 
 There are no host functions for reading watch history, changing settings, or reading arbitrary local files. Plugins also don't get a browser DOM or a JavaScript runtime for the target site.
 
-Network access is still a trust boundary. A plugin can contact websites and return video URLs, so users need to trust the repo that supplies it.
+Users trust your plugin to contact websites and choose video URLs. Be clear about which sites it uses.

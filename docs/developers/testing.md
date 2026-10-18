@@ -1,6 +1,6 @@
-# Test the parser before you test the site
+# Test and debug your plugin
 
-A parser test should be quick, repeatable, and useful when a website goes down. Keep network requests in the four entry points and move HTML or JSON parsing into helpers you can call with fixtures.
+Test parsing with saved HTML or JSON so you can find bugs even when the site is down. Keep network requests in the four entry points and call parser helpers with fixtures.
 
 ## Build the CLI
 
@@ -31,7 +31,7 @@ assert(condition, "What went wrong");
 assert_eq(got, expected);
 ```
 
-Keep fixture HTML small enough to explain the page structure. Good tests cover an ordinary result, missing optional data, an empty search, and the site's odd cases. A missing required test file is an error. Also make sure you've actually defined `test_` functions; a file with no such functions has nothing to run.
+Keep fixture HTML small enough to explain the page structure. Good tests cover an ordinary result, missing optional data, an empty search, and the site's odd cases. A missing required test file is an error. Define at least one `test_` function so the file has a test to run.
 
 The CLI doesn't block network access during tests. They're offline only if your test functions avoid `page`, `fetch`, and other network helpers.
 
@@ -45,7 +45,7 @@ aikatsu-plugin call sources/example.rhai stream "https://example.org/watch/1" "7
 
 The result is printed as JSON. Arguments from the command line are passed as strings, and a call gets a 60-second budget.
 
-This is also handy for calling one of your own parser helpers while debugging. If that helper expects a number or a map, remember that the CLI isn't converting its string arguments into those types for you.
+You can also call parser helpers while debugging. All CLI arguments stay strings, even if your helper expects a number or map.
 
 ## Try the real site
 
@@ -56,7 +56,7 @@ aikatsu-plugin live /path/to/my-plugins "one piece"
 
 A live check searches, takes the first result, loads its episodes, asks for qualities, and resolves the last episode in the sorted list with `"best"` quality. With no query, it uses `"one piece"`.
 
-This checks a small playback path. It doesn't play the whole video or test every mirror, resolution, or anime. The CLI also lets a quality-list failure fall back to an empty list before trying stream resolution, so inspect the output instead of treating a successful live run as complete coverage.
+A live check resolves one episode. It does not play the video or test every mirror, resolution, or anime. If listing qualities fails, the CLI still tries to resolve the stream with an empty quality list. Read the output for errors even when the check passes.
 
 Live checks need a real, adapted plugin. The downloadable teaching starter still points to `example.org`, so use its offline parser tests until you've changed it for an actual site.
 
@@ -72,7 +72,7 @@ This compiles every indexed source and updates its `sha256`. Run it after the fi
 
 Publish a test repo on its default branch and add it in **Settings > Plugins**. Check that the source appears without a manual page refresh, then try search, episode selection, quality changes, and playback on the platforms you support.
 
-For local development, the core also accepts a `file://` link ending in `index.json`. That's a development path, not a practical distribution method for phone users. The CLI is usually the easier way to iterate locally.
+For local development, enable **Developer Mode** in Settings to install or update a repo through a `file://` link ending in `index.json`. On desktop, the Add plugins dialog also offers **Choose folder**. Use local repos for development and publish an HTTPS repo for phone users. The CLI does not require Developer Mode and is usually simpler for local testing.
 
 ## Read the error, then the log
 

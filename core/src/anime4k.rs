@@ -2,7 +2,9 @@
 
 use crate::http;
 use anyhow::{Result, anyhow};
+use futures_util::StreamExt;
 use serde::Serialize;
+use serde_json::json;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
@@ -98,25 +100,51 @@ pub fn installed() -> bool {
     shader_dir().join(CLAMP).exists()
 }
 
-/// Downloads the pinned v4.0.1 shader pack (and the GAN pair when asked).
+static ONE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// Downloads the pinned v4.0.1 shader pack (and the GAN pair when asked), pushing
+/// `anime4k` events with the overall `progress` from 0 to 1.
 pub async fn install(gan: bool) -> Result<()> {
+    let _one = ONE.lock().await;
     let dir = shader_dir();
     tokio::fs::create_dir_all(&dir).await?;
-    if !installed() {
-        let bytes = http::PLAIN.get(ZIP_URL).send().await?.error_for_status()?.bytes().await?;
+    let zip = !installed();
+    let gan: Vec<(String, PathBuf)> = GAN_FILES
+        .iter()
+        .filter(|_| gan)
+        .map(|f| (format!("{GAN_BASE}{f}"), dir.join(Path::new(f).file_name().unwrap())))
+        .filter(|(_, target)| !target.exists())
+        .collect();
+    let total = usize::from(zip) + gan.len();
+    if zip {
+        let bytes = fetch(ZIP_URL, 0, total).await?;
         let dir2 = dir.clone();
         tokio::task::spawn_blocking(move || extract_glsl(&bytes, &dir2)).await??;
     }
-    if gan {
-        for f in GAN_FILES {
-            let target = dir.join(Path::new(f).file_name().unwrap());
-            if !target.exists() {
-                let body = http::PLAIN.get(format!("{GAN_BASE}{f}")).send().await?.error_for_status()?.bytes().await?;
-                tokio::fs::write(target, body).await?;
-            }
-        }
+    for (i, (url, target)) in gan.iter().enumerate() {
+        tokio::fs::write(target, fetch(url, usize::from(zip) + i, total).await?).await?;
     }
     Ok(())
+}
+
+/// One of `total` downloads, `done` before it.
+async fn fetch(url: &str, done: usize, total: usize) -> Result<Vec<u8>> {
+    let resp = http::PLAIN.get(url).send().await?.error_for_status()?;
+    // None when the body arrives compressed; progress then moves per file.
+    let size = resp.content_length().unwrap_or(0);
+    let mut body = Vec::with_capacity(size as usize);
+    let mut stream = resp.bytes_stream();
+    let mut shown = None;
+    while let Some(chunk) = stream.next().await {
+        body.extend_from_slice(&chunk?);
+        let part = if size == 0 { 0.0 } else { (body.len() as f64 / size as f64).min(1.0) };
+        let percent = ((done as f64 + part) / total as f64 * 100.0) as u32;
+        if shown != Some(percent) {
+            shown = Some(percent);
+            crate::push("anime4k", &json!({ "progress": f64::from(percent) / 100.0 }));
+        }
+    }
+    Ok(body)
 }
 
 fn extract_glsl(zip_bytes: &[u8], dir: &Path) -> Result<()> {

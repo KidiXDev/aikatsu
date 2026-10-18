@@ -9,7 +9,7 @@ fn heights(episode_url) { /* one argument */ }
 fn stream(episode_url, quality) { /* two arguments */ }
 ```
 
-The host checks that they're present when it compiles the script. The inputs and outputs below are the actual API contract. Example URLs are placeholders.
+Aikatsu checks for these functions when it compiles the script. Use the inputs and return values below. Example URLs are placeholders.
 
 ## `search(query)`
 
@@ -40,7 +40,7 @@ Return an array of episode maps:
 ]
 ```
 
-`num` must be a nonnegative integer that fits in a `u32`. `url` is a required string. `title` is optional. The host sorts by `num`; it treats an empty episode list as an error.
+`num` must be a nonnegative integer that fits in a `u32`. `url` is a required string. `title` is optional. The host sorts by `num` and treats an empty list as an error.
 
 Use real episode numbers where possible. Avoid assigning the same number to unrelated entries such as trailers or download mirrors. The rest of the app uses those numbers for progress and episode matching.
 
@@ -81,7 +81,7 @@ Throw a readable string when the source can't complete a request:
 throw "Example: no playable mirror for this episode";
 ```
 
-Use `[]` for an ordinary empty search. Use an error for a broken response, missing player data, or a network failure. Otherwise the user gets “nothing found” when the source is actually broken.
+Use `[]` for an ordinary empty search. Use an error for a broken response, missing player data, or a network failure. This helps users tell an empty search from a broken source.
 
 `print` writes to the app log. `debug` writes debug-level output. Don't log cookies, private tokens, or full signed URLs unless you really need them while debugging, and remove those logs before publishing.
 
@@ -89,9 +89,9 @@ Use `[]` for an ordinary empty search. Use an error for a broken response, missi
 
 Search has a 12-second per-source budget, with a 15-second limit for a whole multi-source search. Episode, quality, and stream calls get a 60-second script budget. Network requests also have their own timeouts and retries, so avoid unnecessary requests and unbounded loops.
 
-The engine caps strings at 16 MiB, arrays and maps at 100,000 entries, and HTTP responses at 8 MiB. Build a small parser for the data you need rather than collecting an entire site.
+The engine caps strings at 16 MiB, arrays and maps at 100,000 entries, and HTTP responses at 8 MiB. Parse only the data you need.
 
-## Rhai details that are easy to miss
+## Rhai constants and methods
 
 A function reads a top-level constant through `global::NAME`:
 

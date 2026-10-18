@@ -11,6 +11,7 @@ ApplicationWindow {
     property int tab: 0
     property int openedTabs: 1 // bit per tab: a tab is built the first time it's opened, then kept
     readonly property bool playing: playerLoader.active
+    property bool developerMode: Api.setting("developerMode") === "true"
     property int windowedVisibility: Window.Windowed
 
     onTabChanged: openedTabs |= 1 << tab
@@ -34,6 +35,11 @@ ApplicationWindow {
     function openPlugins(): void {
         if (stack.currentItem?.objectName !== "pluginsPage")
             stack.push(pluginsPage);
+    }
+
+    function openFolders(): void {
+        if (stack.currentItem?.objectName !== "foldersPage")
+            stack.push(foldersPage);
     }
 
     function goTab(i: int): void {
@@ -70,7 +76,8 @@ ApplicationWindow {
     }
 
     function openLog(): void {
-        logs.open();
+        if (developerMode)
+            logs.open();
     }
 
     function toast(message: string): void {
@@ -191,7 +198,7 @@ ApplicationWindow {
         ]
     }
 
-    // Dev aid: `aikatsu --screenshot out.png [--tab N | --plugins]` renders, saves, quits.
+    // Dev aid: `aikatsu --screenshot out.png [--tab N | --plugins | --folders]` renders, saves, quits.
     Timer {
         readonly property var args: Qt.application.arguments
         readonly property int at: args.indexOf("--screenshot")
@@ -206,6 +213,8 @@ ApplicationWindow {
                 win.tab = 1; // Search runs it once it's built
             if (args.includes("--plugins"))
                 win.openPlugins();
+            if (args.includes("--folders"))
+                win.openFolders();
         }
         onTriggered: (win.playing ? playerLoader.item : shell).grabToImage(r => {
             r.saveToFile(args[at + 1]);
@@ -226,6 +235,11 @@ ApplicationWindow {
         function onSettingChanged(key: string, value: string): void {
             if (key === "theme")
                 Theme.mode = value;
+            if (key === "developerMode") {
+                win.developerMode = value === "true";
+                if (!win.developerMode)
+                    logs.close();
+            }
         }
 
         function onPushed(kind: string, data: var): void {
@@ -322,10 +336,14 @@ ApplicationWindow {
             }
             Loader {
                 active: (win.openedTabs & 4) !== 0
-                sourceComponent: DownloadsPage {}
+                sourceComponent: LibraryPage {}
             }
             Loader {
                 active: (win.openedTabs & 8) !== 0
+                sourceComponent: DownloadsPage {}
+            }
+            Loader {
+                active: (win.openedTabs & 16) !== 0
                 sourceComponent: SettingsPage {}
             }
         }
@@ -341,6 +359,12 @@ ApplicationWindow {
         id: pluginsPage
 
         PluginsPage {}
+    }
+
+    Component {
+        id: foldersPage
+
+        FoldersPage {}
     }
 
     Loader {
@@ -360,10 +384,12 @@ ApplicationWindow {
 
     LogDrawer {
         id: logs
+        interactive: win.developerMode
     }
 
     Shortcut {
         sequence: "Ctrl+L"
+        enabled: win.developerMode
         onActivated: logs.visible ? logs.close() : logs.open()
     }
 

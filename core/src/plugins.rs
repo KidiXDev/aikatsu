@@ -207,7 +207,7 @@ fn saved_index(url: &str) -> Option<Index> {
 /// The last check or download failure per repo, shown under it in Settings.
 static ERRORS: LazyLock<Mutex<HashMap<String, String>>> = LazyLock::new(Default::default);
 static AVAILABLE: LazyLock<Mutex<HashMap<String, Index>>> = LazyLock::new(Default::default);
-static SYNCING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+pub(crate) static SYNCING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 fn pending_updates(url: &str, index: &Index) -> usize {
     let saved = saved_index(url);
@@ -402,7 +402,10 @@ async fn read_url(url: &str) -> Result<String> {
     match u.scheme() {
         "https" => http::text("Plugin repo", repo_request(u)).await,
         // A repo on disk, for developing plugins.
-        "file" => Ok(tokio::fs::read_to_string(u.to_file_path().map_err(|_| anyhow!("not a file path: {url}"))?).await?),
+        "file" => {
+            anyhow::ensure!(crate::api::setting("developerMode") == "true", "Enable Developer Mode in Settings to install or update local plugins");
+            Ok(tokio::fs::read_to_string(u.to_file_path().map_err(|_| anyhow!("not a file path: {url}"))?).await?)
+        }
         s => bail!("plugin repos are https:// links, not {s}://"),
     }
 }
@@ -816,8 +819,14 @@ mod tests {
         publish(v1, &sha256_hex(v1.as_bytes()));
         let url = url::Url::from_file_path(dir.join("index.json")).unwrap().to_string();
         let before = repo_urls();
+        let developer_mode = crate::api::setting("developerMode");
         set_repo_urls(&[]).unwrap();
         crate::RT.block_on(async {
+            crate::api::get("setSetting", json!({ "key": "developerMode", "value": "false" })).unwrap();
+            assert!(preview(&url).await.unwrap_err().to_string().contains("Developer Mode"));
+            assert!(add(&url).await.unwrap_err().to_string().contains("Developer Mode"));
+            assert!(repo_urls().is_empty() && !repo_dir(&url).exists());
+            crate::api::get("setSetting", json!({ "key": "developerMode", "value": "true" })).unwrap();
             assert_eq!(preview(&url).await.unwrap()["plugins"][0]["name"], "A");
             let added = crate::api::call("addRepo", json!({ "url": url })).await.unwrap();
             assert_eq!(added[0]["plugins"][0]["loaded"], true);
@@ -867,10 +876,17 @@ mod tests {
             assert!(find("test-repo/b").is_some(), "checking must not remove installed plugins");
             assert_eq!(crate::api::call("syncPlugins", json!({})).await.unwrap()["updated"], true);
             assert!(find("test-repo/b").is_none());
+            crate::api::get("setSetting", json!({ "key": "developerMode", "value": "false" })).unwrap();
+            assert!(find("test-repo/a").is_some(), "turning off Developer Mode keeps installed sources");
+            let blocked = crate::api::call("syncPlugins", json!({})).await.unwrap();
+            assert_eq!(blocked["updated"], false);
+            assert!(blocked["repos"][0]["error"].as_str().unwrap().contains("Developer Mode"));
+            assert_eq!(std::fs::read_to_string(script_path(&url, "a")).unwrap(), v2);
         });
         crate::RT.block_on(crate::api::call("removeRepo", json!({ "url": url }))).unwrap();
         assert!(find("test-repo/a").is_none() && !repo_dir(&url).exists());
         set_repo_urls(&before).unwrap();
+        db::set_setting("developerMode", &developer_mode).unwrap();
         std::fs::remove_dir_all(dir).unwrap();
     }
 

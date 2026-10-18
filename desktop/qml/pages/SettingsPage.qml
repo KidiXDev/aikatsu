@@ -14,6 +14,7 @@ Item {
     readonly property var disabled: (s.disabledSources || "").split(",").map(x => x.trim()).filter(x => x)
     readonly property var modes: Api.get("anime4kModes")
     property bool installingShaders
+    property real shaderProgress
     property bool shadersInstalled: Api.get("anime4kInstalled")
     property bool checkingPlugins
     property bool checkingApp
@@ -67,6 +68,7 @@ Item {
         { what: "Fullscreen", keys: ["F", "/", "Double-click"] },
         { what: "Next or previous episode", keys: ["N", "/", "P"] },
         { what: "Skip intro or outro", keys: ["S"] },
+        ...(s.developerMode === "true" ? [{ what: "Show or toggle playback information", keys: ["I", "/", "Shift+I"] }] : []),
         { what: "Leave fullscreen, then close", keys: ["Esc"] }
     ]
 
@@ -148,6 +150,8 @@ Item {
         function onPushed(kind: string, data: var): void {
             if (kind === "plugins")
                 root.sources = Api.get("sources");
+            if (kind === "anime4k")
+                root.shaderProgress = data.progress;
             if (kind === "download" && data.state === "done")
                 root.library = root.listOf(Api.get("library"));
             if (kind === "sync") {
@@ -1069,6 +1073,15 @@ Item {
                         }
                     }
                     SettingRow {
+                        label: "Developer Mode"
+                        hint: "Enables advance feature"
+
+                        StyledSwitch {
+                            checked: root.s.developerMode === "true"
+                            onToggled: root.set("developerMode", checked)
+                        }
+                    }
+                    SettingRow {
                         label: "Debug logging"
                         hint: "Applies after a restart."
 
@@ -1079,6 +1092,7 @@ Item {
                     }
                     SettingRow {
                         label: "Log"
+                        visible: root.s.developerMode === "true"
                         hint: "Also opens with Ctrl+L."
 
                         TextButton {
@@ -1115,13 +1129,20 @@ Item {
                             font: Theme.font.body.medium
                             wrapMode: Text.Wrap
                         }
+                        LinearProgress {
+                            Layout.fillWidth: true
+                            Layout.topMargin: Theme.spacing.small
+                            visible: root.installingShaders
+                            value: root.shaderProgress
+                        }
                     }
                     TextButton {
                         visible: !root.shadersInstalled
                         type: TextButton.Tonal
-                        text: root.installingShaders ? "Downloading…" : "Download now"
+                        text: root.installingShaders ? `Downloading… ${Math.round(root.shaderProgress * 100)}%` : "Download now"
                         disabled: root.installingShaders
                         onClicked: {
+                            root.shaderProgress = 0;
                             root.installingShaders = true;
                             Api.call("installShaders", {
                                 gan: false
@@ -1354,6 +1375,21 @@ Item {
                             placeholderText: "Optional"
                             text: root.s.tmdbKey
                             onEditingFinished: root.set("tmdbKey", text)
+                        }
+                    }
+                }
+
+                Group {
+                    title: "Your phone"
+
+                    SettingRow {
+                        label: "Share your folders"
+                        hint: root.account.signedIn ? "Phones signed in to your account can play them on this network." : "Sign in to share with your phone."
+
+                        StyledSwitch {
+                            enabled: root.account.signedIn
+                            checked: root.s.shareLibrary === "true"
+                            onToggled: root.set("shareLibrary", checked)
                         }
                     }
                 }

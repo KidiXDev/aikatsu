@@ -152,6 +152,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final List<dynamic> _modes = Api.get('anime4kModes');
   bool _shadersInstalled = Api.get('anime4kInstalled');
   bool _installingShaders = false;
+  double _shaderProgress = 0;
   bool _showTmdb = false;
   bool _checkingApp = false;
 
@@ -161,6 +162,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _pushSub = Api.pushed.listen((e) {
       if (!mounted) return;
       if (e.$1 == 'plugins') setState(() {});
+      if (e.$1 == 'anime4k') setState(() => _shaderProgress = toDouble(e.$2['progress']));
       if (e.$1 == 'sync') {
         setState(() {
           _account = Map<String, dynamic>.from(e.$2);
@@ -440,7 +442,10 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _installShaders() async {
-    setState(() => _installingShaders = true);
+    setState(() {
+      _shaderProgress = 0;
+      _installingShaders = true;
+    });
     try {
       await Api.call('installShaders', {'gan': false});
       _shadersInstalled = true;
@@ -632,12 +637,17 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
             ListTile(
               title: const Text('Sharpen video (Anime4K)', style: TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: Text(_anime4kName),
+              subtitle: _installingShaders
+                  ? Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: LinearProgressIndicator(value: _shaderProgress),
+                    )
+                  : Text(_anime4kName),
               trailing: _shadersInstalled
                   ? const Icon(Icons.arrow_forward_ios_rounded, size: 16)
                   : FilledButton.tonal(
                       onPressed: _installingShaders ? null : _installShaders,
-                      child: Text(_installingShaders ? 'Downloading…' : 'Download'),
+                      child: Text(_installingShaders ? '${(_shaderProgress * 100).round()}%' : 'Download'),
                     ),
               onTap: _pickAnime4k,
             ),
@@ -715,16 +725,23 @@ class _SettingsPageState extends State<SettingsPage> {
           icon: Icons.tune_rounded,
           children: [
             SwitchListTile(
+              title: const Text('Developer Mode', style: TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: const Text('Enables advance feature'),
+              value: _s['developerMode'] == 'true',
+              onChanged: (v) => _set('developerMode', v),
+            ),
+            SwitchListTile(
               title: const Text('Debug logging', style: TextStyle(fontWeight: FontWeight.w600)),
               subtitle: const Text('Applies after a restart.'),
               value: _s['debug'] == 'true',
               onChanged: (v) => _set('debug', v),
             ),
-            ListTile(
-              title: const Text('Logs', style: TextStyle(fontWeight: FontWeight.w600)),
-              trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
-              onTap: _showLogs,
-            ),
+            if (_s['developerMode'] == 'true')
+              ListTile(
+                title: const Text('Logs', style: TextStyle(fontWeight: FontWeight.w600)),
+                trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                onTap: _showLogs,
+              ),
             ListTile(
               title: const Text('Cache', style: TextStyle(fontWeight: FontWeight.w600)),
               trailing: TextButton(

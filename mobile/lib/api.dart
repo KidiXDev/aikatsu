@@ -42,8 +42,9 @@ abstract final class Api {
   }
 
   /// The plugin's name for a source key; just the key's own part ("kyoko/x" → "x") when not installed.
-  static String sourceName(Object? key) =>
-      (get('sources') as List).firstWhere((s) => s['key'] == key, orElse: () => null)?['name'] ?? '${key ?? ''}'.split('/').last;
+  static String sourceName(Object? key) => key == 'local'
+      ? 'Local files'
+      : (get('sources') as List).firstWhere((s) => s['key'] == key, orElse: () => null)?['name'] ?? '${key ?? ''}'.split('/').last;
 
   static String setting(String key) => (get('settings') as Map)[key] as String? ?? '';
 
@@ -54,8 +55,11 @@ abstract final class Api {
 
   /// One plain sentence for a backend/mpv error; show the raw text as details.
   static String describe(Object? err) {
+    final offline = RegExp(r'^(.+?) is offline\b').firstMatch('${err ?? ''}');
+    if (offline != null) return '${offline[1]} is offline. Open Aikatsu there and try again.';
     final e = '${err ?? ''}'.toLowerCase();
     bool has(String pattern) => RegExp(pattern).hasMatch(e);
+    if (has(r'video chain')) return "This video's format can't play on this device.";
     if (has(r'timed? ?out|timeout')) return 'The site took too long to answer.';
     if (has(r'dns|lookup address|connect|network|unreachable|connection|offline')) {
       return "Couldn't reach the site. Check your internet connection.";

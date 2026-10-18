@@ -31,7 +31,12 @@ QtObject {
 
     // One plain sentence for a backend/mpv error; show the raw text as details.
     function describe(err: string): string {
+        const offline = /^(.+?) is offline\b/.exec(String(err ?? ""));
+        if (offline)
+            return `${offline[1]} is offline. Open Aikatsu there and try again.`;
         const e = String(err ?? "").toLowerCase();
+        if (/video chain/.test(e))
+            return "This video's format can't play on this device.";
         if (/timed? ?out|timeout/.test(e))
             return "The site took too long to answer.";
         if (/dns|lookup address|connect|network|unreachable|connection|offline/.test(e))
@@ -45,6 +50,8 @@ QtObject {
 
     // The plugin's name for a source key; just the key's own part ("kyoko/x" → "x") when not installed.
     function sourceName(key: string): string {
+        if (key === "local")
+            return "Local files";
         return get("sources").find(s => s.key === key)?.name ?? String(key ?? "").split("/").pop();
     }
 

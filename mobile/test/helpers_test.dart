@@ -16,6 +16,8 @@ void main() {
     expect(Api.describe('HTTP error 403 Forbidden'), 'The site refused the request. Try again in a minute.');
     expect(Api.describe('no playable server found'), 'No working stream was found for this episode.');
     expect(Api.describe(null), 'Something went wrong.');
+    expect(Api.describe('Could not initialize video chain.'), "This video's format can't play on this device.");
+    expect(Api.describe('archcele is offline: client error (Connect)'), 'archcele is offline. Open Aikatsu there and try again.');
   });
 
   test('airingLabel', () {

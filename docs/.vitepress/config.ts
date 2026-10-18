@@ -25,6 +25,7 @@ export default defineConfig({
           { text: 'The video player', link: '/guide/player' },
           { text: 'Anime4K', link: '/guide/anime4k' },
           { text: 'Downloads and offline viewing', link: '/guide/downloads' },
+          { text: 'Your library', link: '/guide/local-library' },
           { text: 'History and settings', link: '/guide/settings' },
           { text: 'Sync between devices', link: '/guide/sync' },
           { text: 'Run your own sync server', link: '/guide/self-hosting' },

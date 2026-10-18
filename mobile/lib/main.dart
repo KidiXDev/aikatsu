@@ -93,7 +93,7 @@ class _ShellState extends State<Shell> {
   }
 
   void _go(int tab) {
-    if (tab == 0) Api.historyRevision.value++;
+    if (tab == 0 || tab == 2) Api.historyRevision.value++;
     setState(() => _tab = tab);
   }
 

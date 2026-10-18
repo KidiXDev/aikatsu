@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../api.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'library.dart';
 import 'player.dart';
 
 void openAnime(BuildContext context, Map<String, dynamic> anime, {int autoplayEpisode = 0}) {
@@ -217,13 +218,23 @@ class _AnimePageState extends State<AnimePage> {
     );
   }
 
+  bool get _local => widget.anime['source'] == 'local';
+
+  Future<void> _chooseAnime() async {
+    final m = await chooseAnime(context, widget.anime['url'], widget.anime['name']);
+    if (m == null || !mounted) return;
+    widget.anime['anilistId'] = m['anilist_id'];
+    _data.load(refresh: true);
+  }
+
   Future<void> _episodeMenu(Map<String, dynamic> ep) async {
     final watched = _data.progress[ep['num']]?['completed'] == true;
     final file = _data.localFiles[ep['url']];
     final choice = await pickFrom(context, 'Episode ${ep['num']}', [
       (file != null ? 'Play downloaded' : 'Play', 'play', false),
       (watched ? 'Mark as unwatched' : 'Mark as watched', 'toggle', false),
-      if (file == null) ('Download episode', 'download', false) else ('Delete download', 'delete', false),
+      if (!_local && file == null) ('Download episode', 'download', false),
+      if (!_local && file != null) ('Delete download', 'delete', false),
     ]);
     if (!mounted) return;
     switch (choice) {
@@ -318,7 +329,7 @@ class _AnimePageState extends State<AnimePage> {
                             spacing: 6,
                             runSpacing: 6,
                             children: [
-                              PillBadge(label: Api.sourceName(widget.anime['source']), icon: Icons.public_rounded),
+                              PillBadge(label: Api.sourceName(widget.anime['source']), icon: _local ? Icons.folder_rounded : Icons.public_rounded),
                               if (toInt(meta?['score']) > 0)
                                 PillBadge(label: '★ ${(toInt(meta?['score']) / 10).toStringAsFixed(1)}', color: const Color(0xffffb84d)),
                               if (toInt(meta?['year']) > 0) PillBadge(label: '${meta?['year']}', icon: Icons.calendar_month_rounded),
@@ -387,7 +398,7 @@ class _AnimePageState extends State<AnimePage> {
                     const SizedBox(width: 10),
                     BouncyTap(
                       borderRadius: BorderRadius.circular(999),
-                      onTap: d.episodes.isEmpty ? null : () => showDownloadSheet(context, d),
+                      onTap: _local ? _chooseAnime : (d.episodes.isEmpty ? null : () => showDownloadSheet(context, d)),
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 18),
                         decoration: BoxDecoration(
@@ -398,10 +409,10 @@ class _AnimePageState extends State<AnimePage> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.download_rounded, color: c.onSurface, size: 20),
+                            Icon(_local ? Icons.link_rounded : Icons.download_rounded, color: c.onSurface, size: 20),
                             const SizedBox(width: 6),
                             Text(
-                              'Download…',
+                              _local ? 'Choose anime…' : 'Download…',
                               style: TextStyle(
                                 fontFamily: 'GoogleSansFlex',
                                 fontWeight: FontWeight.w600,

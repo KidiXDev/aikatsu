@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Dialogs
 import Aikatsu
 
 // Plugin repos and the sources each brings, opened from Settings.
@@ -13,6 +14,7 @@ Item {
     property var repos: Api.get("repos")
     property var disabled: (Api.setting("disabledSources") || "").split(",").map(x => x.trim()).filter(x => x)
     property bool syncing
+    property bool developerMode: Api.setting("developerMode") === "true"
     readonly property int updates: repos.reduce((n, r) => n + (r.updates || 0), 0)
 
     function refresh(): void {
@@ -86,6 +88,11 @@ Item {
 
     Connections {
         target: Api
+
+        function onSettingChanged(key: string, value: string): void {
+            if (key === "developerMode")
+                root.developerMode = value === "true";
+        }
 
         function onPushed(kind: string, data: var): void {
             if (kind === "plugins")
@@ -296,6 +303,16 @@ Item {
         }
     }
 
+    FolderDialog {
+        id: repoFolderPicker
+
+        title: "Choose plugin repo folder"
+        onAccepted: {
+            urlField.text = selectedFolder.toString().replace(/\/$/, "") + "/index.json";
+            root.check(urlField.text);
+        }
+    }
+
     StyledDialog {
         id: addDialog
 
@@ -314,6 +331,24 @@ Item {
             isError: addDialog.error !== ""
             errorText: addDialog.error
             onAccepted: root.check(text)
+        }
+
+        IconTextButton {
+            visible: root.developerMode
+            type: TextButton.Tonal
+            icon: "folder_open"
+            text: "Choose folder"
+            disabled: addDialog.busy
+            onClicked: repoFolderPicker.open()
+        }
+
+        StyledText {
+            Layout.fillWidth: true
+            visible: root.developerMode
+            text: "Choose a folder containing index.json, or paste its file:// URL above."
+            font: Theme.font.body.small
+            color: Theme.palette.onSurfaceVariant
+            wrapMode: Text.WordWrap
         }
 
         actions: [

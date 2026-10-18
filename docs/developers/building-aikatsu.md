@@ -2,9 +2,9 @@
 
 If you're only writing a source plugin, build [the plugin CLI](./testing.md) instead. You don't need either UI toolchain for that.
 
-For app work, Aikatsu has a shared Rust core, a Qt desktop interface, and a Flutter Android interface. The release workflow currently pins Qt **6.11.2** and Flutter **3.47.1**. Those are useful reference points when matching the project's build environment.
+Aikatsu uses a shared Rust core, Qt for desktop, and Flutter for Android. To match the release environment, use Qt **6.11.2** and Flutter **3.47.1**.
 
-## What's where
+## Source files
 
 | Path | What lives there |
 | --- | --- |
@@ -26,7 +26,7 @@ The core API has asynchronous `call` methods, quick synchronous `get` methods, a
 
 ## Linux desktop
 
-Use a current stable Rust toolchain, Qt 6.11 development packages, libmpv, CMake, and a C/C++ compiler. You need Qt Base, Declarative, and SVG support. Install ffmpeg too if you want HLS downloads remuxed to MP4.
+Use a current stable Rust toolchain, Qt 6.11 development packages, libmpv, CMake, and a C/C++ compiler. You need Qt Base, Declarative, SVG, and Image Formats support (including WebP covers). Install ffmpeg too if you want HLS downloads remuxed to MP4.
 
 From the repo root:
 
@@ -35,7 +35,7 @@ cargo build --release
 ./target/release/aikatsu
 ```
 
-If the wrong Qt is being picked up, point `QMAKE` at the Qt 6 installation you want:
+To select a Qt 6 installation, set `QMAKE`:
 
 ```sh
 QMAKE=/usr/bin/qmake6 cargo build --release
@@ -45,7 +45,7 @@ The exact qmake path depends on how Qt was installed.
 
 ## Windows desktop
 
-Use the MSVC Rust toolchain, Visual Studio Build Tools, CMake, NASM, Qt 6.11 for MSVC, and a libmpv development package with an MSVC import library.
+Use the MSVC Rust toolchain, Visual Studio Build Tools, CMake, NASM, Qt 6.11 for MSVC including Qt Image Formats, and a libmpv development package with an MSVC import library. With aqt, include `--modules qtimageformats` when installing Qt.
 
 In a developer command prompt, point the build at Qt and libmpv:
 
@@ -55,7 +55,9 @@ set MPV_DIR=C:\path\to\mpv-dev
 cargo build --release
 ```
 
-Packaging also needs `libmpv-2.dll` and Qt's deployed libraries. Use `windeployqt` with `desktop\qml` as the QML source directory. The [repo README](https://github.com/KidiXDev/aikatsu#build-it-yourself) covers creating an import library if your libmpv archive doesn't include one; the [release workflow](https://github.com/KidiXDev/aikatsu/blob/main/.github/workflows/release.yml) shows the current automated packaging steps.
+Packaging also needs `libmpv-2.dll` and Qt's deployed libraries. Use `windeployqt` with `desktop\qml` as the QML source directory. If your libmpv archive has no import library, follow the [repo README](https://github.com/KidiXDev/aikatsu#build-it-yourself) to create one. See the [release workflow](https://github.com/KidiXDev/aikatsu/blob/main/.github/workflows/release.yml) for automated packaging steps.
+
+Building the NSIS installer also needs Python on PATH. The installer build uses it to list the packaged files for safe removal during uninstall. The setup wizard shows the root `LICENSE` and lets users choose a folder. Silent updates reuse the saved installation folder.
 
 ## Android
 
@@ -90,7 +92,7 @@ After changing the exposed Rust API in `mobile/rust/src/api/mod.rs`, regenerate 
 RUSTFLAGS='--cfg reqwest_unstable' flutter_rust_bridge_codegen generate
 ```
 
-The explicit flag keeps the HTTP/3 configuration used by the core while the generator runs Cargo expansion. Don't edit generated bindings by hand.
+The flag preserves the core's HTTP/3 configuration during code generation. Don't edit generated bindings by hand.
 
 ## Run checks
 
@@ -112,6 +114,18 @@ Ignored tests that contact real sources are separate:
 
 ```sh
 cargo test -p aikatsu-core live_ -- --ignored --nocapture
+```
+
+### Desktop renderer regression
+
+The stats test opens a small window and plays a generated video through the real Qt threaded OpenGL renderer. It checks that playback continues while stats are shown, toggled, and disabled, and times out if the GUI freezes. Run it in a desktop session, not with the offscreen or software Qt backend.
+
+With Qt and libmpv runtime libraries on your library path (`PATH` on Windows), and `MPV_DIR` set for Windows builds:
+
+```sh
+cmake -S desktop/tests -B target/mpv-stats-test -DCMAKE_PREFIX_PATH="/path/to/Qt/kit"
+cmake --build target/mpv-stats-test --config Release
+ctest --test-dir target/mpv-stats-test -C Release --output-on-failure
 ```
 
 ## Releases and versions

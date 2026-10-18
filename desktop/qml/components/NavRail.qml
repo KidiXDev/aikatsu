@@ -18,6 +18,10 @@ StyledRect {
             label: "Search"
         },
         {
+            icon: "video_library",
+            label: "Library"
+        },
+        {
             icon: "download",
             label: "Downloads"
         },

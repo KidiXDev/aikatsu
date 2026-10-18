@@ -6,8 +6,8 @@ use axum::body::Body;
 use axum::extract::{Path, Request};
 use axum::http::{HeaderMap, Method, StatusCode};
 use axum::response::Response;
+use futures_util::StreamExt;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{LazyLock, Mutex};
 use tokio::sync::OnceCell;
 
@@ -17,10 +17,10 @@ enum Upstream {
     Chrome { url: String },
     /// Wibufile: HTTP/3 with the site's Referer.
     H3 { url: String, referer: String },
+    Lan { url: String, key: String, client: reqwest::Client, cancel: tokio_util::sync::CancellationToken },
 }
 
-static ROUTES: LazyLock<Mutex<HashMap<u64, Upstream>>> = LazyLock::new(Default::default);
-static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+static ROUTES: LazyLock<Mutex<HashMap<String, Upstream>>> = LazyLock::new(Default::default);
 static PORT: OnceCell<u16> = OnceCell::const_new();
 
 static CHROME_H1: LazyLock<wreq::Client> = LazyLock::new(|| {
@@ -63,13 +63,19 @@ async fn port() -> Result<u16> {
 
 async fn register(up: Upstream) -> Result<String> {
     let port = port().await?;
-    let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
-    ROUTES.lock().unwrap().insert(id, up);
+    let id = crate::lan::secret();
+    ROUTES.lock().unwrap().insert(id.clone(), up);
     Ok(format!("http://127.0.0.1:{port}/stream/{id}"))
 }
 
 pub fn clear() {
-    ROUTES.lock().unwrap().clear();
+    for (_, up) in ROUTES.lock().unwrap().drain() {
+        if let Upstream::Lan { cancel, .. } = up { cancel.cancel(); }
+    }
+}
+
+pub(crate) async fn lan(url: String, key: String, client: reqwest::Client) -> Result<String> {
+    register(Upstream::Lan { url, key, client, cancel: tokio_util::sync::CancellationToken::new() }).await
 }
 
 /// Blogger page → googlevideo URL → proxied URL. Retries the resolve 3 times
@@ -114,7 +120,7 @@ pub async fn wibufile(url: &str, referer: &str) -> Result<String> {
 
 const PASS_HEADERS: [&str; 4] = ["content-type", "content-length", "content-range", "accept-ranges"];
 
-async fn serve(Path(id): Path<u64>, req: Request) -> Response {
+async fn serve(Path(id): Path<String>, req: Request) -> Response {
     let Some(up) = ROUTES.lock().unwrap().get(&id).cloned() else {
         return status(StatusCode::NOT_FOUND);
     };
@@ -124,6 +130,19 @@ async fn serve(Path(id): Path<u64>, req: Request) -> Response {
     }
     let range = req.headers().get("range").and_then(|v| v.to_str().ok()).map(str::to_owned);
     let (code, headers, body) = match up {
+        Upstream::Lan { url, key, client, cancel } => {
+            let mut rb = if head { client.head(&url) } else { client.get(&url) }.bearer_auth(key);
+            if let Some(r) = &range { rb = rb.header("Range", r); }
+            let result = tokio::select! {
+                _ = cancel.cancelled() => return status(StatusCode::GONE),
+                result = rb.send() => result,
+            };
+            match result {
+                Ok(r) => (r.status().as_u16(), copy_headers(r.headers().iter().map(|(k, v)| (k.as_str(), v.as_bytes()))),
+                    Body::from_stream(r.bytes_stream().take_until(cancel.cancelled_owned()))),
+                Err(e) => return bad_gateway(e.without_url()),
+            }
+        }
         Upstream::Chrome { url } => {
             let mut rb = if head { CHROME_H1.head(&url) } else { CHROME_H1.get(&url) };
             if let Some(r) = &range {

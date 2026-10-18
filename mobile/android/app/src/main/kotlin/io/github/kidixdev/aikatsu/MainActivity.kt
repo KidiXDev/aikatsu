@@ -1,5 +1,6 @@
 package io.github.kidixdev.aikatsu
 
+import android.Manifest
 import android.app.Activity
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
@@ -7,10 +8,13 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageInstaller
+import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.DocumentsContract
 import android.provider.Settings
 import android.widget.Toast
 import io.flutter.embedding.android.FlutterActivity
@@ -21,6 +25,7 @@ import java.io.File
 class MainActivity : FlutterActivity() {
     private var exportResult: MethodChannel.Result? = null
     private var exportContents = ""
+    private var folderResult: MethodChannel.Result? = null
     private var audio: MethodChannel? = null
 
     // Headphones unplugged or Bluetooth audio gone: the player pauses instead of going on through the speaker.
@@ -66,6 +71,21 @@ class MainActivity : FlutterActivity() {
                     }
                     else -> result.notImplemented()
                 }
+            }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "io.github.kidixdev.aikatsu/files")
+            .setMethodCallHandler { call, result ->
+                if (call.method != "pickFolder") {
+                    result.notImplemented()
+                    return@setMethodCallHandler
+                }
+                if (folderResult != null) {
+                    result.error("BUSY", "A folder picker is already open", null)
+                    return@setMethodCallHandler
+                }
+                folderResult = result
+                val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Manifest.permission.READ_MEDIA_VIDEO else Manifest.permission.READ_EXTERNAL_STORAGE
+                if (checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED) openFolderPicker()
+                else requestPermissions(arrayOf(permission), READ_VIDEOS)
             }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "io.github.kidixdev.aikatsu/logs")
             .setMethodCallHandler { call, result ->
@@ -128,8 +148,53 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    private fun openFolderPicker() {
+        try {
+            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), PICK_FOLDER)
+        } catch (e: Exception) {
+            folderResult?.error("PICK_FAILED", e.message, null)
+            folderResult = null
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != READ_VIDEOS) return
+        if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+            openFolderPicker()
+        } else {
+            folderResult?.error("NO_PERMISSION", "Allow Aikatsu to read your videos to add a folder", null)
+            folderResult = null
+        }
+    }
+
+    private fun folderPicked(resultCode: Int, data: Intent?) {
+        val result = folderResult ?: return
+        folderResult = null
+        val uri = data?.data
+        if (resultCode != Activity.RESULT_OK || uri == null) {
+            result.success(null)
+            return
+        }
+        val path = treePath(uri)
+        if (path == null) result.error("NOT_A_FOLDER", "Pick a folder on this phone's storage or SD card", null) else result.success(path)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun treePath(uri: Uri): String? {
+        if (uri.authority != "com.android.externalstorage.documents") return null
+        val parts = DocumentsContract.getTreeDocumentId(uri).split(":", limit = 2)
+        val base = if (parts[0].equals("primary", ignoreCase = true)) Environment.getExternalStorageDirectory().path else "/storage/${parts[0]}"
+        val rel = parts.getOrElse(1) { "" }
+        return if (rel.isEmpty()) base else "$base/$rel"
+    }
+
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == PICK_FOLDER) {
+            folderPicked(resultCode, data)
+            return
+        }
         if (requestCode != EXPORT_LOG) return
         val result = exportResult ?: return
         val contents = exportContents
@@ -161,11 +226,15 @@ class MainActivity : FlutterActivity() {
         exportResult?.error("EXPORT_CANCELLED", "The log export was closed", null)
         exportResult = null
         exportContents = ""
+        folderResult?.error("PICK_CANCELLED", "The folder picker was closed", null)
+        folderResult = null
         super.onDestroy()
     }
 
     companion object {
         private const val EXPORT_LOG = 701
+        private const val PICK_FOLDER = 702
+        private const val READ_VIDEOS = 703
         private const val INSTALL_STATUS = "io.github.kidixdev.aikatsu.INSTALL_STATUS"
     }
 }
