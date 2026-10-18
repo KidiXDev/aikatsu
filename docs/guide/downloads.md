@@ -22,9 +22,11 @@ You can cancel a queued or running job. If a download fails, check the error and
 
 On Android, finished downloads appear in **Library**, grouped by anime. Open a series and pick an episode. You can also open finished downloads from the download history when the recorded file is still available.
 
-Desktop saves files in your download folder. You can open those files with a local video player. Desktop currently has Home, Search, Downloads, and Settings rather than a separate Library tab.
+Desktop saves files in your download folder. To watch them in Aikatsu, add that folder under **Library > Your folders**. Aikatsu's folder names carry the AniList id, so each show links to the right anime by itself. See [Your library](./local-library.md). You can also open the files with any local video player.
 
 The desktop Downloads screen has **Open folder**, and a finished job's folder button opens the directory containing its file.
+
+If your download folder is on a drive that's disconnected, Aikatsu keeps its record of those downloads and lists them again once the drive is back.
 
 Offline files don't make Search, discovery, or new episode listings work without a connection. Use Android's Library or the saved files directly when you're offline.
 

@@ -21,8 +21,8 @@ cd docs && npm ci && npm run dev                    # VitePress docs; `npm run b
 ```
 
 - `.cargo/config.toml` sets `--cfg reqwest_unstable` (reqwest's HTTP/3, used by `core/src/proxy.rs`). Anything that builds the core outside this workspace's config, such as FRB codegen or a scratch crate depending on `aikatsu-core`, must pass that `RUSTFLAGS` itself. It also needs this repo's `Cargo.lock`, since some locked versions have since been yanked.
-- **Run the desktop app headless and isolated:** `XDG_DATA_HOME=<scratch> QT_QPA_PLATFORM=offscreen ./target/debug/aikatsu --screenshot out.png --tab 3 --delay 3000`.
-  - `--tab` selects a page: 0 Home, 1 Search, 2 Downloads, 3 Settings.
+- **Run the desktop app headless and isolated:** `XDG_DATA_HOME=<scratch> QT_QPA_PLATFORM=offscreen ./target/debug/aikatsu --screenshot out.png --tab 4 --delay 3000`.
+  - `--tab` selects a page: 0 Home, 1 Search, 2 Library, 3 Downloads, 4 Settings.
   - Other dev flags: `--room <n>` (Settings room: 0 General, 1 Watch, 2 Library, 3 Sources, 4 Account), `--plugins`, `--search <q> --open --play`, `--debug`.
   - `XDG_DATA_HOME` keeps runs out of the real history database; also set `XDG_CONFIG_HOME` and `XDG_CACHE_HOME`, or the run overwrites the real `window.ini`. All three must be absolute paths: relative ones are silently ignored and the run uses the real data.
   - QML `console.*` output goes to the systemd journal when stderr isn't a terminal; set `QT_FORCE_STDERR_LOGGING=1` to see it.
@@ -51,7 +51,7 @@ History refreshes go through a revision counter on each side: `historyRevision` 
 
 The UIs only see the settings listed in `SETTING_DEFAULTS` in `api.rs`. Other keys stay internal, such as the plugin repo list and the sync account. Schema migrations use `PRAGMA user_version` in `db::migrate`.
 
-**Sources are plugins.** Each site is a Rhai script that `core/src/plugins.rs` loads from plugin repos. The official repo is Kyoko (https://github.com/KidiXDev/kyoko). Fix a broken site in its plugin repo, not in the core. Plugin updates are checked automatically but downloaded only when the user chooses. `core/src/sources.rs` holds the search and playback contract; the plugin API is documented in `docs/developers/`.
+**Sources are plugins.** Each site is a Rhai script that `core/src/plugins.rs` loads from plugin repos. The official repo is Kyoko (https://github.com/KidiXDev/kyoko). Fix a broken site in its plugin repo, not in the core. Plugin updates are checked automatically but downloaded only when the user chooses. `core/src/sources.rs` holds the search and playback contract; the plugin API is documented in `docs/developers/`. The one built-in source is `local` (`core/src/local.rs`): the user's own folders, where the series URL is a folder path and the episode URL a file path, only playable under a folder in this device's library.
 
 **App updates.** `core/src/update.rs` checks GitHub's latest release and picks the asset for this install by the end of its file name, as `release.yml` names them. Renaming a release file breaks updates for copies already out there. It verifies the asset's SHA-256 against the release's `digest`, then:
 - Windows: runs the setup.exe with `/S /UPDATE` (see `desktop/packaging/aikatsu.nsi`);
