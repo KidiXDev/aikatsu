@@ -21,6 +21,7 @@ Item {
     property string error
     property bool descending: false
     property string jump: ""
+    readonly property bool local: anime.source === "local"
 
     readonly property string seriesKey: Api.get("keys", {
         anilistId: meta?.anilist_id ?? 0,
@@ -274,7 +275,7 @@ Item {
 
                         Chip {
                             text: Api.sourceName(root.anime.source)
-                            icon: "public"
+                            icon: root.local ? "folder" : "public"
                             selected: true
                         }
                         Chip {
@@ -323,6 +324,7 @@ Item {
                             onClicked: root.play(root.continueIndex)
                         }
                         IconTextButton {
+                            visible: !root.local
                             type: TextButton.Tonal
                             disabled: root.episodes.length === 0
                             icon: "download"
@@ -330,6 +332,15 @@ Item {
                             verticalPadding: Theme.padding.medium
                             horizontalPadding: Theme.padding.large
                             onClicked: downloadDialog.openFor(null)
+                        }
+                        IconTextButton {
+                            visible: root.local
+                            type: TextButton.Tonal
+                            icon: "link"
+                            text: "Choose anime…"
+                            verticalPadding: Theme.padding.medium
+                            horizontalPadding: Theme.padding.large
+                            onClicked: matchDialog.openFor(root.anime.url, root.anime.name)
                         }
                         IconButton {
                             type: IconButton.Text
@@ -521,13 +532,14 @@ Item {
                 text: root.progress[ep?.num]?.completed ? "Mark as unwatched" : "Mark as watched",
                 icon: "task_alt",
                 value: "toggle"
-            },
-            {
-                text: "Download episode",
-                icon: "download",
-                value: "download"
             }
-        ]
+        ].concat(root.local ? [] : [
+                {
+                    text: "Download episode",
+                    icon: "download",
+                    value: "download"
+                }
+            ])
         onTriggered: item => {
             if (item.value === "play")
                 root.play(root.indexOfEpisode(ep));
@@ -549,5 +561,16 @@ Item {
         anime: root.anime
         meta: root.meta
         episodes: root.episodes
+    }
+
+    MatchDialog {
+        id: matchDialog
+
+        onLinked: m => {
+            root.anime = Object.assign({}, root.anime, {
+                anilistId: m.anilist_id
+            });
+            root.load(true);
+        }
     }
 }

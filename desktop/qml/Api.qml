@@ -45,6 +45,8 @@ QtObject {
 
     // The plugin's name for a source key; just the key's own part ("kyoko/x" → "x") when not installed.
     function sourceName(key: string): string {
+        if (key === "local")
+            return "Local files";
         return get("sources").find(s => s.key === key)?.name ?? String(key ?? "").split("/").pop();
     }
 

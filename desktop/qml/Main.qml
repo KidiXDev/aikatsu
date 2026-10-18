@@ -329,10 +329,14 @@ ApplicationWindow {
             }
             Loader {
                 active: (win.openedTabs & 4) !== 0
-                sourceComponent: DownloadsPage {}
+                sourceComponent: LibraryPage {}
             }
             Loader {
                 active: (win.openedTabs & 8) !== 0
+                sourceComponent: DownloadsPage {}
+            }
+            Loader {
+                active: (win.openedTabs & 16) !== 0
                 sourceComponent: SettingsPage {}
             }
         }
