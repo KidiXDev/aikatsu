@@ -12,7 +12,7 @@ use bytes::Bytes;
 use futures_util::{StreamExt, TryStreamExt, stream::BoxStream};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
@@ -133,10 +133,15 @@ pub fn enqueue(req: Request, base: PathBuf) -> Result<Vec<u64>> {
     anyhow::ensure!(crate::plugins::find(&req.source).is_some(), "source {} isn't installed", req.source);
     let meta = req.meta.clone().unwrap_or_default();
     let title = if meta.title().is_empty() { req.name.clone() } else { meta.title().to_owned() };
+    let mut active: HashSet<String> =
+        jobs().into_iter().filter(|j| !matches!(j.state.as_str(), "done" | "failed" | "cancelled")).map(|j| j.path).collect();
     let mut ids = Vec::new();
     for ep in req.episodes {
-        let id = NEXT.fetch_add(1, Ordering::Relaxed);
         let path = episode_path(&base, &title, &req.name, &meta, ep.num);
+        if !active.insert(path.display().to_string()) {
+            continue;
+        }
+        let id = NEXT.fetch_add(1, Ordering::Relaxed);
         let cancel = CancellationToken::new();
         let job = Job { id, title: title.clone(), episode: ep.num, path: path.display().to_string(), state: "queued".into(), ..Default::default() };
         push("download", &serde_json::to_value(&job)?);
@@ -692,6 +697,23 @@ mod tests {
         }
         server.abort();
         tokio::fs::remove_dir(&dir).await.unwrap();
+    }
+
+    #[test]
+    fn enqueue_skips_an_episode_already_downloading() {
+        let stubs = "fn search(q) {[]} fn episodes(u) {[]} fn heights(u) {[]} fn stream(u, q) {#{}}";
+        let _no_reload = crate::plugins::SYNCING.blocking_lock();
+        crate::plugins::add_local(crate::plugins::Plugin::from_script("dedupe", stubs, "").unwrap());
+        let base = std::env::temp_dir().join("aikatsu-dedupe");
+        let id = NEXT.fetch_add(1, Ordering::Relaxed);
+        let path = episode_path(&base, "Dedupe", "Dedupe", &Meta::default(), 1).display().to_string();
+        let job = Job { id, path, state: "downloading".into(), ..Default::default() };
+        JOBS.lock().unwrap().insert(id, Entry { job, cancel: CancellationToken::new(), last_push: Instant::now() });
+        let episodes = vec![EpisodeRef { num: 1, url: String::new() }];
+        let req = Request { source: "local/dedupe".into(), name: "Dedupe".into(), url: String::new(), episodes, quality: String::new(), meta: None };
+        let ids = enqueue(req, base).unwrap();
+        JOBS.lock().unwrap().remove(&id);
+        assert!(ids.is_empty());
     }
 
     #[test]

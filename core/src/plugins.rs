@@ -207,7 +207,7 @@ fn saved_index(url: &str) -> Option<Index> {
 /// The last check or download failure per repo, shown under it in Settings.
 static ERRORS: LazyLock<Mutex<HashMap<String, String>>> = LazyLock::new(Default::default);
 static AVAILABLE: LazyLock<Mutex<HashMap<String, Index>>> = LazyLock::new(Default::default);
-static SYNCING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+pub(crate) static SYNCING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 fn pending_updates(url: &str, index: &Index) -> usize {
     let saved = saved_index(url);
