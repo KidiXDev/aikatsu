@@ -66,6 +66,8 @@ pub async fn search(src: &str, query: &str) -> Result<Vec<Anime>> {
 
 pub async fn episodes(src: &str, anime_url: &str) -> Result<Vec<Episode>> {
     if src == local::SOURCE {
+        let own = crate::lan::local_path(anime_url);
+        let anime_url = own.as_deref().unwrap_or(anime_url);
         if !local::is_here(anime_url) {
             return crate::lan::episodes(anime_url).await;
         }
@@ -93,6 +95,8 @@ pub async fn qualities(src: &str, episode_url: &str) -> Result<Vec<String>> {
 /// Resolves an episode to a playable URL. `quality` is "best"/"" or e.g. "720p".
 pub async fn stream(src: &str, episode_url: &str, quality: &str) -> Result<Stream> {
     if src == local::SOURCE {
+        let own = crate::lan::local_path(episode_url);
+        let episode_url = own.as_deref().unwrap_or(episode_url);
         if !local::is_here(episode_url) {
             return crate::lan::stream(episode_url).await;
         }

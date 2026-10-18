@@ -3,7 +3,7 @@
 //! which the sync server stores without reading.
 
 use crate::sources::{Episode, Stream};
-use crate::{db, http, local};
+use crate::{db, local};
 use anyhow::{Result, anyhow, ensure};
 use axum::body::Body;
 use axum::extract::Request;
@@ -11,7 +11,6 @@ use axum::http::{HeaderValue, Method, StatusCode, header};
 use axum::response::Response;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Mutex;
@@ -25,24 +24,31 @@ const KEY: &str = "lanKey";
 const PORT: u16 = 47821;
 const ASK_TIMEOUT: Duration = Duration::from_secs(3);
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 struct Host {
+    #[serde(skip)]
+    id: String,
     name: String,
     addr: SocketAddr,
     key: String,
+    #[serde(default)]
+    cert: String,
 }
 
-static SERVER: Mutex<Option<(u16, tokio::task::JoinHandle<()>)>> = Mutex::new(None);
+struct Server {
+    port: u16,
+    cert: String,
+    handle: axum_server::Handle<SocketAddr>,
+    task: tokio::task::JoinHandle<()>,
+}
+
+static SERVER: Mutex<Option<Server>> = Mutex::new(None);
 static ONE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
-fn secret() -> String {
-    use std::hash::{BuildHasher, Hasher};
-    let mut h = Sha256::new();
-    for _ in 0..4 {
-        h.update(std::collections::hash_map::RandomState::new().build_hasher().finish().to_le_bytes());
-    }
-    h.update(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos().to_le_bytes());
-    h.finalize().iter().map(|b| format!("{b:02x}")).collect()
+pub(crate) fn secret() -> String {
+    let mut bytes = [0; 32];
+    getrandom::fill(&mut bytes).expect("operating system randomness");
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 fn own(name: &str) -> String {
@@ -81,7 +87,10 @@ pub async fn refresh() {
     };
     let record = port
         .and_then(|port| lan_ip().map(|ip| SocketAddr::new(ip, port)))
-        .and_then(|addr| serde_json::to_string(&Host { name: device_name(), addr, key: own(KEY) }).ok())
+        .and_then(|addr| {
+            let cert = SERVER.lock().unwrap().as_ref()?.cert.clone();
+            serde_json::to_string(&Host { id: own(ID), name: device_name(), addr, key: own(KEY), cert }).ok()
+        })
         .unwrap_or_default();
     let key = format!("{RECORD}{}", own(ID));
     if db::setting(&key).unwrap_or_default() != record
@@ -92,45 +101,56 @@ pub async fn refresh() {
 }
 
 async fn start() -> Result<u16> {
-    if let Some((port, task)) = &*SERVER.lock().unwrap()
-        && !task.is_finished()
+    if let Some(server) = &*SERVER.lock().unwrap()
+        && !server.task.is_finished()
     {
-        return Ok(*port);
+        return Ok(server.port);
     }
     let listener = match tokio::net::TcpListener::bind(("0.0.0.0", PORT)).await {
         Ok(l) => l,
         Err(_) => tokio::net::TcpListener::bind(("0.0.0.0", 0)).await?,
     };
     let port = listener.local_addr()?.port();
+    let identity = rcgen::generate_simple_self_signed(vec!["aikatsu.lan".into()])?;
+    let cert = identity.cert.pem();
+    let config = axum_server::tls_rustls::RustlsConfig::from_pem(cert.as_bytes().to_vec(), identity.signing_key.serialize_pem().into_bytes()).await?;
+    let handle = axum_server::Handle::new();
+    let server = axum_server::from_tcp_rustls(listener.into_std()?, config)?.handle(handle.clone());
+    db::set_setting(KEY, &secret())?;
     let task = tokio::spawn(async move {
-        if let Err(e) = axum::serve(listener, axum::Router::new().fallback(serve)).await {
+        if let Err(e) = server.serve(axum::Router::new().fallback(serve).into_make_service()).await {
             tracing::error!("lan: library sharing stopped: {e}");
         }
     });
-    *SERVER.lock().unwrap() = Some((port, task));
+    *SERVER.lock().unwrap() = Some(Server { port, cert, handle, task });
     tracing::info!("lan: sharing the library on port {port}");
     Ok(port)
 }
 
 fn stop() {
-    if let Some((_, task)) = SERVER.lock().unwrap().take() {
-        task.abort();
+    if let Some(server) = SERVER.lock().unwrap().take() {
+        server.handle.shutdown();
     }
+    let _ = db::set_setting(KEY, "");
 }
 
 /// At sign-out: a new key next time, and no other devices' addresses kept.
 pub fn forget() {
-    let _ = db::set_setting(KEY, "");
+    stop();
+    crate::proxy::clear();
     let _ = db::delete_settings_with_prefix(RECORD);
 }
 
 async fn serve(req: Request) -> Response {
     let q: HashMap<String, String> = url::form_urlencoded::parse(req.uri().query().unwrap_or("").as_bytes()).into_owned().collect();
     let key = db::setting(KEY).unwrap_or_default();
-    if key.is_empty() || q.get("key") != Some(&key) {
+    if crate::api::setting(SETTING) != "true" || !crate::sync::signed_in() || key.is_empty()
+        || req.headers().get(header::AUTHORIZATION).and_then(|v| v.to_str().ok()) != Some(format!("Bearer {key}").as_str())
+    {
         return status(StatusCode::FORBIDDEN);
     }
-    if req.method() != Method::GET {
+    let head = req.method() == Method::HEAD;
+    if req.method() != Method::GET && !head {
         return status(StatusCode::METHOD_NOT_ALLOWED);
     }
     let path = q.get("path").cloned().unwrap_or_default();
@@ -141,11 +161,13 @@ async fn serve(req: Request) -> Response {
         "/file" => file(path, range.as_deref()).await,
         _ => return status(StatusCode::NOT_FOUND),
     };
-    res.unwrap_or_else(|e| {
+    let mut response = res.unwrap_or_else(|e| {
         let mut r = Response::new(Body::from(e.to_string()));
         *r.status_mut() = StatusCode::NOT_FOUND;
         r
-    })
+    });
+    if head { *response.body_mut() = Body::empty(); }
+    response
 }
 
 async fn json<T: Serialize + Send + 'static>(f: impl FnOnce() -> Result<T> + Send + 'static) -> Result<Response> {
@@ -156,9 +178,8 @@ async fn json<T: Serialize + Send + 'static>(f: impl FnOnce() -> Result<T> + Sen
 }
 
 async fn file(path: String, range: Option<&str>) -> Result<Response> {
-    let checked = path.clone();
-    tokio::task::spawn_blocking(move || local::stream(&checked)).await??;
-    let mut f = tokio::fs::File::open(&path).await?;
+    let opened = tokio::task::spawn_blocking(move || local::open_video(&path)).await??;
+    let mut f = tokio::fs::File::from_std(opened);
     let size = f.metadata().await?.len();
     let mut r = Response::new(Body::empty());
     r.headers_mut().insert(header::ACCEPT_RANGES, HeaderValue::from_static("bytes"));
@@ -214,27 +235,64 @@ fn hosts() -> Vec<Host> {
         .unwrap_or_default()
         .into_iter()
         .filter(|(k, _)| *k != own)
-        .filter_map(|(_, v)| serde_json::from_str::<Host>(&v).ok())
-        .filter(|h| on_lan(h.addr.ip()))
+        .filter_map(|(k, v)| {
+            let mut h = serde_json::from_str::<Host>(&v).ok()?;
+            h.id = k.strip_prefix(RECORD)?.to_owned();
+            Some(h)
+        })
+        .filter(|h| on_lan(h.addr.ip()) && !h.cert.is_empty())
         .collect()
 }
 
 fn url(h: &Host, route: &str, path: &str) -> String {
-    let mut u = url::Url::parse(&format!("http://{}/{route}", h.addr)).expect("a socket address makes a valid URL");
-    u.query_pairs_mut().append_pair("key", &h.key);
+    let mut u = url::Url::parse(&format!("https://aikatsu.lan:{}/{route}", h.addr.port())).expect("a port makes a valid URL");
     if !path.is_empty() {
         u.query_pairs_mut().append_pair("path", path);
     }
     u.into()
 }
 
-/// Both UIs' `describe` match "<name> is offline". The URL is dropped since it carries the key.
-fn offline(h: &Host, e: wreq::Error) -> anyhow::Error {
-    anyhow::Error::new(e.without_uri()).context(format!("{} is offline", h.name))
+/// Both UIs' `describe` match "<name> is offline"; keep filesystem paths out of network errors.
+fn offline(h: &Host, e: reqwest::Error) -> anyhow::Error {
+    anyhow::Error::new(e.without_url()).context(format!("{} is offline", h.name))
+}
+
+fn client(h: &Host) -> Result<reqwest::Client> {
+    ensure!(on_lan(h.addr.ip()), "Invalid sharing address");
+    Ok(reqwest::Client::builder()
+        .tls_certs_only([reqwest::Certificate::from_pem(h.cert.as_bytes())?])
+        .resolve("aikatsu.lan", h.addr)
+        .https_only(true)
+        .no_proxy()
+        .redirect(reqwest::redirect::Policy::none())
+        .connect_timeout(ASK_TIMEOUT)
+        .build()?)
+}
+
+fn location(id: &str, path: &str) -> String {
+    let mut u = url::Url::parse("aikatsu-lan://device/").unwrap();
+    u.query_pairs_mut().append_pair("id", id).append_pair("path", path);
+    u.into()
+}
+
+pub(crate) fn local_path(path: &str) -> Option<String> {
+    let u = url::Url::parse(path).ok().filter(|u| u.scheme() == "aikatsu-lan")?;
+    let q: HashMap<_, _> = u.query_pairs().into_owned().collect();
+    (q.get("id")? == &db::setting(ID)?).then(|| q.get("path").cloned()).flatten()
+}
+
+fn selected(path: &str) -> Result<(Vec<Host>, String)> {
+    if !path.starts_with("aikatsu-lan:") { return Ok((hosts(), path.to_owned())); }
+    let u = url::Url::parse(path)?;
+    let q: HashMap<_, _> = u.query_pairs().into_owned().collect();
+    let id = q.get("id").ok_or_else(|| anyhow!("Missing sharing device"))?;
+    let path = q.get("path").ok_or_else(|| anyhow!("Missing shared path"))?.clone();
+    let host = hosts().into_iter().find(|h| h.id == *id).ok_or_else(|| anyhow!("This sharing device is offline"))?;
+    Ok((vec![host], path))
 }
 
 async fn ask(h: &Host, route: &str, path: &str) -> Result<Value> {
-    let resp = http::PLAIN.get(url(h, route, path)).timeout(ASK_TIMEOUT).send().await.map_err(|e| offline(h, e))?;
+    let resp = client(h)?.get(url(h, route, path)).bearer_auth(&h.key).timeout(ASK_TIMEOUT).send().await.map_err(|e| offline(h, e))?;
     let code = resp.status();
     let text = resp.text().await.map_err(|e| offline(h, e))?;
     ensure!(code.is_success(), "{}: {}", h.name, if text.is_empty() { code.to_string() } else { text });
@@ -250,6 +308,7 @@ pub async fn library() -> Vec<Value> {
         match res {
             Ok(mut lib) => out.extend(lib["series"].as_array_mut().map(std::mem::take).unwrap_or_default().into_iter().map(|mut s| {
                 s["host"] = h.name.clone().into();
+                s["path"] = location(&h.id, s["path"].as_str().unwrap_or_default()).into();
                 s
             })),
             Err(e) => tracing::info!("lan: {} isn't sharing right now ({e:#})", h.name),
@@ -259,10 +318,15 @@ pub async fn library() -> Vec<Value> {
 }
 
 pub async fn episodes(folder: &str) -> Result<Vec<Episode>> {
+    let (hosts, folder) = selected(folder)?;
     let mut last = anyhow!("This folder isn't in this device's library");
-    for h in hosts() {
-        match ask(&h, "episodes", folder).await {
-            Ok(v) => return Ok(serde_json::from_value(v)?),
+    for h in hosts {
+        match ask(&h, "episodes", &folder).await {
+            Ok(v) => {
+                let mut episodes: Vec<Episode> = serde_json::from_value(v)?;
+                for e in &mut episodes { e.url = location(&h.id, &e.url); }
+                return Ok(episodes);
+            }
             Err(e) => last = e,
         }
     }
@@ -270,11 +334,16 @@ pub async fn episodes(folder: &str) -> Result<Vec<Episode>> {
 }
 
 pub async fn stream(file: &str) -> Result<Stream> {
+    let (hosts, file) = selected(file)?;
     let mut last = anyhow!("This file isn't in this device's library");
-    for h in hosts() {
-        let url = url(&h, "file", file);
-        match http::PLAIN.get(&url).header("Range", "bytes=0-0").timeout(ASK_TIMEOUT).send().await {
-            Ok(r) if r.status().is_success() => return Ok(Stream { url, referer: String::new() }),
+    for h in hosts {
+        let url = url(&h, "file", &file);
+        let client = client(&h)?;
+        match client.get(&url).bearer_auth(&h.key).header("Range", "bytes=0-0").timeout(ASK_TIMEOUT).send().await {
+            Ok(r) if r.status().is_success() => {
+                let url = crate::proxy::lan(url, h.key, client).await?;
+                return Ok(Stream { url, referer: String::new() });
+            }
             Ok(r) => {
                 let code = r.status();
                 let text = r.text().await.unwrap_or_default();
@@ -289,6 +358,29 @@ pub async fn stream(file: &str) -> Result<Stream> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::http;
+
+    #[test]
+    fn lan_client_does_not_follow_redirects() {
+        crate::RT.block_on(async {
+            let identity = rcgen::generate_simple_self_signed(vec!["aikatsu.lan".into()]).unwrap();
+            let cert = identity.cert.pem();
+            let config = axum_server::tls_rustls::RustlsConfig::from_pem(cert.as_bytes().to_vec(), identity.signing_key.serialize_pem().into_bytes()).await.unwrap();
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let handle = axum_server::Handle::new();
+            let server = axum_server::from_tcp_rustls(listener.into_std().unwrap(), config).unwrap().handle(handle.clone());
+            let app = axum::Router::new().fallback(|| async {
+                (StatusCode::FOUND, [(header::LOCATION, "http://192.0.2.1/outside-lan")])
+            });
+            let task = tokio::spawn(server.serve(app.into_make_service()));
+            let h = Host { id: "test".into(), name: "Redirect".into(), addr, key: "test".into(), cert };
+            let response = client(&h).unwrap().get(url(&h, "library", "")).send().await.unwrap();
+            assert_eq!(response.status(), 302);
+            handle.shutdown();
+            task.await.unwrap().unwrap();
+        });
+    }
 
     #[test]
     fn byte_ranges() {
@@ -319,37 +411,83 @@ mod tests {
 
         crate::RT.block_on(async {
             refresh().await;
-            let port = SERVER.lock().unwrap().as_ref().map(|s| s.0).expect("sharing started");
-            let desk = Host { name: "Desk".into(), addr: SocketAddr::from(([127, 0, 0, 1], port)), key: db::setting(KEY).unwrap() };
-            let far = Host { name: "Far".into(), addr: SocketAddr::from(([8, 8, 8, 8], port)), key: desk.key.clone() };
+            let port = SERVER.lock().unwrap().as_ref().map(|s| s.port).expect("sharing started");
+            let desk = Host { id: "test-desk".into(), name: "Desk".into(), addr: SocketAddr::from(([127, 0, 0, 1], port)), key: db::setting(KEY).unwrap(), cert: SERVER.lock().unwrap().as_ref().unwrap().cert.clone() };
+            let far = Host { id: "test-far".into(), name: "Far".into(), addr: SocketAddr::from(([8, 8, 8, 8], port)), key: desk.key.clone(), cert: desk.cert.clone() };
             db::set_setting(&format!("{RECORD}test-desk"), &serde_json::to_string(&desk).unwrap()).unwrap();
             db::set_setting(&format!("{RECORD}test-far"), &serde_json::to_string(&far).unwrap()).unwrap();
             assert_eq!(hosts(), [desk], "own record and public addresses are skipped");
 
             let shared = library().await;
-            assert!(shared.iter().any(|s| s["path"] == show.as_str() && s["host"] == "Desk"), "{shared:?}");
+            assert!(shared.iter().any(|s| s["path"] == location("test-desk", &show) && s["host"] == "Desk"), "{shared:?}");
             assert_eq!(episodes(&show).await.unwrap().len(), 1);
             let s = stream(&video).await.unwrap();
             let r = http::PLAIN.get(&s.url).header("Range", "bytes=2-5").send().await.unwrap();
             assert_eq!(r.status(), 206);
             assert_eq!(r.headers()["content-range"], "bytes 2-5/10");
             assert_eq!(&r.bytes().await.unwrap()[..], b"2345");
-            let wrong = s.url.replace(&format!("key={}", hosts()[0].key), "key=nope");
-            assert_eq!(http::PLAIN.get(&wrong).send().await.unwrap().status(), 403);
+            let h = hosts().remove(0);
+            let direct = url(&h, "file", &video);
+            assert!(!direct.contains("key="));
+            assert_eq!(client(&h).unwrap().get(&direct).send().await.unwrap().status(), 403);
+            assert_eq!(client(&h).unwrap().get(&direct).bearer_auth("nope").send().await.unwrap().status(), 403);
+            let eps = crate::sources::episodes(local::SOURCE, &location(&h.id, &show)).await.unwrap();
+            assert_eq!(eps[0].url, location(&h.id, &video));
+            let own_folder = location(&db::setting(ID).unwrap(), &show);
+            assert_eq!(crate::sources::episodes(local::SOURCE, &own_folder).await.unwrap()[0].url, video, "synced history plays locally on its original device");
+            let own_video = location(&db::setting(ID).unwrap(), &video);
+            assert_eq!(crate::sources::stream(local::SOURCE, &own_video, "").await.unwrap().url, video);
+            assert!(crate::sources::stream(local::SOURCE, &location("missing-device", &video), "").await.is_err());
+            let wrong_pin = Host { cert: rcgen::generate_simple_self_signed(vec!["aikatsu.lan".into()]).unwrap().cert.pem(), ..h.clone() };
+            assert!(client(&wrong_pin).unwrap().get(&direct).bearer_auth(&h.key).send().await.is_err(), "a different certificate must fail");
+            let mut wrong_device = h.clone();
+            wrong_device.key = "wrong".into();
+            db::set_setting(&format!("{RECORD}test-other"), &serde_json::to_string(&wrong_device).unwrap()).unwrap();
+            assert!(crate::sources::episodes(local::SOURCE, &location("test-other", &show)).await.is_err(), "never fall back to a local path or another host");
+            db::delete_settings_with_prefix(&format!("{RECORD}test-other")).unwrap();
+            let head = http::PLAIN.head(&s.url).send().await.unwrap();
+            assert_eq!(head.status(), 200);
+            assert_eq!(head.headers()["content-length"], "10");
+            assert!(head.bytes().await.unwrap().is_empty());
             assert!(stream(&std::env::temp_dir().join("elsewhere.mkv").display().to_string()).await.is_err(), "outside the shared folders");
 
             local::remove_root(&root.display().to_string()).unwrap();
             let err = crate::sources::episodes(local::SOURCE, &show).await.unwrap_err().to_string();
             assert!(err.starts_with("Desk:"), "a folder not on this device is asked of the shared one: {err}");
+            local::add_root(&root.display().to_string()).unwrap();
 
-            for (k, v) in &before {
-                db::set_setting(k, v).unwrap();
-            }
+            let large = root.join("Show/large.mkv");
+            std::fs::File::create(&large).unwrap().set_len(64 << 20).unwrap();
+            let relayed = stream(&large.display().to_string()).await.unwrap();
+            let active = http::PLAIN.get(&relayed.url).send().await.unwrap();
+            crate::proxy::clear();
+            assert!(tokio::time::timeout(Duration::from_secs(5), active.bytes()).await.unwrap().is_err(), "closing playback cancels the relay");
+            let response = client(&h).unwrap().get(url(&h, "file", &large.display().to_string())).bearer_auth(&h.key).send().await.unwrap();
+            assert_eq!(response.status(), 200);
+            db::set_setting(SETTING, "false").unwrap();
+            refresh().await;
+            assert!(tokio::time::timeout(Duration::from_secs(5), response.bytes()).await.unwrap().is_err(), "active transfers must be cut off");
+            db::set_setting(SETTING, "true").unwrap();
+            refresh().await;
+            assert_ne!(db::setting(KEY).unwrap(), h.key, "re-enabling rotates credentials");
+            let (port, cert) = {
+                let server = SERVER.lock().unwrap();
+                let server = server.as_ref().unwrap();
+                (server.port, server.cert.clone())
+            };
+            let fresh = Host { key: db::setting(KEY).unwrap(), addr: SocketAddr::from(([127, 0, 0, 1], port)), cert, ..h.clone() };
+            assert_eq!(client(&fresh).unwrap().get(url(&fresh, "library", "")).bearer_auth(&h.key).send().await.unwrap().status(), 403);
+            forget();
+            assert!(SERVER.lock().unwrap().is_none(), "sign-out stops sharing immediately");
+            db::set_setting(&format!("{RECORD}test-desk"), &serde_json::to_string(&fresh).unwrap()).unwrap();
+            db::set_setting(SETTING, "false").unwrap();
             refresh().await;
             assert!(SERVER.lock().unwrap().is_none(), "sharing stops");
             let err = format!("{:#}", episodes(&show).await.unwrap_err());
             assert!(err.starts_with("Desk is offline") && !err.contains("key="), "{err}");
             db::delete_settings_with_prefix(&format!("{RECORD}test-")).unwrap();
+            local::remove_root(&root.display().to_string()).unwrap();
+            for (k, v) in &before { db::set_setting(k, v).unwrap(); }
         });
         std::fs::remove_dir_all(&root).unwrap();
     }

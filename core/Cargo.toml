@@ -12,12 +12,16 @@ desktop = ["dep:discord-rich-presence"]
 [dependencies]
 anyhow = "1"
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+axum-server = { version = "0.8", features = ["tls-rustls"] }
 base64 = "0.22"
 bytes = "1"
+cap-std = "4"
 discord-rich-presence = { version = "1.1", optional = true }
 futures-util = "0.3"
+getrandom = "0.4"
 html-escape = "0.2"
 regex = "1"
+rcgen = { version = "0.14", default-features = false, features = ["aws_lc_rs", "pem"] }
 rhai = { version = "1.26", features = ["sync", "serde"] }
 rusqlite = { version = "0.40", features = ["bundled"] }
 reqwest = { version = "0.13", default-features = false, features = ["http3", "rustls", "stream"] }
@@ -29,7 +33,7 @@ tracing = "0.1"
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "fs", "process", "io-util", "net"] }
-tokio-util = { version = "0.7", features = ["io"] }
+tokio-util = { version = "0.7", features = ["io", "rt"] }
 url = "2"
 wreq = { version = "=6.0.0-rc.31", features = ["cookies", "form", "json", "stream", "gzip", "brotli", "deflate", "zstd"] }
 wreq-util = "=3.0.0-rc.14"

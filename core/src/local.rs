@@ -3,7 +3,7 @@
 use crate::meta::Meta;
 use crate::sources::{Episode, Stream};
 use crate::{db, push};
-use anyhow::{Result, ensure};
+use anyhow::{Result, anyhow, ensure};
 use regex::Regex;
 use serde::Serialize;
 use serde_json::json;
@@ -66,7 +66,33 @@ fn in_library(path: &str) -> Result<&Path> {
     let p = Path::new(path);
     let inside = !p.components().any(|c| c == Component::ParentDir) && roots().iter().any(|r| p.starts_with(r));
     ensure!(inside, "This folder isn't in this device's library");
+    if p.exists() {
+        library_path(path)?;
+    }
     Ok(p)
+}
+
+// Keep the root directory open so symlink replacement cannot escape it between checking and opening.
+fn library_path(path: &str) -> Result<(cap_std::fs::Dir, PathBuf)> {
+    let p = Path::new(path);
+    ensure!(!p.components().any(|c| c == Component::ParentDir), "This folder isn't in this device's library");
+    for root in roots() {
+        if let Ok(relative) = p.strip_prefix(&root)
+            && let Ok(dir) = cap_std::fs::Dir::open_ambient_dir(&root, cap_std::ambient_authority())
+        {
+            let relative = if relative.as_os_str().is_empty() { Path::new(".") } else { relative };
+            if dir.canonicalize(relative).is_ok() { return Ok((dir, relative.to_owned())); }
+        }
+    }
+    Err(anyhow!("This folder isn't in this device's library"))
+}
+
+pub(crate) fn open_video(path: &str) -> Result<std::fs::File> {
+    ensure!(is_video(Path::new(path)), "{path} isn't a video");
+    let (dir, relative) = library_path(path)?;
+    let file = dir.open(relative)?.into_std();
+    ensure!(file.metadata()?.is_file(), "{path} isn't a video");
+    Ok(file)
 }
 
 /// Under one of this device's folders; anything else may be on a shared device.
@@ -78,15 +104,20 @@ fn is_video(p: &Path) -> bool {
     p.extension().and_then(|e| e.to_str()).is_some_and(|e| VIDEO.contains(&e.to_ascii_lowercase().as_str()))
 }
 
-fn entries(dir: &Path) -> Vec<PathBuf> {
-    let mut paths: Vec<PathBuf> =
-        std::fs::read_dir(dir).into_iter().flatten().flatten().filter(|e| !e.file_name().to_string_lossy().starts_with('.')).map(|e| e.path()).collect();
-    paths.sort();
-    paths
-}
-
-fn videos(dir: &Path) -> Vec<PathBuf> {
-    entries(dir).into_iter().filter(|p| p.is_file() && is_video(p)).collect()
+fn contents(root: &cap_std::fs::Dir, relative: &Path) -> (Vec<PathBuf>, Vec<PathBuf>) {
+    let mut dirs = Vec::new();
+    let mut files = Vec::new();
+    for entry in root.read_dir(relative).into_iter().flatten().flatten() {
+        if entry.file_name().to_string_lossy().starts_with('.') { continue; }
+        let path = relative.join(entry.file_name());
+        if let Ok(meta) = root.metadata(&path) {
+            if meta.is_dir() { dirs.push(path); }
+            else if meta.is_file() && is_video(&path) { files.push(path); }
+        }
+    }
+    dirs.sort();
+    files.sort();
+    (dirs, files)
 }
 
 fn file_name(p: &Path) -> String {
@@ -122,14 +153,16 @@ fn tagged_id(path: &str) -> i64 {
 
 fn series_dirs(root: &Path) -> Vec<(PathBuf, Vec<PathBuf>)> {
     let mut out = Vec::new();
-    let mut level = vec![root.to_path_buf()];
+    let Ok(handle) = cap_std::fs::Dir::open_ambient_dir(root, cap_std::ambient_authority()) else { return out };
+    let mut level = vec![PathBuf::from(".")];
     for _ in 0..3 {
         let mut next = Vec::new();
         for dir in level {
-            let files = videos(&dir);
-            next.extend(entries(&dir).into_iter().filter(|p| p.is_dir()));
+            let (dirs, files) = contents(&handle, &dir);
+            next.extend(dirs);
             if !files.is_empty() {
-                out.push((dir, files));
+                let absolute = |p: PathBuf| root.join(p.strip_prefix(".").unwrap_or(&p));
+                out.push((absolute(dir), files.into_iter().map(absolute).collect()));
             }
         }
         level = next;
@@ -199,7 +232,9 @@ fn numbered(files: Vec<PathBuf>) -> Vec<Episode> {
 pub fn episodes(folder: &str) -> Result<Vec<Episode>> {
     let dir = in_library(folder)?;
     ensure!(dir.is_dir(), "Can't find {folder}. Is the drive connected?");
-    let eps = numbered(videos(dir));
+    let (handle, relative) = library_path(folder)?;
+    let (_, files) = contents(&handle, &relative);
+    let eps = numbered(files.into_iter().map(|p| dir.join(p.file_name().unwrap())).collect());
     ensure!(!eps.is_empty(), "No videos in {folder}");
     Ok(eps)
 }
@@ -291,6 +326,11 @@ mod tests {
         let outside = std::env::temp_dir().join(format!("aikatsu-local-outside-{}.mkv", std::process::id()));
         std::fs::write(&outside, b"x").unwrap();
 
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&outside, root.join("escape.mkv")).unwrap();
+            std::os::unix::fs::symlink(outside.parent().unwrap(), root.join("outside-dir")).unwrap();
+        }
         let before = roots();
         set_roots(&[]).unwrap();
         let root_s = root.display().to_string();
@@ -331,6 +371,13 @@ mod tests {
         assert_eq!(stream(&eps[0].url).unwrap().url, eps[0].url);
         assert!(stream(&root.join("Otonari S2/notes.txt").display().to_string()).is_err(), "not a video");
         assert!(stream(&outside.display().to_string()).is_err(), "outside the library");
+        #[cfg(unix)]
+        {
+            assert!(stream(&root.join("escape.mkv").display().to_string()).is_err(), "no symlink escape");
+            assert!(open_video(&root.join("escape.mkv").display().to_string()).is_err());
+            assert!(episodes(&root.join("outside-dir").display().to_string()).is_err());
+            assert!(lib.series.iter().all(|s| !s.path.contains("outside-dir")));
+        }
         assert!(stream(&root.join("Otonari S2/../../escape.mkv").display().to_string()).is_err(), "no ..");
         assert!(episodes(&std::env::temp_dir().display().to_string()).is_err());
 

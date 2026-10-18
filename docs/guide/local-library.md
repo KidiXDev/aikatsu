@@ -59,7 +59,11 @@ Your phone can play the desktop's folders over your home network, with nothing c
 
 The desktop must be running. On Windows, allow Aikatsu through the firewall on private networks when asked. Choose the anime for a folder on the desktop; the phone uses its pick.
 
-Video goes over your network unencrypted. Only devices signed in to your account get the address and key. Signing out on the desktop changes the key.
+Video and library requests are encrypted over your network. Your devices use the sharing certificate and key delivered through account sync to verify the desktop. Use HTTPS for a self-hosted sync server too, because it carries those credentials.
+
+Update both devices to use encrypted sharing; older versions cannot connect. Turning sharing off or signing out closes active transfers, and turning it back on creates a new certificate and key. Give the other device a moment to sync the new connection details.
+
+Shared videos keep their device identity, so computers with the same folder paths do not get mixed up. Symbolic links that leave a library folder cannot be shared.
 
 ## On other devices
 

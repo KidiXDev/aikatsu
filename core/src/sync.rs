@@ -122,6 +122,7 @@ pub async fn sign_in(username: &str, password: &str, create: bool) -> Result<Val
         db::set_setting(LAST, "")?;
         db::sync_seed()?;
     }
+    crate::lan::refresh().await;
     Ok(sync().await)
 }
 
