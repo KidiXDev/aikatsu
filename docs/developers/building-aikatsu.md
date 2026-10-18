@@ -4,6 +4,18 @@ If you're only writing a source plugin, build [the plugin CLI](./testing.md) ins
 
 Aikatsu uses a shared Rust core, Qt for desktop, and Flutter for Android. To match the release environment, use Qt **6.11.2** and Flutter **3.47.1**.
 
+## Before you build
+
+Install a current stable Rust toolchain through [rustup](https://www.rust-lang.org/tools/install), then clone the [repository](https://github.com/KidiXDev/aikatsu) with Git or extract its source archive. The core needs the same [native build tools as the plugin CLI](./first-plugin.md#before-you-start), including libclang for its HTTP client's TLS bindings. Add the tools for your platform from the sections below. Cargo downloads Rust dependencies automatically, and `flutter pub get` downloads the Android app's Dart packages.
+
+Keep these files from the checkout:
+
+- `Cargo.lock` pins the Rust dependencies. Some locked versions have since been yanked, so deleting it can prevent dependency resolution.
+- `.cargo/config.toml` enables `reqwest_unstable`, which the core's HTTP/3 support requires. Run Cargo from the repo root so it reads this configuration.
+- `mobile/pubspec.lock` pins the Dart dependencies for Android builds.
+
+A normal local build needs no `.env` file, release secrets, or signing key. Android release signing and the optional default sync server are covered below. Rhai is a Cargo dependency and needs no separate installation.
+
 ## Source files
 
 | Path | What lives there |
@@ -26,7 +38,7 @@ The core API has asynchronous `call` methods, quick synchronous `get` methods, a
 
 ## Linux desktop
 
-Use a current stable Rust toolchain, Qt 6.11 development packages, libmpv, CMake, and a C/C++ compiler. You need Qt Base, Declarative, SVG, and Image Formats support (including WebP covers). Install ffmpeg too if you want HLS downloads remuxed to MP4.
+Use a current stable Rust toolchain, Qt 6.11 development packages, libmpv development headers and libraries, CMake, pkg-config, and a C/C++ compiler. You need Qt Base, Declarative, SVG, and Image Formats support (including WebP covers). A standalone mpv player package may not include the headers needed to build Aikatsu. Install ffmpeg too if you want HLS downloads remuxed to MP4.
 
 From the repo root:
 
@@ -61,7 +73,9 @@ Building the NSIS installer also needs Python on PATH. The installer build uses 
 
 ## Android
 
-Install Flutter, Rust through rustup, the Android SDK, and CMake. The build can install its configured NDK when needed.
+Install Flutter, Rust through rustup, a JDK (the release workflow uses Java 17), the Android SDK with its command-line tools and platform-tools, and CMake. Android Studio can manage the SDK and emulator for you. The build uses Flutter's configured NDK version and can install it when needed.
+
+Before building, run `flutter doctor` and resolve its Android toolchain issues. Accept the SDK licenses with `flutter doctor --android-licenses`. To run the app, connect an Android device with USB debugging enabled or start an emulator. Install the Rust target matching that device or emulator, such as `aarch64-linux-android` for ARM64 or `x86_64-linux-android` for an x86_64 emulator.
 
 For an ARM64 device:
 
