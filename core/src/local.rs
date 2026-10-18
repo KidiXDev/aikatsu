@@ -13,6 +13,8 @@ use std::sync::{LazyLock, Mutex};
 
 pub const SOURCE: &str = "local";
 const ROOTS: &str = "localFolders";
+#[cfg(test)]
+pub(crate) static TEST_ROOTS: Mutex<()> = Mutex::new(());
 const VIDEO: [&str; 10] = ["mkv", "mp4", "avi", "webm", "m4v", "mov", "ts", "m2ts", "wmv", "flv"];
 
 #[derive(Debug, Serialize)]
@@ -62,6 +64,11 @@ fn in_library(path: &str) -> Result<&Path> {
     let inside = !p.components().any(|c| c == Component::ParentDir) && roots().iter().any(|r| p.starts_with(r));
     ensure!(inside, "This folder isn't in this device's library");
     Ok(p)
+}
+
+/// Under one of this device's folders; anything else may be on a shared device.
+pub fn is_here(path: &str) -> bool {
+    in_library(path).is_ok()
 }
 
 fn is_video(p: &Path) -> bool {
@@ -260,6 +267,7 @@ mod tests {
 
     #[test]
     fn folders_episodes_and_trust_boundary() {
+        let _roots = TEST_ROOTS.lock().unwrap_or_else(|e| e.into_inner());
         let root = std::env::temp_dir().join(format!("aikatsu-local-{}", std::process::id()));
         let touch = |rel: &str| {
             let p = root.join(rel);

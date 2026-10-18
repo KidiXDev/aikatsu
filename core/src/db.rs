@@ -456,9 +456,22 @@ pub fn setting(key: &str) -> Option<String> {
 pub fn set_setting(key: &str, value: &str) -> Result<()> {
     let c = DB.lock().unwrap();
     set_setting_on(&c, key, value)?;
-    if crate::sync::SYNCED_SETTINGS.contains(&key) {
+    if crate::sync::synced(key) {
         queue_change(&c, "setting", key)?;
     }
+    Ok(())
+}
+
+pub fn settings_with_prefix(prefix: &str) -> Result<Vec<(String, String)>> {
+    let c = DB.lock().unwrap();
+    let mut st = c.prepare("SELECT key, value FROM settings WHERE substr(key, 1, length(?1)) = ?1")?;
+    let rows = st.query_map([prefix], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<rusqlite::Result<_>>()?;
+    Ok(rows)
+}
+
+/// Local only: nothing is queued for sync.
+pub fn delete_settings_with_prefix(prefix: &str) -> Result<()> {
+    DB.lock().unwrap().execute("DELETE FROM settings WHERE substr(key, 1, length(?1)) = ?1", [prefix])?;
     Ok(())
 }
 
@@ -539,7 +552,7 @@ fn sync_apply_on(c: &Connection, changes: &[Change]) -> Result<Applied> {
             tx.query_row("SELECT at FROM sync_dirty WHERE kind = ?1 AND key = ?2", [&ch.kind, &ch.key], |r| r.get(0)).optional()?;
         let local = match ch.kind.as_str() {
             "progress" => get_on(&tx, &ch.key)?.map(|p| p.last_updated).max(queued),
-            "setting" if crate::sync::SYNCED_SETTINGS.contains(&ch.key.as_str()) => queued,
+            "setting" if crate::sync::synced(&ch.key) => queued,
             _ => continue,
         };
         if local.is_some_and(|at| at >= ch.updated_at) {

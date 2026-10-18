@@ -14,6 +14,11 @@ const DEFAULT_SERVER: Option<&str> = option_env!("AIKATSU_SYNC_SERVER");
 pub const SYNCED_SETTINGS: [&str; 7] =
     ["autoplay", "autoSkip", "quality", "disabledSources", "autoCheckPluginUpdates", "tmdbKey", plugins::REPOS_SETTING];
 
+/// Also each device's shared-library address, so phones on the account find it.
+pub fn synced(key: &str) -> bool {
+    SYNCED_SETTINGS.contains(&key) || key.starts_with(crate::lan::RECORD)
+}
+
 // Outside SETTING_DEFAULTS, so the UIs never see the token.
 const SERVER: &str = "syncServer";
 const TOKEN: &str = "syncToken";
@@ -53,7 +58,7 @@ fn server() -> String {
     Some(stored(SERVER)).filter(|s| !s.is_empty()).or_else(|| DEFAULT_SERVER.and_then(|s| normalize(s).ok())).unwrap_or_default()
 }
 
-fn signed_in() -> bool {
+pub(crate) fn signed_in() -> bool {
     !stored(TOKEN).is_empty()
 }
 
@@ -124,6 +129,7 @@ fn forget() {
     for key in [TOKEN, USER, CURSOR, LAST] {
         let _ = db::set_setting(key, "");
     }
+    crate::lan::forget();
 }
 
 pub async fn sign_out() -> Value {
@@ -218,6 +224,7 @@ async fn exchange() -> Result<(bool, bool)> {
 /// Progress saves every few seconds while playing, so it's pushed in batches.
 pub async fn run() {
     loop {
+        crate::lan::refresh().await;
         sync().await;
         tokio::time::sleep(Duration::from_secs(120)).await;
     }

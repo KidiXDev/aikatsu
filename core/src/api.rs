@@ -40,6 +40,7 @@ pub const SETTING_DEFAULTS: &[(&str, &str)] = &[
     ("debug", "false"),
     ("anime4k", "off"),
     ("volume", "100"),
+    (crate::lan::SETTING, "false"),
 ];
 
 pub fn setting(key: &str) -> String {
@@ -140,7 +141,13 @@ pub async fn call(method: &str, args: Value) -> Result<Value> {
             let skip = db::cached(&format!("skip:{mal}:{ep}"), DAY * 7, false, meta::skip_times(mal, ep)).await?;
             Ok(serde_json::to_value(skip)?)
         }
-        "localLibrary" => Ok(serde_json::to_value(tokio::task::spawn_blocking(local::library).await?)?),
+        "localLibrary" => {
+            let mut lib = serde_json::to_value(tokio::task::spawn_blocking(local::library).await?)?;
+            if let Some(series) = lib["series"].as_array_mut() {
+                series.extend(crate::lan::library().await);
+            }
+            Ok(lib)
+        }
         "matchLocal" => Ok(json!(local::match_all().await?)),
         "linkLocal" => Ok(serde_json::to_value(local::link(s(&args, "path"), i(&args, "anilistId")).await?)?),
         "searchAnime" => Ok(serde_json::to_value(meta::search(s(&args, "query")).await?)?),
@@ -206,6 +213,12 @@ pub fn get(method: &str, args: Value) -> Result<Value> {
         "settings" => Ok(Value::Object(SETTING_DEFAULTS.iter().map(|(k, _)| (k.to_string(), Value::String(setting(k)))).collect())),
         "setSetting" => {
             db::set_setting(s(&args, "key"), s(&args, "value"))?;
+            if s(&args, "key") == crate::lan::SETTING {
+                crate::RT.spawn(async {
+                    crate::lan::refresh().await;
+                    sync::sync().await;
+                });
+            }
             Ok(Value::Null)
         }
         "sources" => Ok(plugins::list()),
