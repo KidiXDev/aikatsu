@@ -45,7 +45,7 @@ class _LibraryPageState extends State<LibraryPage> {
     Api.historyRevision.addListener(_refreshAll);
     _sub = Api.pushed.listen((e) {
       if (e.$1 == 'download' && e.$2['state'] == 'done') _reload();
-      if (e.$1 == 'local') _loadLocal();
+      if (e.$1 == 'local' || (e.$1 == 'sync' && e.$2['settings'] == true)) _loadLocal();
     });
   }
 
@@ -71,7 +71,7 @@ class _LibraryPageState extends State<LibraryPage> {
     final lib = await Api.call('localLibrary') as Map<String, dynamic>;
     if (!mounted) return;
     setState(() => _local = lib);
-    if ((lib['series'] as List).any((s) => s['available'] == true && s['meta'] == null)) Api.call('matchLocal').ignore();
+    if ((lib['series'] as List).any((s) => s['host'] == null && s['available'] == true && s['meta'] == null)) Api.call('matchLocal').ignore();
   }
 
   Future<void> _addFolder() async {
@@ -107,7 +107,7 @@ class _LibraryPageState extends State<LibraryPage> {
   }
 
   Future<void> _localMenu(Map<String, dynamic> s) async {
-    final choice = await pickFrom(context, _localTitle(s), [('Open', 'open', false), ('Choose anime…', 'match', false)]);
+    final choice = await pickFrom(context, _localTitle(s), [('Open', 'open', false), if (s['host'] == null) ('Choose anime…', 'match', false)]);
     if (!mounted) return;
     if (choice == 'open') _openLocal(s);
     if (choice == 'match') chooseAnime(context, s['path'], s['name']);
@@ -189,7 +189,7 @@ class _LibraryPageState extends State<LibraryPage> {
               ),
             ),
           ),
-        if (folders.isEmpty)
+        if (folders.isEmpty && local.isEmpty)
           const SliverToBoxAdapter(
             child: EmptyState(
               face: '( ˘▽˘)っ♨',
@@ -213,6 +213,8 @@ class _LibraryPageState extends State<LibraryPage> {
                 image: text([s['meta']?['cover']]),
                 subtitle: !available
                     ? 'Storage not connected'
+                    : s['host'] != null
+                    ? 'On ${s['host']}'
                     : s['meta'] == null
                     ? 'Choose anime'
                     : count == 1
