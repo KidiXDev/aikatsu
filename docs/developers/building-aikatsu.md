@@ -26,7 +26,7 @@ The core API has asynchronous `call` methods, quick synchronous `get` methods, a
 
 ## Linux desktop
 
-Use a current stable Rust toolchain, Qt 6.11 development packages, libmpv, CMake, and a C/C++ compiler. You need Qt Base, Declarative, and SVG support. Install ffmpeg too if you want HLS downloads remuxed to MP4.
+Use a current stable Rust toolchain, Qt 6.11 development packages, libmpv, CMake, and a C/C++ compiler. You need Qt Base, Declarative, SVG, and Image Formats support (including WebP covers). Install ffmpeg too if you want HLS downloads remuxed to MP4.
 
 From the repo root:
 
@@ -45,7 +45,7 @@ The exact qmake path depends on how Qt was installed.
 
 ## Windows desktop
 
-Use the MSVC Rust toolchain, Visual Studio Build Tools, CMake, NASM, Qt 6.11 for MSVC, and a libmpv development package with an MSVC import library.
+Use the MSVC Rust toolchain, Visual Studio Build Tools, CMake, NASM, Qt 6.11 for MSVC including Qt Image Formats, and a libmpv development package with an MSVC import library. With aqt, include `--modules qtimageformats` when installing Qt.
 
 In a developer command prompt, point the build at Qt and libmpv:
 

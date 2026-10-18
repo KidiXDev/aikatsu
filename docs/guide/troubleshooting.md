@@ -41,6 +41,8 @@ Turn Anime4K off, then try a lower video quality. If only a heavy shader preset 
 
 Those come from separate metadata services. Not every anime has complete episode information or AniSkip timings. Try refreshing the details page when that action is available. A plain episode list can still play normally.
 
+If a desktop cover fails with **Unsupported image format** for a `.webp` URL, the Qt installation may be missing WebP support. Source builds need Qt Image Formats; packaged Windows builds need `qwebp.dll` in their `imageformats` folder. Install the matching Qt module and restart the app.
+
 ## A download is missing from Android's Library
 
 Wait until its job is marked done. A partial download isn't an offline episode yet.

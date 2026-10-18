@@ -53,7 +53,7 @@ Optional: install [ffmpeg](https://ffmpeg.org/download.html) so every download e
 
 ### Linux
 
-You need Rust 1.88+, Qt 6.11+ (`qt6-base qt6-declarative qt6-svg`), `mpv`, cmake and a C compiler. `ffmpeg` is recommended so every download ends up as a normal .mp4.
+You need Rust 1.88+, Qt 6.11+ (`qt6-base qt6-declarative qt6-svg qt6-imageformats`), `mpv`, cmake and a C compiler. `ffmpeg` is recommended so every download ends up as a normal .mp4.
 
 ```sh
 cargo build --release
@@ -72,7 +72,7 @@ If more than one Qt version is installed, point the build at Qt 6 with `QMAKE=/u
 
 ### Windows (MSVC)
 
-1. Install Rust (MSVC toolchain), Visual Studio Build Tools, CMake, NASM, and Qt 6.11+ for MSVC (for example `aqt install-qt windows desktop 6.11.2 win64_msvc2022_64`).
+1. Install Rust (MSVC toolchain), Visual Studio Build Tools, CMake, NASM, and Qt 6.11+ for MSVC including Qt Image Formats (for example `aqt install-qt windows desktop 6.11.2 win64_msvc2022_64 --modules qtimageformats`).
 2. Unpack a `mpv-dev-x86_64-*.7z` from <https://github.com/shinchiro/mpv-winbuild-cmake/releases>. If it has no `mpv.lib`, make one next to `libmpv-2.dll` (`gendef` comes with mingw-w64):
    ```bat
    gendef libmpv-2.dll
