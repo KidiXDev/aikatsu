@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../history.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'anime.dart';
@@ -70,59 +71,6 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  static Map<String, dynamic> _animeOf(Map<String, dynamic> s) => {
-    'name': s['title'],
-    'url': s['url'],
-    'image': s['cover'],
-    'source': s['source'],
-    'anilistId': s['anilist_id'],
-  };
-
-  static double _progressOf(Map<String, dynamic> s) {
-    final ep = (s['episodes'] as List).firstWhere((e) => e['episode_number'] == s['continue_episode'], orElse: () => null);
-    final duration = toInt(ep?['duration']);
-    return duration > 0 ? toInt(ep['playback_time']) / duration : 0;
-  }
-
-  static String _episodeOf(Map<String, dynamic> s, String sep) {
-    final cont = toInt(s['continue_episode']), total = toInt(s['total_episodes']);
-    return 'Episode $cont${total >= cont ? '$sep$total' : ''}';
-  }
-
-  Future<bool> _confirm(String title, String message, String action) async =>
-      await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text(title),
-          content: Text(message),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-            TextButton(onPressed: () => Navigator.pop(context, true), child: Text(action)),
-          ],
-        ),
-      ) ??
-      false;
-
-  Future<void> _menu(Map<String, dynamic> s) async {
-    final choice = await pickFrom(context, s['title'], [
-      ('Open details', 'open', false),
-      ('Continue episode', 'play', false),
-      ('Remove from history', 'delete', false),
-    ]);
-    if (!mounted) return;
-    switch (choice) {
-      case 'open':
-        openAnime(context, _animeOf(s));
-      case 'play':
-        openAnime(context, _animeOf(s), autoplayEpisode: toInt(s['continue_episode']));
-      case 'delete':
-        if (await _confirm('Remove from history?', 'All saved progress for “${s['title']}” will be deleted.', 'Remove')) {
-          Api.get('deleteSeries', {'key': s['key']});
-          _refresh();
-        }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final shown = _recent ? _series : _continuing;
@@ -146,7 +94,7 @@ class _HomePageState extends State<HomePage> {
                 child: Row(
                   children: [
                     // Animated pill segment for Continue / Recent
-                    _HistorySegmentedControl(
+                    HistorySegmentedControl(
                       recent: _recent,
                       continueCount: _continuing.length,
                       recentCount: _series.length,
@@ -170,7 +118,8 @@ class _HomePageState extends State<HomePage> {
                         icon: const Icon(Icons.delete_sweep_rounded, size: 18),
                         label: const Text('Clear all'),
                         onPressed: () async {
-                          if (await _confirm(
+                          if (await confirm(
+                            context,
                             'Clear all history?',
                             "Every series and its progress will be removed. This can't be undone.",
                             'Clear all',
@@ -201,19 +150,7 @@ class _HomePageState extends State<HomePage> {
               sliver: SliverGrid.builder(
                 gridDelegate: posterGrid(),
                 itemCount: shown.length,
-                itemBuilder: (context, i) {
-                  final s = shown[i] as Map<String, dynamic>;
-                  final finished = s['finished'] == true;
-                  return PosterCard(
-                    title: s['title'],
-                    subtitle: finished ? 'Finished ✓' : _episodeOf(s, ' / '),
-                    image: s['cover'],
-                    badge: Api.sourceName(s['source']),
-                    progress: finished ? -1 : _progressOf(s),
-                    onTap: () => openAnime(context, _animeOf(s)),
-                    onLongPress: () => _menu(s),
-                  );
-                },
+                itemBuilder: (context, i) => HistoryCard(shown[i] as Map<String, dynamic>),
               ),
             ),
           ..._discoverSections(context),
@@ -442,7 +379,7 @@ class _HomePageState extends State<HomePage> {
                       if (hero != null) ...[
                         const SizedBox(height: 4),
                         Text(
-                          _episodeOf(hero, ' of ') + (genres.isEmpty ? '' : '  ·  $genres'),
+                          historyEpisode(hero, ' of ') + (genres.isEmpty ? '' : '  ·  $genres'),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: t.textTheme.bodyMedium?.copyWith(color: c.onSurfaceVariant, fontSize: 13),
@@ -456,7 +393,7 @@ class _HomePageState extends State<HomePage> {
                           BouncyTap(
                             borderRadius: BorderRadius.circular(999),
                             onTap: hero != null
-                                ? () => openAnime(context, _animeOf(hero), autoplayEpisode: toInt(hero['continue_episode']))
+                                ? () => openAnime(context, historyAnime(hero), autoplayEpisode: toInt(hero['continue_episode']))
                                 : () => widget.onSearch(''),
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
@@ -486,7 +423,7 @@ class _HomePageState extends State<HomePage> {
                           if (hero != null)
                             BouncyTap(
                               borderRadius: BorderRadius.circular(999),
-                              onTap: () => openAnime(context, _animeOf(hero)),
+                              onTap: () => openAnime(context, historyAnime(hero)),
                               child: Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
                                 decoration: BoxDecoration(
@@ -521,83 +458,6 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// Custom segmented pill control for switching between Continue and Recent history.
-class _HistorySegmentedControl extends StatelessWidget {
-  const _HistorySegmentedControl({required this.recent, required this.continueCount, required this.recentCount, required this.onChanged});
-
-  final bool recent;
-  final int continueCount;
-  final int recentCount;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = Theme.of(context).colorScheme;
-
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: c.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: c.outlineVariant.withValues(alpha: 0.5)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _Tab(
-            label: 'Continue  $continueCount',
-            icon: Icons.play_circle_outline_rounded,
-            selected: !recent,
-            onTap: () => onChanged(false),
-          ),
-          _Tab(label: 'Recent  $recentCount', icon: Icons.history_rounded, selected: recent, onTap: () => onChanged(true)),
-        ],
-      ),
-    );
-  }
-}
-
-class _Tab extends StatelessWidget {
-  const _Tab({required this.label, required this.icon, required this.selected, required this.onTap});
-
-  final String label;
-  final IconData icon;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = Theme.of(context).colorScheme;
-
-    return BouncyTap(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(999),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-        decoration: BoxDecoration(color: selected ? c.primaryContainer : Colors.transparent, borderRadius: BorderRadius.circular(999)),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 16, color: selected ? c.onPrimaryContainer : c.onSurfaceVariant),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontFamily: 'GoogleSansFlex',
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                fontSize: 12.5,
-                color: selected ? c.onPrimaryContainer : c.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
