@@ -8,7 +8,8 @@ Text {
 
     property bool animate: false
 
-    renderType: Text.NativeRendering
+    // Avoid harsh native rasterization at small sizes on Windows.
+    renderType: Qt.platform.os === "windows" ? Text.QtRendering : Text.NativeRendering
     textFormat: Text.PlainText
     color: Theme.palette.onSurface
     font: Theme.font.body.medium

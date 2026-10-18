@@ -14,7 +14,7 @@ T.TextField {
     selectedTextColor: color
 
     font: Theme.font.body.large
-    renderType: echoMode === T.TextField.Password ? T.TextField.QtRendering : T.TextField.NativeRendering
+    renderType: Qt.platform.os === "windows" || echoMode === T.TextField.Password ? T.TextField.QtRendering : T.TextField.NativeRendering
     cursorVisible: !readOnly
     verticalAlignment: TextInput.AlignVCenter
 
