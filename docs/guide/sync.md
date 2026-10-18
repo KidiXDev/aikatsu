@@ -1,6 +1,6 @@
 # Sync between your phone and computer
 
-Sign in on each device to keep your history in step. Stop an episode on your computer, and your phone picks it up at the same minute.
+Sign in on each device to resume episodes where you stopped on your phone or computer.
 
 ## Sign in
 
@@ -8,9 +8,9 @@ Sign in on each device to keep your history in step. Stop an episode on your com
 2. Choose **Create account** the first time, or **Sign in** on your other devices.
 3. Enter a username and a password of at least 8 characters. When you create an account, enter the password a second time to confirm it. The eye button in a password field shows what you typed.
 
-Signing in never throws away a device's history. It's merged into the account, and each episode keeps its newest progress. For settings, the account's choices win, and the device's own fill in any the account doesn't have yet.
+Signing in merges your device's history with your account. Each episode keeps its newest progress. Your account's settings take priority, with device settings filling in any gaps.
 
-You only need a username and a password, no email. There's no automatic password reset, so keep the password somewhere safe. If you lose it and you use [your own server](./self-hosting.md), you can reset it there.
+You don't need an email address. There's no automatic password reset, so keep the password somewhere safe. If you lose it and you use [your own server](./self-hosting.md), you can reset it there.
 
 ## What syncs
 
@@ -24,14 +24,14 @@ You only need a username and a password, no email. There's no automatic password
 | Your plugin repos | Debug logging |
 | TMDB API key | |
 
-Plugin repos are listed on every device, but their plugins never download by themselves. Open **Plugins** on each device and download them when you choose, just as you would for updates.
+Your plugin repos appear on every device. Open **Plugins** on each one to download the scripts. They do not install automatically.
 
 ## When it syncs
 
-- **Opening:** Aikatsu syncs when it opens.
-- **While open:** it syncs every couple of minutes.
-- **Closing the player:** it syncs right away, so another device can pick up where you stopped.
-- **Back to the app:** on Android, it also syncs when you return to the app.
+- When you open Aikatsu
+- Every couple of minutes while it is open
+- When you close the player
+- When you return to the app on Android
 
 **Sync now** in Settings syncs immediately.
 
@@ -53,7 +53,7 @@ Aikatsu uses its own sync server unless you choose another. To keep your history
 
 An account belongs to the server it was created on. To switch servers, sign out first. Your history stays on the device and merges into the account you sign in to next.
 
-If the address starts with `http://` instead of `https://`, your password travels unencrypted. That's fine at home, but use HTTPS for a server you reach over the internet.
+An `http://` address sends your password unencrypted. Use HTTPS to protect it, especially outside your home network.
 
 ## If sync stops
 

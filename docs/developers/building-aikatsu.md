@@ -2,9 +2,9 @@
 
 If you're only writing a source plugin, build [the plugin CLI](./testing.md) instead. You don't need either UI toolchain for that.
 
-For app work, Aikatsu has a shared Rust core, a Qt desktop interface, and a Flutter Android interface. The release workflow currently pins Qt **6.11.2** and Flutter **3.47.1**. Those are useful reference points when matching the project's build environment.
+Aikatsu uses a shared Rust core, Qt for desktop, and Flutter for Android. To match the release environment, use Qt **6.11.2** and Flutter **3.47.1**.
 
-## What's where
+## Source files
 
 | Path | What lives there |
 | --- | --- |
@@ -35,7 +35,7 @@ cargo build --release
 ./target/release/aikatsu
 ```
 
-If the wrong Qt is being picked up, point `QMAKE` at the Qt 6 installation you want:
+To select a Qt 6 installation, set `QMAKE`:
 
 ```sh
 QMAKE=/usr/bin/qmake6 cargo build --release
@@ -55,7 +55,9 @@ set MPV_DIR=C:\path\to\mpv-dev
 cargo build --release
 ```
 
-Packaging also needs `libmpv-2.dll` and Qt's deployed libraries. Use `windeployqt` with `desktop\qml` as the QML source directory. The [repo README](https://github.com/KidiXDev/aikatsu#build-it-yourself) covers creating an import library if your libmpv archive doesn't include one; the [release workflow](https://github.com/KidiXDev/aikatsu/blob/main/.github/workflows/release.yml) shows the current automated packaging steps.
+Packaging also needs `libmpv-2.dll` and Qt's deployed libraries. Use `windeployqt` with `desktop\qml` as the QML source directory. If your libmpv archive has no import library, follow the [repo README](https://github.com/KidiXDev/aikatsu#build-it-yourself) to create one. See the [release workflow](https://github.com/KidiXDev/aikatsu/blob/main/.github/workflows/release.yml) for automated packaging steps.
+
+Building the NSIS installer also needs Python on PATH. The installer build uses it to list the packaged files for safe removal during uninstall. The setup wizard shows the root `LICENSE` and lets users choose a folder. Silent updates reuse the saved installation folder.
 
 ## Android
 
@@ -90,7 +92,7 @@ After changing the exposed Rust API in `mobile/rust/src/api/mod.rs`, regenerate 
 RUSTFLAGS='--cfg reqwest_unstable' flutter_rust_bridge_codegen generate
 ```
 
-The explicit flag keeps the HTTP/3 configuration used by the core while the generator runs Cargo expansion. Don't edit generated bindings by hand.
+The flag preserves the core's HTTP/3 configuration during code generation. Don't edit generated bindings by hand.
 
 ## Run checks
 

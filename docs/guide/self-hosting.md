@@ -1,8 +1,8 @@
 # Run your own sync server
 
-The sync server is small and open source: [aikatsu-sync](https://github.com/KidiXDev/aikatsu-sync). Run it on a home server, a NAS, or a VPS, and your history never leaves machines you control. All you need is Docker.
+Use [aikatsu-sync](https://github.com/KidiXDev/aikatsu-sync) to keep your synced history on a server you control. You can run it with Docker on a home server, NAS, or VPS.
 
-## Start it
+## Start the server
 
 Pick SQLite unless you already run Postgres. SQLite keeps everything in one file and needs nothing else.
 
@@ -69,7 +69,7 @@ Set these under `environment:` in the compose file, then run `docker compose up 
 | `DATABASE_URL` | SQLite in the `data` volume | `sqlite://<path>` or `postgres://user:pass@host:5432/db` |
 | `PORT` | `3000` | The port inside the container |
 
-## Look after it
+## Maintain the server
 
 **Reset a forgotten password.** This prints a new password and signs that account out everywhere:
 
@@ -84,6 +84,7 @@ docker compose pull && docker compose up -d
 ```
 
 **Back up:**
+
 - **SQLite:** run `docker compose stop`, copy the `data` volume, then run `docker compose start`.
 - **Postgres:** use `pg_dump`.
 
@@ -92,11 +93,12 @@ Your devices also keep their own copy of your history, so a lost server can be r
 ## What the server stores
 
 For each account, the server keeps:
-- the username;
-- a hashed password;
-- one entry per signed-in device;
+
+- the username
+- a hashed password
+- one entry per signed-in device
 - the history and [settings that sync](./sync.md#what-syncs).
 
 It doesn't log requests.
 
-Sign-ups, wrong passwords, and request rates are rate-limited.
+The server limits sign-ups, failed sign-in attempts, and request rates.

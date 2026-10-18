@@ -1,6 +1,6 @@
-# Save a few episodes for later
+# Download episodes for offline viewing
 
-You can download one episode, an episode range, or a whole series. The files stay on your device, so you can watch without relying on the source still being online.
+Save one episode, a range, or a whole series to watch offline.
 
 ## Start a download
 
@@ -10,7 +10,7 @@ Aikatsu runs up to four episode downloads at once. Others wait in the queue. A j
 
 On Android, download notifications show progress and completed episodes. Tapping a download notification opens Downloads in the app.
 
-You can cancel a queued or running job. If a download fails, check the error and start it again from the episode list. The active queue is kept in memory, so don't rely on unfinished jobs continuing automatically after closing the app.
+You can cancel queued or running downloads. If one fails, check the error and restart it from the episode list. Unfinished downloads may need to be started again after you close the app.
 
 ## Where the files go
 
@@ -34,7 +34,7 @@ Offline files don't make Search, discovery, or new episode listings work without
 
 Android's Library lets you delete one episode or all downloaded episodes for a series. That deletes the actual files after confirmation.
 
-Clearing finished jobs from Downloads is different. It clears those queue entries; it isn't the same action as deleting the downloaded videos.
+Clearing finished jobs from Downloads removes them from the list. Your video files stay on the device.
 
 ## MP4, HLS, and ffmpeg
 
@@ -42,4 +42,4 @@ Some sources serve plain video files. Others use HLS, where a video is split int
 
 On Windows, put `ffmpeg.exe` beside `aikatsu.exe` or somewhere on PATH. On Linux, install it with your package manager. The desktop downloader also has a yt-dlp fallback for sources that need it.
 
-A TMDB API key is optional. It's used to help split long shows into season folders, not to unlock playback or downloads.
+The optional TMDB API key helps organize long shows into season folders. You can watch and download without it.

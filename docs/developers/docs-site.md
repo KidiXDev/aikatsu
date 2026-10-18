@@ -1,6 +1,6 @@
-# Work on these docs
+# Edit the docs
 
-The site lives entirely in `docs/`. It uses VitePress's default theme, local search, and a small set of sakura color overrides. No app build is needed.
+Edit the site in `docs/`. It uses VitePress's default theme, local search, and sakura colors. You can work on it without building the app.
 
 ## Run it locally
 
@@ -14,7 +14,7 @@ npm run dev
 
 VitePress prints the local URL, usually `http://localhost:5173/aikatsu/`. Changes to Markdown show up while you write.
 
-The dependency is pinned to VitePress `2.0.0-alpha.20`, the current `next` release used by its setup guide. It's a prerelease, so keep the lockfile and check the build when updating it.
+The site pins VitePress `2.0.0-alpha.20`, a prerelease. Keep the lockfile and run the build when updating it.
 
 ## Build and preview
 
@@ -23,7 +23,7 @@ npm run build
 npm run preview
 ```
 
-The static site is written to `docs/.vitepress/dist/`. The build checks internal page links. You can host that directory with a static web host; it doesn't need the Rust core or a server-side app.
+The static site is written to `docs/.vitepress/dist/`. The build checks internal page links. Deploy that directory to a static web host. It needs no Rust core or server-side app.
 
 The site uses `/aikatsu/` as its base path for GitHub Pages. If you move it to a custom domain or another subdirectory, change the `base` constant in `.vitepress/config.ts` and rebuild. A site at the host's root needs `const base = '/'`.
 
@@ -62,4 +62,4 @@ cargo run -p aikatsu-core --bin aikatsu-plugin -- index docs/public/examples/hel
 
 Write like you're helping someone use the app beside you. Use the control names they can see, explain platform differences, and say when a feature depends on a source or metadata service.
 
-Keep examples honest. A made-up URL should be marked as an example, and a working code sample should have a small test. Avoid em dashes and don't claim account sync, automatic plugin installation, or other behavior the app doesn't have.
+Mark made-up URLs as examples and test working code samples. Avoid em dashes and semicolons in prose. Describe what the app supports, including when users need to sign in or download plugins themselves.

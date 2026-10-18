@@ -1,12 +1,12 @@
-# When something doesn't cooperate
+# Troubleshooting
 
-Start with the part that failed. A metadata problem, a source problem, and a video-decoding problem can look similar from the player.
+Find the problem below and try the suggested steps.
 
 ## Search has no sources or no results
 
 Open **Settings > Plugins** (**Settings > Sources** on desktop). Make sure at least one source is installed and switched on. If Kyoko's scripts haven't been downloaded yet, check for updates and use the download icon.
 
-Try a shorter query or a different title spelling. A failed source filter is a clue that the site had a problem, rather than proof that the anime doesn't exist.
+Try a shorter query or a different title spelling. If a source filter shows an error, the site may be failing even when it has the anime.
 
 ## A source stopped working
 
@@ -15,11 +15,11 @@ Try a shorter query or a different title spelling. A failed source filter is a c
 3. Try the search or episode again.
 4. If it still fails, try another source and check the log.
 
-Checking alone doesn't apply the update. You don't need to remove and re-add a repo to install a normal update.
+Use the download icon to install an update after checking. You can keep the repo installed.
 
 Sites can be down, change their layout, block automated requests, or remove a video. Plugin authors can fix some of those problems, but a fresh plugin can't make an unavailable video come back.
 
-## The app says the repo couldn't be checked or updated
+## A repo won't check or update
 
 Check your connection and try again. Aikatsu keeps previously installed scripts when a repo can't be reached.
 
@@ -41,7 +41,7 @@ Turn Anime4K off, then try a lower video quality. If only a heavy shader preset 
 
 Those come from separate metadata services. Not every anime has complete episode information or AniSkip timings. Try refreshing the details page when that action is available. A plain episode list can still play normally.
 
-If a desktop cover fails with **Unsupported image format** for a `.webp` URL, the Qt installation may be missing WebP support. Source builds need Qt Image Formats; packaged Windows builds need `qwebp.dll` in their `imageformats` folder. Install the matching Qt module and restart the app.
+If a desktop cover fails with **Unsupported image format** for a `.webp` URL, the Qt installation may be missing WebP support. Source builds need Qt Image Formats. Packaged Windows builds need `qwebp.dll` in their `imageformats` folder. Install the matching Qt module and restart the app.
 
 ## A download is missing from Android's Library
 
@@ -55,4 +55,4 @@ For jagged or overly sharp text on Windows, include your display scaling percent
 
 Include your app version, platform, source name, anime title, and the steps that led to the problem. If it's repeatable, enable Developer Mode and debug logging in Settings, restart, reproduce it, then export the log.
 
-Read the report before posting it. Remove anything you don't want to share. You can report app bugs in [Aikatsu issues](https://github.com/KidiXDev/aikatsu/issues); source-specific bugs may belong in the plugin repo instead.
+Read the report before posting it. Remove anything you don't want to share. Report app bugs in [Aikatsu issues](https://github.com/KidiXDev/aikatsu/issues). Report source bugs to the plugin repo.

@@ -4,7 +4,7 @@ import { withBase } from 'vitepress'
 
 # Your first plugin
 
-Let's make a source repo small enough to understand in one sitting. The starter below targets a made-up site at `example.org`. Its parser tests work offline, but you'll need to replace the URL and selectors before it can play anything from a real site.
+Copy the starter repo to build your first source plugin. It uses a made-up site at `example.org` and has offline parser tests. Replace its URL and selectors to support a real site.
 
 ## Get the CLI ready
 
@@ -16,7 +16,7 @@ cargo build -p aikatsu-core --bin aikatsu-plugin
 
 The binary is `target/debug/aikatsu-plugin`, or `target/debug/aikatsu-plugin.exe` on Windows. This builds the core CLI without the Qt or Flutter interfaces. You still need Rust and the native build tools its dependencies use.
 
-You can try the included starter straight away:
+Run the starter tests:
 
 ```sh
 cargo run -p aikatsu-core --bin aikatsu-plugin -- test docs/public/examples/hello-source
@@ -43,15 +43,13 @@ hello-source/
     └── example.rhai
 ```
 
-## See what the script does
+## Read the source script
 
 The app calls `search`, `episodes`, `heights`, and `stream`. This starter keeps parsing in separate functions so tests can give them HTML directly.
 
 <<< @/public/examples/hello-source/sources/example.rhai{rust}
 
-This is Rhai, not Rust. The Rust highlighting is only there to make the similar syntax easier to read.
-
-The example expects search cards with `.anime-card`, episode links with `a.episode`, and direct video sources inside `<video>`. Real sites often use different markup, embeds, or JSON endpoints. Treat those selectors as teaching material, not a universal scraper.
+The example expects search cards with `.anime-card`, episode links with `a.episode`, and direct video sources inside `<video>`. Real sites often use different markup, embeds, or JSON endpoints. Replace the selectors to match your site's pages.
 
 ## Adapt it to a real site
 
@@ -62,15 +60,15 @@ The example expects search cards with `.anime-card`, episode links with `a.episo
 5. Resolve the real media URL in `stream`, not just the watch-page URL.
 6. Keep the site's name in errors so people know which source failed.
 
-`page` and `fetch` make HTTP requests. They don't run a site's JavaScript like a browser. If an embed constructs the video URL in JavaScript, you'll need to understand that data flow and reproduce the needed requests or parsing.
+`page` and `fetch` make HTTP requests. They don't run a site's JavaScript like a browser. If JavaScript builds the video URL, reproduce the requests or parsing needed to get it.
 
 ## Keep parser tests close
 
-Here's the starter's test file:
+The starter includes these parser tests:
 
 <<< @/public/examples/hello-source/tests/example.rhai{rust}
 
-Notice that the tests call `parse_search`, `parse_episodes`, and `parse_sources`, not the network-facing functions. That lets you change parsing without waiting on a site.
+The tests call `parse_search`, `parse_episodes`, and `parse_sources` with saved HTML, so you can test parser changes offline.
 
 The app sorts episodes by number after reading the result, so a parser doesn't have to return them in order. Still, each number should refer to the right episode.
 

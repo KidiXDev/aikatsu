@@ -1,8 +1,8 @@
-# Where your sources come from
+# How sources and plugins work
 
-A plugin teaches Aikatsu how to search an anime site, list its episodes, find available resolutions, and turn an episode page into a playable video URL.
+Install source plugins to search anime sites and watch their videos in Aikatsu.
 
-Plugins are small Rhai scripts. They run in Aikatsu's shared Rust core, so the same script can support desktop and Android.
+Plugins are small Rhai scripts that work on desktop and Android.
 
 ## Plugin, source, repo: what's the difference?
 
@@ -18,20 +18,20 @@ In everyday use, a source and its plugin are almost the same thing. You add a re
 
 A repo can contain several sources. You're free to leave only the ones you use enabled.
 
-## Updates need your say-so
+## Check and install updates
 
-Aikatsu checks repos at startup when the setting is enabled. It reads their indexes and counts available plugin changes. It doesn't install those changes or change the running scripts during a check.
+With startup checks enabled, Aikatsu checks your repos and shows how many updates are available. Your installed plugins stay as they are until you download the updates.
 
 If something is available, a dialog offers **Later** or **View updates**. The Plugins page shows a download icon. Use it to apply available updates across your added repos.
 
-You can also check manually, even with startup checks switched off. Adding a new repo is an explicit install action and downloads its scripts straight away.
+You can also check manually, even with startup checks switched off. Adding a new repo downloads its scripts right away.
 
 ## What a plugin can access
 
 Plugins can make network requests, parse HTML and JSON, process strings, and keep a small temporary cache. They can't read your watch history, settings, or arbitrary files through the host API.
 
-They can still send searches and playback requests to websites and choose the video URLs the app opens. Add third-party repos only if you trust their authors. A checksum checks that a download matches its index; it isn't a promise that the author or script is trustworthy.
+They can still send searches and playback requests to websites and choose the video URLs the app opens. Add third-party repos only if you trust their authors. Checksums confirm that downloads match the repo index. They do not prove a script is safe.
 
-## Want to make one?
+## Make a plugin
 
 You don't need to rebuild the whole app for each source change. Start with [your first plugin](../developers/first-plugin.md), test it with the CLI, and publish a repo people can add in Settings.
