@@ -2,7 +2,6 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Dialogs
 import QtQuick.Layouts
 import Aikatsu
 
@@ -29,25 +28,6 @@ Item {
 
     function show(): void {
         refreshHistory();
-        load();
-    }
-
-    function addFolder(url: string): void {
-        const r = Api.get("addLocalFolder", {
-            path: Api.get("localPath", {
-                url: url
-            })
-        });
-        if (r?.error)
-            ApplicationWindow.window.toast(r.error);
-        else
-            load();
-    }
-
-    function removeFolder(path: string): void {
-        Api.get("removeLocalFolder", {
-            path: path
-        });
         load();
     }
 
@@ -119,7 +99,7 @@ Item {
                     type: TextButton.Tonal
                     icon: "create_new_folder"
                     text: "Add folder"
-                    onClicked: folderPicker.open()
+                    onClicked: localFolders.add()
                 }
             }
 
@@ -136,57 +116,12 @@ Item {
             Section {
                 icon: "folder"
                 title: "Your folders"
-            }
 
-            Flow {
-                Layout.fillWidth: true
-                Layout.leftMargin: Theme.padding.extraLarge
-                Layout.rightMargin: Theme.padding.extraLarge
-                visible: root.library.folders.length > 0
-                spacing: Theme.spacing.small
-
-                Repeater {
-                    model: root.library.folders
-
-                    StyledRect {
-                        id: chip
-
-                        required property var modelData
-
-                        implicitWidth: chipRow.implicitWidth + Theme.padding.medium + Theme.padding.extraSmall
-                        implicitHeight: 32
-                        radius: Theme.rounding.small
-                        color: "transparent"
-                        border.width: 1
-                        border.color: Theme.palette.outlineVariant
-
-                        RowLayout {
-                            id: chipRow
-
-                            anchors.verticalCenter: parent.verticalCenter
-                            x: Theme.padding.medium
-                            spacing: Theme.spacing.small
-
-                            MaterialIcon {
-                                text: chip.modelData.available ? "folder" : "folder_off"
-                                size: 12
-                                color: chip.modelData.available ? Theme.palette.onSurfaceVariant : Theme.palette.error
-                            }
-                            StyledText {
-                                Layout.maximumWidth: 420
-                                text: chip.modelData.available ? chip.modelData.path : `${chip.modelData.path}  ·  not connected`
-                                font: Theme.font.label.large
-                                color: Theme.palette.onSurfaceVariant
-                                elide: Text.ElideMiddle
-                            }
-                            IconButton {
-                                type: IconButton.Text
-                                icon: "close"
-                                iconSize: 12
-                                onClicked: root.removeFolder(chip.modelData.path)
-                            }
-                        }
-                    }
+                TextButton {
+                    visible: root.library.folders.length > 0
+                    type: TextButton.Text
+                    text: "Manage"
+                    onClicked: ApplicationWindow.window.openFolders()
                 }
             }
 
@@ -259,10 +194,10 @@ Item {
         }
     }
 
-    FolderDialog {
-        id: folderPicker
+    LocalFolders {
+        id: localFolders
 
-        onAccepted: root.addFolder(selectedFolder.toString())
+        onEdited: root.load()
     }
 
     StyledMenu {
@@ -285,7 +220,14 @@ Item {
                 text: "Show in folder",
                 icon: "folder_open",
                 value: "show"
-            }
+            },
+            ...(target && !target.host ? [
+                    {
+                        text: "Remove from library",
+                        icon: "folder_delete",
+                        value: "remove"
+                    }
+                ] : [])
         ]
         onTriggered: item => {
             if (item.value === "open")
@@ -296,6 +238,8 @@ Item {
                 Qt.openUrlExternally(Api.get("fileUrl", {
                     path: target.path
                 }));
+            else if (item.value === "remove")
+                localFolders.remove(root.library.folders.find(f => f.path === target.root));
         }
     }
 

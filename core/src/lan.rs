@@ -4,7 +4,7 @@
 
 use crate::sources::{Episode, Stream};
 use crate::{db, http, local};
-use anyhow::{Context, Result, anyhow, ensure};
+use anyhow::{Result, anyhow, ensure};
 use axum::body::Body;
 use axum::extract::Request;
 use axum::http::{HeaderValue, Method, StatusCode, header};
@@ -228,10 +228,15 @@ fn url(h: &Host, route: &str, path: &str) -> String {
     u.into()
 }
 
+/// Both UIs' `describe` match "<name> is offline". The URL is dropped since it carries the key.
+fn offline(h: &Host, e: wreq::Error) -> anyhow::Error {
+    anyhow::Error::new(e.without_uri()).context(format!("{} is offline", h.name))
+}
+
 async fn ask(h: &Host, route: &str, path: &str) -> Result<Value> {
-    let resp = http::PLAIN.get(url(h, route, path)).timeout(ASK_TIMEOUT).send().await.with_context(|| format!("Couldn't reach {}", h.name))?;
+    let resp = http::PLAIN.get(url(h, route, path)).timeout(ASK_TIMEOUT).send().await.map_err(|e| offline(h, e))?;
     let code = resp.status();
-    let text = resp.text().await.with_context(|| format!("Couldn't reach {}", h.name))?;
+    let text = resp.text().await.map_err(|e| offline(h, e))?;
     ensure!(code.is_success(), "{}: {}", h.name, if text.is_empty() { code.to_string() } else { text });
     Ok(serde_json::from_str(&text)?)
 }
@@ -275,7 +280,7 @@ pub async fn stream(file: &str) -> Result<Stream> {
                 let text = r.text().await.unwrap_or_default();
                 last = anyhow!("{}: {}", h.name, if text.is_empty() { code.to_string() } else { text });
             }
-            Err(e) => last = anyhow!("Couldn't reach {} ({e})", h.name),
+            Err(e) => last = offline(&h, e),
         }
     }
     Err(last)
@@ -342,6 +347,8 @@ mod tests {
             }
             refresh().await;
             assert!(SERVER.lock().unwrap().is_none(), "sharing stops");
+            let err = format!("{:#}", episodes(&show).await.unwrap_err());
+            assert!(err.starts_with("Desk is offline") && !err.contains("key="), "{err}");
             db::delete_settings_with_prefix(&format!("{RECORD}test-")).unwrap();
         });
         std::fs::remove_dir_all(&root).unwrap();

@@ -74,21 +74,8 @@ class _LibraryPageState extends State<LibraryPage> {
     if ((lib['series'] as List).any((s) => s['host'] == null && s['available'] == true && s['meta'] == null)) Api.call('matchLocal').ignore();
   }
 
-  Future<void> _addFolder() async {
-    try {
-      final path = await _files.invokeMethod<String>('pickFolder');
-      if (path == null) return;
-      Api.get('addLocalFolder', {'path': path});
-      _loadLocal();
-    } on PlatformException catch (e) {
-      toast(e.message ?? "Couldn't open the folder picker");
-    } catch (e) {
-      toast('$e');
-    }
-  }
-
-  void _removeFolder(String path) {
-    Api.get('removeLocalFolder', {'path': path});
+  Future<void> _manageFolders() async {
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => _FoldersPage(folders: _local['folders'] as List)));
     _loadLocal();
   }
 
@@ -107,10 +94,17 @@ class _LibraryPageState extends State<LibraryPage> {
   }
 
   Future<void> _localMenu(Map<String, dynamic> s) async {
-    final choice = await pickFrom(context, _localTitle(s), [('Open', 'open', false), if (s['host'] == null) ('Choose anime…', 'match', false)]);
+    final choice = await pickFrom(context, _localTitle(s), [
+      ('Open', 'open', false),
+      if (s['host'] == null) ...[('Choose anime…', 'match', false), ('Remove from library', 'remove', false)],
+    ]);
     if (!mounted) return;
     if (choice == 'open') _openLocal(s);
     if (choice == 'match') chooseAnime(context, s['path'], s['name']);
+    if (choice == 'remove') {
+      final folder = (_local['folders'] as List).firstWhere((f) => f['path'] == s['root'], orElse: () => {'path': s['root'], 'anime': 1});
+      if (await _removeFolder(context, Map<String, dynamic>.from(folder))) _loadLocal();
+    }
   }
 
   Future<void> _menu(Map<String, dynamic> s) async {
@@ -127,7 +121,6 @@ class _LibraryPageState extends State<LibraryPage> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
-    final c = t.colorScheme;
     final total = _series.fold<num>(0, (sum, s) => sum + toInt(s['size']));
     final shown = _recent ? _history : _continuing;
     final folders = _local['folders'] as List;
@@ -140,7 +133,13 @@ class _LibraryPageState extends State<LibraryPage> {
             child: Row(
               children: [
                 Expanded(child: Text('Library', style: t.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700))),
-                FilledButton.tonalIcon(icon: const Icon(Icons.create_new_folder_rounded), label: const Text('Add folder'), onPressed: _addFolder),
+                FilledButton.tonalIcon(
+                  icon: const Icon(Icons.create_new_folder_rounded),
+                  label: const Text('Add folder'),
+                  onPressed: () async {
+                    if (await _addFolder()) _loadLocal();
+                  },
+                ),
               ],
             ),
           ),
@@ -166,29 +165,12 @@ class _LibraryPageState extends State<LibraryPage> {
           else
             _grid(shown.length, (i) => HistoryCard(shown[i] as Map<String, dynamic>)),
         ],
-        _section(context, 'Your folders', Icons.folder_rounded),
-        if (folders.isNotEmpty)
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            sliver: SliverToBoxAdapter(
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final f in folders)
-                    InputChip(
-                      avatar: Icon(
-                        f['available'] == true ? Icons.folder_rounded : Icons.folder_off_rounded,
-                        size: 18,
-                        color: f['available'] == true ? c.onSurfaceVariant : c.error,
-                      ),
-                      label: Text(f['available'] == true ? f['path'] : '${f['path']}  ·  not connected', overflow: TextOverflow.ellipsis),
-                      onDeleted: () => _removeFolder(f['path']),
-                    ),
-                ],
-              ),
-            ),
-          ),
+        _section(
+          context,
+          'Your folders',
+          Icons.folder_rounded,
+          action: folders.isEmpty ? null : TextButton(onPressed: _manageFolders, child: const Text('Manage')),
+        ),
         if (folders.isEmpty && local.isEmpty)
           const SliverToBoxAdapter(
             child: EmptyState(
@@ -246,7 +228,7 @@ class _LibraryPageState extends State<LibraryPage> {
   }
 }
 
-Widget _section(BuildContext context, String title, IconData icon, {String subtitle = ''}) {
+Widget _section(BuildContext context, String title, IconData icon, {String subtitle = '', Widget? action}) {
   final t = Theme.of(context);
   return SliverPadding(
     padding: const EdgeInsets.fromLTRB(20, 18, 16, 10),
@@ -266,10 +248,120 @@ Widget _section(BuildContext context, String title, IconData icon, {String subti
               ),
             ),
           ],
+          if (action != null) ...[if (subtitle.isEmpty) const Spacer(), action],
         ],
       ),
     ),
   );
+}
+
+/// True once a folder was added.
+Future<bool> _addFolder() async {
+  try {
+    final path = await _files.invokeMethod<String>('pickFolder');
+    if (path == null) return false;
+    Api.get('addLocalFolder', {'path': path});
+    return true;
+  } on PlatformException catch (e) {
+    toast(e.message ?? "Couldn't open the folder picker");
+  } catch (e) {
+    toast('$e');
+  }
+  return false;
+}
+
+/// One holding several anime asks first. True once removed.
+Future<bool> _removeFolder(BuildContext context, Map<String, dynamic> folder) async {
+  final count = toInt(folder['anime']);
+  if (count > 1 && !await confirm(context, 'Remove folder?', 'All $count anime in “${folder['path']}” leave your library.', 'Remove')) {
+    return false;
+  }
+  Api.get('removeLocalFolder', {'path': folder['path']});
+  return true;
+}
+
+/// The folders the Library reads, opened from the Library page.
+class _FoldersPage extends StatefulWidget {
+  const _FoldersPage({required this.folders});
+
+  final List<dynamic> folders;
+
+  @override
+  State<_FoldersPage> createState() => _FoldersPageState();
+}
+
+class _FoldersPageState extends State<_FoldersPage> {
+  late List<dynamic> _folders = widget.folders;
+
+  Future<void> _load() async {
+    final lib = await Api.call('localLibrary', {'lan': false}) as Map<String, dynamic>;
+    if (mounted) setState(() => _folders = lib['folders'] as List);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Folders'),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: FilledButton.tonalIcon(
+              onPressed: () async {
+                if (await _addFolder()) _load();
+              },
+              icon: const Icon(Icons.create_new_folder_rounded),
+              label: const Text('Add'),
+            ),
+          ),
+        ],
+      ),
+      body: _folders.isEmpty
+          ? const EmptyState(face: '( ˘▽˘)っ♨', title: 'No folders yet')
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+              children: [
+                for (final f in _folders.cast<Map<String, dynamic>>())
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Material(
+                      color: c.surfaceContainer,
+                      clipBehavior: Clip.antiAlias,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(22),
+                        side: BorderSide(color: c.outlineVariant.withValues(alpha: 0.5)),
+                      ),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
+                        leading: Icon(
+                          f['available'] == true ? Icons.folder_rounded : Icons.folder_off_rounded,
+                          color: f['available'] == true ? c.primary : c.error,
+                        ),
+                        title: Text(
+                          (f['path'] as String).split(RegExp(r'[\\/]')).lastWhere((p) => p.isNotEmpty, orElse: () => f['path']),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: Text(
+                          '${f['available'] != true ? 'Not connected' : toInt(f['anime']) > 0 ? '${f['anime']} anime' : 'No videos'}  ·  ${f['path']}',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: TextButton(
+                          style: TextButton.styleFrom(foregroundColor: c.error),
+                          onPressed: () async {
+                            if (await _removeFolder(context, f)) _load();
+                          },
+                          child: const Text('Remove'),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+    );
+  }
 }
 
 Widget _grid(int count, Widget Function(int) item) => SliverPadding(

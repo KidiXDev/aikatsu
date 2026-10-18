@@ -15,7 +15,7 @@ Choose **Add folder** and pick a folder.
 
 Aikatsu looks up each folder's anime on AniList by the folder's name. Tags like `[Group]`, `1080p` or `01-12` are ignored. A folder that Aikatsu downloaded links by itself, because its name carries the AniList id. Its later season folders are matched by name.
 
-Removing a folder from the list never touches your files.
+**Manage**, next to **Your folders**, lists your folders with how many anime each holds, including folders on a drive that isn't connected. Add or remove folders there, or remove one from any of its cards: right-click (desktop) or long-press (Android) and choose **Remove from library**. Every anime in that folder leaves the library. Your files are never touched.
 
 ## Choose the right anime
 

@@ -117,7 +117,14 @@ class _PlayerPageState extends State<PlayerPage> {
         _checkFailed();
       }),
       // mpv's errors (media_kit's default log level) in logcat, like the desktop's console.
-      s.log.listen((l) => debugPrint('mpv ${l.level} [${l.prefix}] ${l.text}')),
+      s.log.listen((l) {
+        debugPrint('mpv ${l.level} [${l.prefix}] ${l.text}');
+        // mpv keeps playing audio and subtitles over no picture, and media_kit only reports error-level lines.
+        if (l.prefix == 'cplayer' && l.text.startsWith('Could not initialize video chain') && _phase == _Phase.playing) {
+          _stopFile();
+          _fail(l.text);
+        }
+      }),
       s.buffering.listen(_refresh),
       s.playing.listen(_refresh),
       s.tracks.listen(_refresh),

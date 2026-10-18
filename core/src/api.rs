@@ -143,7 +143,9 @@ pub async fn call(method: &str, args: Value) -> Result<Value> {
         }
         "localLibrary" => {
             let mut lib = serde_json::to_value(tokio::task::spawn_blocking(local::library).await?)?;
-            if let Some(series) = lib["series"].as_array_mut() {
+            if args["lan"].as_bool() != Some(false)
+                && let Some(series) = lib["series"].as_array_mut()
+            {
                 series.extend(crate::lan::library().await);
             }
             Ok(lib)

@@ -37,6 +37,11 @@ ApplicationWindow {
             stack.push(pluginsPage);
     }
 
+    function openFolders(): void {
+        if (stack.currentItem?.objectName !== "foldersPage")
+            stack.push(foldersPage);
+    }
+
     function goTab(i: int): void {
         if (stack.depth > 1)
             stack.pop(null);
@@ -193,7 +198,7 @@ ApplicationWindow {
         ]
     }
 
-    // Dev aid: `aikatsu --screenshot out.png [--tab N | --plugins]` renders, saves, quits.
+    // Dev aid: `aikatsu --screenshot out.png [--tab N | --plugins | --folders]` renders, saves, quits.
     Timer {
         readonly property var args: Qt.application.arguments
         readonly property int at: args.indexOf("--screenshot")
@@ -208,6 +213,8 @@ ApplicationWindow {
                 win.tab = 1; // Search runs it once it's built
             if (args.includes("--plugins"))
                 win.openPlugins();
+            if (args.includes("--folders"))
+                win.openFolders();
         }
         onTriggered: (win.playing ? playerLoader.item : shell).grabToImage(r => {
             r.saveToFile(args[at + 1]);
@@ -352,6 +359,12 @@ ApplicationWindow {
         id: pluginsPage
 
         PluginsPage {}
+    }
+
+    Component {
+        id: foldersPage
+
+        FoldersPage {}
     }
 
     Loader {

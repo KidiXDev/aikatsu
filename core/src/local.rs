@@ -21,11 +21,13 @@ const VIDEO: [&str; 10] = ["mkv", "mp4", "avi", "webm", "m4v", "mov", "ts", "m2t
 pub struct Folder {
     pub path: String,
     pub available: bool,
+    pub anime: usize,
 }
 
 #[derive(Debug, Serialize)]
 pub struct Series {
     pub path: String,
+    pub root: String,
     pub name: String,
     pub available: bool,
     pub episodes: usize,
@@ -51,6 +53,7 @@ pub fn add_root(path: &str) -> Result<()> {
     ensure!(!path.is_empty() && Path::new(path).is_dir(), "Choose a folder");
     let mut list = roots();
     ensure!(!list.iter().any(|r| Path::new(r) == Path::new(path)), "That folder is already in your library");
+    ensure!(!series_dirs(Path::new(path)).is_empty(), "No videos in that folder");
     list.push(path.to_owned());
     set_roots(&list)
 }
@@ -146,12 +149,13 @@ pub fn library() -> Library {
         } else {
             links.keys().filter(|p| Path::new(p).starts_with(&root)).map(|p| (p.clone(), 0)).collect()
         };
+        let before = series.len();
         for (path, episodes) in found {
             if seen.insert(path.clone()) {
-                series.push(Series { name: name_of(Path::new(&path)), available, episodes, meta: links.get(&path).cloned(), path });
+                series.push(Series { name: name_of(Path::new(&path)), available, episodes, meta: links.get(&path).cloned(), path, root: root.clone() });
             }
         }
-        folders.push(Folder { path: root, available });
+        folders.push(Folder { anime: series.len() - before, path: root, available });
     }
     series.sort_by_key(|s| s.name.to_lowercase());
     Library { folders, series }
@@ -292,9 +296,12 @@ mod tests {
         let root_s = root.display().to_string();
         add_root(&root_s).unwrap();
         assert!(add_root(&root_s).is_err(), "no duplicates");
+        assert!(add_root(&root.join("Empty").display().to_string()).is_err(), "no videos");
 
         let lib = library();
         let found: Vec<(String, usize)> = lib.series.iter().map(|s| (s.name.clone(), s.episodes)).collect();
+        assert!(lib.series.iter().all(|s| s.root == root_s));
+        assert_eq!(lib.folders.iter().map(|f| f.anime).collect::<Vec<_>>(), [4]);
         assert_eq!(
             found,
             [
