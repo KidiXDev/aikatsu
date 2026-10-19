@@ -442,8 +442,12 @@ pub fn local_episodes(source: &str, series_url: &str) -> Result<HashMap<String, 
     Ok(rows.into_iter().map(|d| (d.episode_url, d.path)).collect())
 }
 
-/// Forgets a recorded download; false when `path` was never one (so callers
-/// never delete files the app didn't download).
+/// Only recorded downloads may be deleted from disk.
+pub fn download_recorded(path: &str) -> Result<bool> {
+    Ok(database().lock().unwrap().query_row("SELECT EXISTS(SELECT 1 FROM downloads WHERE path = ?1)", [path], |r| r.get(0))?)
+}
+
+/// Forgets a download after its file was deleted.
 pub fn remove_download(path: &str) -> Result<bool> {
     Ok(database().lock().unwrap().execute("DELETE FROM downloads WHERE path = ?1", [path])? > 0)
 }

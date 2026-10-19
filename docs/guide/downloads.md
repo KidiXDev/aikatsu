@@ -32,7 +32,7 @@ Offline files don't make Search, discovery, or new episode listings work without
 
 ## Delete downloads or clear the list
 
-Android's Library lets you delete one episode or all downloaded episodes for a series. That deletes the actual files after confirmation.
+Android's Library lets you delete one episode or all downloaded episodes for a series. That deletes the actual files after confirmation. If a file cannot be deleted, its library entry stays so you can retry.
 
 Clearing finished jobs from Downloads removes them from the list. Your video files stay on the device.
 

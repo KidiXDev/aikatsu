@@ -102,7 +102,7 @@ fn update(id: u64, f: impl FnOnce(&mut Job)) {
 /// empty. Only paths the library recorded are touched.
 pub fn delete(paths: &[String]) -> Result<()> {
     for path in paths {
-        if !db::remove_download(path)? {
+        if !db::download_recorded(path)? {
             tracing::warn!("not deleting {path}: not a recorded download");
             continue;
         }
@@ -112,6 +112,7 @@ pub fn delete(paths: &[String]) -> Result<()> {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => return Err(e).with_context(|| format!("couldn't delete {path}")),
         }
+        db::remove_download(path)?;
         // remove_dir only removes empty folders, so other episodes stay put.
         for dir in file.ancestors().skip(1).take(2) {
             if std::fs::remove_dir(dir).is_err() {
@@ -663,6 +664,24 @@ pub fn episode_path(base: &Path, title: &str, scraped_name: &str, meta: &Meta, e
 mod tests {
     use super::*;
     use crate::meta::SeasonRange;
+
+    #[test]
+    fn failed_file_deletion_keeps_its_record() {
+        let path = std::env::temp_dir().join(format!("aikatsu-delete-test-{}", std::process::id()));
+        std::fs::create_dir_all(&path).unwrap();
+        let path = path.display().to_string();
+        db::add_download(&db::Download { path: path.clone(), ..Default::default() }).unwrap();
+        assert!(delete(std::slice::from_ref(&path)).is_err(), "a directory can't be removed as a file");
+        assert!(db::download_recorded(&path).unwrap());
+        std::fs::remove_dir(&path).unwrap();
+        std::fs::write(&path, b"video").unwrap();
+        delete(std::slice::from_ref(&path)).unwrap();
+        assert!(!db::download_recorded(&path).unwrap());
+        assert!(!Path::new(&path).exists());
+        db::add_download(&db::Download { path: path.clone(), ..Default::default() }).unwrap();
+        delete(std::slice::from_ref(&path)).unwrap();
+        assert!(!db::download_recorded(&path).unwrap(), "an already missing file is forgotten");
+    }
 
     #[tokio::test]
     async fn parts_start_resume_and_trim() {
