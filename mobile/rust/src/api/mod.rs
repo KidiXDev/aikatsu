@@ -14,7 +14,7 @@ pub struct Event {
 
 static EVENTS: Mutex<Option<StreamSink<Event>>> = Mutex::new(None);
 static INIT: Once = Once::new();
-static LOG: OnceLock<aikatsu_core::WorkerGuard> = OnceLock::new();
+static LOG: OnceLock<Result<aikatsu_core::WorkerGuard, String>> = OnceLock::new();
 
 /// `data_dir`: app-private storage (history, logs, Anime4K shaders);
 /// `videos_dir`: the default download folder. A Flutter hot restart calls
@@ -28,9 +28,16 @@ pub fn init(data_dir: String, videos_dir: String, events: StreamSink<Event>) {
             if let Some(sink) = EVENTS.lock().unwrap().as_ref() {
                 let _ = sink.add(Event { kind: kind.to_owned(), json: value.to_string() });
             }
-        });
+        }).map_err(|e| format!("{e:#}"));
         let _ = LOG.set(guard);
     });
+    let (kind, json) = match LOG.get().expect("initialization finished") {
+        Ok(_) => ("ready", "null".to_owned()),
+        Err(e) => ("startupError", serde_json::to_string(e).unwrap()),
+    };
+    if let Some(sink) = EVENTS.lock().unwrap().as_ref() {
+        let _ = sink.add(Event { kind: kind.into(), json });
+    }
 }
 
 fn parse(args: &str) -> serde_json::Value {

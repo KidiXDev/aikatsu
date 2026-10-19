@@ -32,7 +32,7 @@ Offline files don't make Search, discovery, or new episode listings work without
 
 ## Delete downloads or clear the list
 
-Android's Library lets you delete one episode or all downloaded episodes for a series. That deletes the actual files after confirmation.
+Android's Library lets you delete one episode or all downloaded episodes for a series. That deletes the actual files after confirmation. If a file cannot be deleted, its library entry stays so you can retry.
 
 Clearing finished jobs from Downloads removes them from the list. Your video files stay on the device.
 
@@ -41,5 +41,7 @@ Clearing finished jobs from Downloads removes them from the list. Your video fil
 Some sources serve plain video files. Others use HLS, where a video is split into small segments. On desktop, installing `ffmpeg` helps Aikatsu combine HLS downloads into a regular MP4. Without it, an HLS download may remain a `.ts` file.
 
 On Windows, put `ffmpeg.exe` beside `aikatsu.exe` or somewhere on PATH. On Linux, install it with your package manager. The desktop downloader also has a yt-dlp fallback for sources that need it.
+
+HLS playlists that require initialization segments or byte ranges use the desktop yt-dlp fallback. Android reports these as unsupported rather than saving an incomplete video.
 
 The optional TMDB API key helps organize long shows into season folders. You can watch and download without it.

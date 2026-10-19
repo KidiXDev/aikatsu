@@ -23,7 +23,6 @@ use tokio_util::sync::CancellationToken;
 
 const PARTS: u64 = 4;
 const HLS_WORKERS: usize = 24;
-const MIN_SIZE: u64 = 10 << 20;
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct EpisodeRef {
@@ -102,7 +101,7 @@ fn update(id: u64, f: impl FnOnce(&mut Job)) {
 /// empty. Only paths the library recorded are touched.
 pub fn delete(paths: &[String]) -> Result<()> {
     for path in paths {
-        if !db::remove_download(path)? {
+        if !db::download_recorded(path)? {
             tracing::warn!("not deleting {path}: not a recorded download");
             continue;
         }
@@ -112,6 +111,7 @@ pub fn delete(paths: &[String]) -> Result<()> {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => return Err(e).with_context(|| format!("couldn't delete {path}")),
         }
+        db::remove_download(path)?;
         // remove_dir only removes empty folders, so other episodes stay put.
         for dir in file.ancestors().skip(1).take(2) {
             if std::fs::remove_dir(dir).is_err() {
@@ -245,9 +245,9 @@ async fn run(id: u64, src: &str, episode_url: &str, quality: &str, path: &Path) 
         }
     }?;
     let size = tokio::fs::metadata(&result).await.map(|m| m.len()).unwrap_or(0);
-    if size < MIN_SIZE {
+    if size == 0 {
         let _ = tokio::fs::remove_file(&result).await;
-        bail!("download incomplete: file is only {:.1} MB", size as f64 / 1048576.0);
+        bail!("download incomplete: the file is empty");
     }
     Ok(result)
 }
@@ -275,9 +275,24 @@ fn origin(referer: &str) -> Option<String> {
     url::Url::parse(referer).ok().map(|u| u.origin().ascii_serialization()).filter(|o| o != "null")
 }
 
+struct Response {
+    status: u16,
+    len: u64,
+    range: String,
+    validator: String,
+    body: BoxStream<'static, Result<Bytes>>,
+}
+
+#[derive(Serialize, Deserialize, PartialEq)]
+struct Resume {
+    url: String,
+    total: u64,
+    validator: String,
+}
+
 impl Fetcher {
-    /// GET with an optional inclusive byte range → (status, content-length, body stream).
-    async fn open(&self, url: &str, range: Option<(u64, u64)>) -> Result<(u16, u64, BoxStream<'static, Result<Bytes>>)> {
+    /// GET with an optional inclusive byte range and the headers needed for safe resume.
+    async fn open(&self, url: &str, range: Option<(u64, u64)>) -> Result<Response> {
         let range = range.map(|(a, b)| format!("bytes={a}-{b}"));
         if let Fetcher::H3(referer) = self {
             let mut rb = proxy::H3.get(url).header("Referer", referer.as_str());
@@ -286,7 +301,11 @@ impl Fetcher {
             }
             let resp = rb.send().await?;
             let len = resp.content_length().unwrap_or(0);
-            return Ok((resp.status().as_u16(), len, resp.bytes_stream().map_err(anyhow::Error::from).boxed()));
+            let header = |key| resp.headers().get(key).and_then(|v| v.to_str().ok()).unwrap_or_default().to_owned();
+            let range = header("content-range");
+            let validator = header("etag");
+            let validator = if validator.is_empty() || validator.starts_with("W/") { header("last-modified") } else { validator };
+            return Ok(Response { status: resp.status().as_u16(), len, range, validator, body: resp.bytes_stream().map_err(anyhow::Error::from).boxed() });
         }
         let mut rb = match self {
             Fetcher::Chrome => CHROME_H1.get(url),
@@ -305,18 +324,11 @@ impl Fetcher {
         }
         let resp = rb.send().await?;
         let len = resp.content_length().unwrap_or(0);
-        Ok((resp.status().as_u16(), len, resp.bytes_stream().map_err(anyhow::Error::from).boxed()))
-    }
-
-    async fn total_size(&self, url: &str) -> Result<u64> {
-        let (status, len, _) = self.open(url, Some((0, 0))).await?;
-        anyhow::ensure!(status == 206 || status == 200, "HTTP {status} probing file size");
-        if status == 200 {
-            return Ok(len);
-        }
-        // 206: real size is in Content-Range, so ask again without a range for the length.
-        let (_, full, _) = self.open(url, None).await?;
-        Ok(full)
+        let header = |key| resp.headers().get(key).and_then(|v| v.to_str().ok()).unwrap_or_default().to_owned();
+        let range = header("content-range");
+        let validator = header("etag");
+        let validator = if validator.is_empty() || validator.starts_with("W/") { header("last-modified") } else { validator };
+        Ok(Response { status: resp.status().as_u16(), len, range, validator, body: resp.bytes_stream().map_err(anyhow::Error::from).boxed() })
     }
 }
 
@@ -327,28 +339,71 @@ struct Meter {
     started: Instant,
 }
 
-/// 4 parallel Range parts written to `<dest>.partN` (resuming whatever a
-/// previous attempt left), then concatenated. Each part retries a dropped
+/// 4 parallel Range parts written to `<dest>.partN`, resumed only when the
+/// remote identity matches, then concatenated. Each part retries a dropped
 /// connection from where it stopped, up to 20 times without progress.
 async fn ranged(f: &Fetcher, url: &str, dest: &Path, progress: &(impl Fn(u64, u64, f64) + Sync)) -> Result<()> {
-    let total = f.total_size(url).await?;
+    let probe = f.open(url, Some((0, 0))).await?;
+    anyhow::ensure!(matches!(probe.status, 200 | 206), "HTTP {} probing file size", probe.status);
+    if probe.status == 200 {
+        return sequential(probe, dest, progress).await;
+    }
+    let total: u64 = probe.range.strip_prefix("bytes 0-0/").and_then(|s| s.parse().ok()).context("invalid size probe Content-Range")?;
     anyhow::ensure!(total > 0, "content length is zero");
+    if total < PARTS {
+        return sequential(f.open(url, None).await?, dest, progress).await;
+    }
+    let resume = Resume { url: url.to_owned(), total, validator: probe.validator };
+    let metadata = part_path(dest, 0).with_extension("resume.json");
+    let previous = tokio::fs::read(&metadata).await.ok().and_then(|b| serde_json::from_slice::<Resume>(&b).ok());
+    // Without a validator, identical URLs and sizes do not prove the video is unchanged.
+    if resume.validator.is_empty() || previous.as_ref() != Some(&resume) {
+        for i in 0..PARTS {
+            match tokio::fs::remove_file(part_path(dest, i)).await {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(e.into()),
+            }
+        }
+    }
+    tokio::fs::write(&metadata, serde_json::to_vec(&resume)?).await?;
     let chunk = total / PARTS;
     let meter = Meter { done: AtomicU64::new(0), total, started: Instant::now() };
     let parts = (0..PARTS).map(|i| {
         let from = i * chunk;
         let to = if i == PARTS - 1 { total - 1 } else { from + chunk - 1 };
-        part(f, url, dest, i, from, to, &meter, progress)
+        part(f, url, dest, i, from, to, &resume.validator, &meter, progress)
     });
     futures_util::future::try_join_all(parts).await?;
-    let mut out = tokio::fs::File::create(dest).await?;
+    let assembling = dest.with_extension("assembling");
+    let mut out = tokio::fs::File::create(&assembling).await?;
     for i in 0..PARTS {
-        let p = part_path(dest, i);
-        let mut f = tokio::fs::File::open(&p).await?;
+        let mut f = tokio::fs::File::open(part_path(dest, i)).await?;
         tokio::io::copy(&mut f, &mut out).await?;
-        tokio::fs::remove_file(&p).await?;
     }
     out.flush().await?;
+    drop(out);
+    tokio::fs::rename(&assembling, dest).await?;
+    for i in 0..PARTS { tokio::fs::remove_file(part_path(dest, i)).await?; }
+    tokio::fs::remove_file(metadata).await?;
+    Ok(())
+}
+
+async fn sequential(mut response: Response, dest: &Path, progress: &(impl Fn(u64, u64, f64) + Sync)) -> Result<()> {
+    anyhow::ensure!(response.status == 200, "HTTP {} downloading file", response.status);
+    let assembling = dest.with_extension("assembling");
+    let mut file = tokio::fs::File::create(&assembling).await?;
+    let (mut done, started) = (0, Instant::now());
+    while let Some(chunk) = response.body.next().await {
+        let chunk = chunk?;
+        file.write_all(&chunk).await?;
+        done += chunk.len() as u64;
+        progress(done, response.len, done as f64 / started.elapsed().as_secs_f64().max(0.001));
+    }
+    anyhow::ensure!(done > 0 && (response.len == 0 || done == response.len), "download incomplete: {done}/{} bytes", response.len);
+    file.flush().await?;
+    drop(file);
+    tokio::fs::rename(assembling, dest).await?;
     Ok(())
 }
 
@@ -359,7 +414,7 @@ fn part_path(dest: &Path, i: u64) -> PathBuf {
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn part(f: &Fetcher, url: &str, dest: &Path, i: u64, from: u64, to: u64, meter: &Meter, progress: &(impl Fn(u64, u64, f64) + Sync)) -> Result<()> {
+async fn part(f: &Fetcher, url: &str, dest: &Path, i: u64, from: u64, to: u64, validator: &str, meter: &Meter, progress: &(impl Fn(u64, u64, f64) + Sync)) -> Result<()> {
     let path = part_path(dest, i);
     let have = tokio::fs::metadata(&path).await.map(|m| m.len()).unwrap_or(0).min(to - from + 1);
     let mut file = tokio::fs::OpenOptions::new().create(true).write(true).truncate(false).open(&path).await?;
@@ -372,8 +427,10 @@ async fn part(f: &Fetcher, url: &str, dest: &Path, i: u64, from: u64, to: u64, m
         anyhow::ensure!(stale < 20, "part {i}: too many retries at {current}/{to}");
         let before = current;
         match f.open(url, Some((current, to))).await {
-            Ok((206, _, mut body)) => {
-                while let Some(chunk) = body.next().await {
+            Ok(mut response) if response.status == 206 => {
+                anyhow::ensure!(response.range == format!("bytes {current}-{to}/{}", meter.total), "part {i}: unexpected Content-Range");
+                anyhow::ensure!(validator.is_empty() || response.validator == validator, "part {i}: remote file changed");
+                while let Some(chunk) = response.body.next().await {
                     let Ok(chunk) = chunk else { break };
                     let take = chunk.len().min((to + 1 - current) as usize);
                     file.write_all(&chunk[..take]).await?;
@@ -385,7 +442,7 @@ async fn part(f: &Fetcher, url: &str, dest: &Path, i: u64, from: u64, to: u64, m
                     }
                 }
             }
-            Ok((status, ..)) => bail!("part {i}: HTTP {status} (range not supported or link expired)"),
+            Ok(response) => bail!("part {i}: HTTP {} (range not supported or link expired)", response.status),
             Err(e) => tracing::debug!("part {i} request failed: {e}"),
         }
         if current == before {
@@ -428,6 +485,8 @@ fn parse_playlist(text: &str, base: &str) -> Result<Playlist> {
         let separate_audio = lines.iter().any(|l| l.starts_with("#EXT-X-MEDIA:") && l.contains("TYPE=AUDIO") && l.contains("URI="));
         return Ok(Playlist::Master { best: best.ok_or_else(|| anyhow!("master playlist has no variants"))?.1, separate_audio });
     }
+    anyhow::ensure!(!lines.iter().any(|l| l.starts_with("#EXT-X-MAP:") || l.starts_with("#EXT-X-BYTERANGE:")),
+        "HLS initialization segments and byte ranges need yt-dlp");
     let encrypted = lines.iter().any(|l| l.starts_with("#EXT-X-KEY:") && !l.contains("METHOD=NONE"));
     let segments = lines.iter().filter(|l| !l.starts_with('#')).map(|l| abs(l)).collect::<Result<Vec<_>, _>>()?;
     anyhow::ensure!(!segments.is_empty(), "media playlist has no segments");
@@ -439,9 +498,9 @@ async fn hls(url: &str, referer: &str, dest: &Path, id: u64, progress: &(impl Fn
     let get_text = |u: String| {
         let f = &f;
         async move {
-            let (status, _, body) = f.open(&u, None).await?;
-            anyhow::ensure!(status == 200, "playlist HTTP {status}");
-            let bytes: Vec<Bytes> = body.try_collect().await?;
+            let response = f.open(&u, None).await?;
+            anyhow::ensure!(response.status == 200, "playlist HTTP {}", response.status);
+            let bytes: Vec<Bytes> = response.body.try_collect().await?;
             Ok::<_, anyhow::Error>(String::from_utf8_lossy(&bytes.concat()).into_owned())
         }
     };
@@ -470,8 +529,9 @@ async fn hls(url: &str, referer: &str, dest: &Path, id: u64, progress: &(impl Fn
             let f = &f;
             async move {
                 for attempt in 0..3u64 {
-                    if let Ok((200 | 206, _, body)) = f.open(&seg, None).await
-                        && let Ok(parts) = body.try_collect::<Vec<Bytes>>().await
+                    if let Ok(response) = f.open(&seg, None).await
+                        && matches!(response.status, 200 | 206)
+                        && let Ok(parts) = response.body.try_collect::<Vec<Bytes>>().await
                     {
                         return Ok(parts.concat());
                     }
@@ -664,6 +724,99 @@ mod tests {
     use super::*;
     use crate::meta::SeasonRange;
 
+    #[test]
+    fn failed_file_deletion_keeps_its_record() {
+        let path = std::env::temp_dir().join(format!("aikatsu-delete-test-{}", std::process::id()));
+        std::fs::create_dir_all(&path).unwrap();
+        let path = path.display().to_string();
+        db::add_download(&db::Download { path: path.clone(), ..Default::default() }).unwrap();
+        assert!(delete(std::slice::from_ref(&path)).is_err(), "a directory can't be removed as a file");
+        assert!(db::download_recorded(&path).unwrap());
+        std::fs::remove_dir(&path).unwrap();
+        std::fs::write(&path, b"video").unwrap();
+        delete(std::slice::from_ref(&path)).unwrap();
+        assert!(!db::download_recorded(&path).unwrap());
+        assert!(!Path::new(&path).exists());
+        db::add_download(&db::Download { path: path.clone(), ..Default::default() }).unwrap();
+        delete(std::slice::from_ref(&path)).unwrap();
+        assert!(!db::download_recorded(&path).unwrap(), "an already missing file is forgotten");
+    }
+
+    #[tokio::test]
+    async fn resume_requires_matching_remote_identity() {
+        use axum::{Router, http::{HeaderMap, StatusCode}, routing::get};
+        use std::sync::atomic::AtomicUsize;
+        const DATA: &[u8] = b"new video data";
+        let requests = Arc::new(AtomicUsize::new(0));
+        let count = requests.clone();
+        let app = Router::new().route("/video", get(move |headers: HeaderMap, uri: axum::http::Uri| {
+            count.fetch_add(1, Ordering::Relaxed);
+            async move {
+                let range = headers["range"].to_str().unwrap().strip_prefix("bytes=").unwrap();
+                let (from, to) = range.split_once('-').unwrap();
+                let (from, to): (usize, usize) = (from.parse().unwrap(), to.parse().unwrap());
+                (StatusCode::PARTIAL_CONTENT, [("content-range", format!("bytes {from}-{to}/{}", DATA.len())), ("etag", if uri.query().is_some() { String::new() } else { "\"new\"".into() })], &DATA[from..=to])
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let dir = std::env::temp_dir().join(format!("aikatsu-resume-{}-{}", std::process::id(), addr.port()));
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        let dest = dir.join("video.mp4");
+        let url = format!("http://{addr}/video");
+        for scenario in ["matching", "url", "size", "validator", "legacy", "unvalidated"] {
+            let request_url = if scenario == "unvalidated" { format!("{url}?no-validator") } else { url.clone() };
+            let mut identity = Resume { url: request_url.clone(), total: DATA.len() as u64, validator: "\"new\"".into() };
+            match scenario {
+                "url" => identity.url.push_str("?other-quality"),
+                "size" => identity.total += 4,
+                "validator" => identity.validator = "\"old\"".into(),
+                "unvalidated" => identity.validator.clear(),
+                _ => {}
+            }
+            let metadata = part_path(&dest, 0).with_extension("resume.json");
+            if scenario != "legacy" { tokio::fs::write(metadata, serde_json::to_vec(&identity).unwrap()).await.unwrap(); }
+            for i in 0..PARTS {
+                let from = i as usize * (DATA.len() / PARTS as usize);
+                let to = if i == PARTS - 1 { DATA.len() } else { from + DATA.len() / PARTS as usize };
+                let bytes = if scenario == "matching" { DATA[from..to].to_vec() } else { vec![b'x'; to - from] };
+                tokio::fs::write(part_path(&dest, i), bytes).await.unwrap();
+            }
+            requests.store(0, Ordering::Relaxed);
+            ranged(&Fetcher::Plain(String::new()), &request_url, &dest, &|_, _, _| {}).await.unwrap();
+            assert_eq!(tokio::fs::read(&dest).await.unwrap(), DATA, "{scenario}");
+            assert_eq!(requests.load(Ordering::Relaxed), if scenario == "matching" { 1 } else { 5 }, "{scenario}");
+        }
+        server.abort();
+        tokio::fs::remove_dir_all(dir).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn short_files_and_servers_without_ranges_download_successfully() {
+        use axum::{Router, body::{Body, Bytes}, routing::get};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let app = Router::new()
+            .route("/known", get(|| async { "short video" }))
+            .route("/chunked", get(|| async {
+                Body::from_stream(futures_util::stream::iter([Ok::<_, std::io::Error>(Bytes::from_static(b"short video"))]))
+            }));
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let dir = std::env::temp_dir().join(format!("aikatsu-short-{}-{}", std::process::id(), addr.port()));
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        let _no_reload = crate::plugins::SYNCING.lock().await;
+        let script = "fn search(q) {[]} fn episodes(u) {[]} fn heights(u) {[]} fn stream(u, q) {#{url: u}}";
+        crate::plugins::add_local(crate::plugins::Plugin::from_script("short-file", script, "").unwrap());
+        for route in ["known", "chunked"] {
+            let path = dir.join(format!("{route}.mp4"));
+            let result = run(0, "local/short-file", &format!("http://{addr}/{route}"), "", &path).await.unwrap();
+            assert_eq!(tokio::fs::read(result).await.unwrap(), b"short video");
+        }
+        server.abort();
+        tokio::fs::remove_dir_all(dir).await.unwrap();
+    }
+
     #[tokio::test]
     async fn parts_start_resume_and_trim() {
         use axum::{Router, http::{HeaderMap, StatusCode}, routing::get};
@@ -676,7 +829,7 @@ mod tests {
             let (from, to) = range.split_once('-').unwrap();
             let from: usize = from.parse().unwrap();
             let to: usize = to.parse().unwrap();
-            (StatusCode::PARTIAL_CONTENT, &DATA[from..=to])
+            (StatusCode::PARTIAL_CONTENT, [("content-range", format!("bytes {from}-{to}/{}", DATA.len()))], &DATA[from..=to])
         }));
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         let dir = std::env::temp_dir().join(format!("aikatsu-parts-{}-{}", std::process::id(), address.port()));
@@ -688,7 +841,7 @@ mod tests {
                 tokio::fs::write(&path, seed).await.unwrap();
             }
             let meter = Meter { done: AtomicU64::new(0), total: DATA.len() as u64, started: Instant::now() };
-            part(&Fetcher::Plain(String::new()), &format!("http://{address}/video"), &dest, 0, 0, meter.total - 1, &meter, &|_, _, _| {})
+            part(&Fetcher::Plain(String::new()), &format!("http://{address}/video"), &dest, 0, 0, meter.total - 1, "", &meter, &|_, _, _| {})
                 .await
                 .unwrap();
             assert_eq!(tokio::fs::read(&path).await.unwrap(), DATA);
@@ -753,6 +906,10 @@ mod tests {
         assert!(encrypted);
         assert_eq!(segments, ["https://cdn/x/high/seg0.ts", "https://other/seg1.ts"]);
         assert!(parse_playlist("<html>", "https://cdn/").is_err());
+        for tag in ["#EXT-X-MAP:URI=\"init.mp4\"", "#EXT-X-BYTERANGE:100@0"] {
+            let playlist = format!("#EXTM3U\n{tag}\n#EXTINF:4,\nsegment.mp4\n");
+            assert!(parse_playlist(&playlist, "https://cdn/").unwrap_err().to_string().contains("need yt-dlp"));
+        }
     }
 
     /// `cargo test live_download -- --ignored --nocapture` (LIVE_DIR to keep the file).

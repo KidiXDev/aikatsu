@@ -1,13 +1,13 @@
 //! Watch history, settings, downloaded episodes and the lookup cache, stored in SQLite.
 
 use crate::meta::Meta;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::sync::{LazyLock, Mutex};
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -56,16 +56,27 @@ pub fn episode_key(series_key: &str, ep: i64) -> String {
     format!("{series_key}:ep{ep}")
 }
 
-static DB: LazyLock<Mutex<Connection>> = LazyLock::new(|| {
-    let dir = &crate::dirs().data;
-    let _ = std::fs::create_dir_all(dir);
-    let conn = Connection::open(dir.join("progress.db")).unwrap_or_else(|e| {
-        tracing::error!("history database unavailable ({e}); using an in-memory one");
-        Connection::open_in_memory().expect("sqlite")
-    });
-    init(&conn).expect("history schema");
-    Mutex::new(conn)
-});
+static DB: OnceLock<Mutex<Connection>> = OnceLock::new();
+
+fn open_database(dir: &std::path::Path) -> Result<Connection> {
+    std::fs::create_dir_all(dir).context("Couldn't create the app storage folder")?;
+    let path = dir.join("progress.db");
+    let conn = Connection::open(&path).with_context(|| format!("Couldn't open {}", path.display()))?;
+    init(&conn).context("Couldn't initialize the history database")?;
+    Ok(conn)
+}
+
+pub(crate) fn initialize() -> Result<()> {
+    if DB.get().is_none() {
+        let conn = open_database(&crate::dirs().data)?;
+        let _ = DB.set(Mutex::new(conn));
+    }
+    Ok(())
+}
+
+fn database() -> &'static Mutex<Connection> {
+    DB.get_or_init(|| Mutex::new(open_database(&crate::dirs().data).expect("initialize storage before using it")))
+}
 
 fn init(c: &Connection) -> rusqlite::Result<()> {
     c.execute_batch(
@@ -153,7 +164,7 @@ fn migrate(c: &Connection) -> rusqlite::Result<()> {
 /// skips the read). When `fetch` fails, an expired entry (kept up to 30 days)
 /// beats an error on a flaky connection.
 pub async fn cached<T: Serialize + DeserializeOwned>(key: &str, ttl: Duration, refresh: bool, fetch: impl Future<Output = Result<T>>) -> Result<T> {
-    cached_on(&DB, key, ttl, refresh, fetch).await
+    cached_on(database(), key, ttl, refresh, fetch).await
 }
 
 async fn cached_on<T: Serialize + DeserializeOwned>(
@@ -193,13 +204,13 @@ async fn cached_on<T: Serialize + DeserializeOwned>(
 }
 
 pub fn clear_cache() -> Result<()> {
-    DB.lock().unwrap().execute("DELETE FROM cache", [])?;
+    database().lock().unwrap().execute("DELETE FROM cache", [])?;
     Ok(())
 }
 
 /// Bytes of cached lookups.
 pub fn cache_size() -> Result<i64> {
-    Ok(DB.lock().unwrap().query_row("SELECT COALESCE(SUM(LENGTH(value)), 0) FROM cache", [], |r| r.get(0))?)
+    Ok(database().lock().unwrap().query_row("SELECT COALESCE(SUM(LENGTH(value)), 0) FROM cache", [], |r| r.get(0))?)
 }
 
 fn now() -> i64 {
@@ -209,7 +220,7 @@ fn now() -> i64 {
 /// A row's time only moves forward, so a local change beats the copy it
 /// replaces, even one from a clock running ahead.
 pub fn upsert(p: &Progress) -> Result<()> {
-    let c = DB.lock().unwrap();
+    let c = database().lock().unwrap();
     upsert_on(&c, p)?;
     queue_change(&c, "progress", &p.episode_key)
 }
@@ -242,7 +253,7 @@ fn upsert_on(c: &Connection, p: &Progress) -> Result<()> {
 
 /// Marks an episode (not) completed, creating the row if it was never played.
 pub fn set_completed(p: &Progress, completed: bool) -> Result<()> {
-    let c = DB.lock().unwrap();
+    let c = database().lock().unwrap();
     let existing = get_on(&c, &p.episode_key)?;
     let mut row = existing.unwrap_or_else(|| p.clone());
     row.completed = completed;
@@ -280,7 +291,7 @@ fn get_on(c: &Connection, episode_key: &str) -> Result<Option<Progress>> {
 }
 
 pub fn all() -> Result<Vec<Progress>> {
-    all_on(&DB.lock().unwrap())
+    all_on(&database().lock().unwrap())
 }
 
 fn all_on(c: &Connection) -> Result<Vec<Progress>> {
@@ -291,7 +302,7 @@ fn all_on(c: &Connection) -> Result<Vec<Progress>> {
 /// Every saved episode of one series, matched by key or by its source URL
 /// (covers rows saved before the AniList id was known).
 pub fn series_episodes(series_key: &str, series_url: &str) -> Result<Vec<Progress>> {
-    let c = DB.lock().unwrap();
+    let c = database().lock().unwrap();
     let mut st = c.prepare(&format!(
         "SELECT {COLUMNS} FROM media_progress WHERE series_key = ?1 OR series_url = ?2 ORDER BY episode_number"
     ))?;
@@ -299,11 +310,11 @@ pub fn series_episodes(series_key: &str, series_url: &str) -> Result<Vec<Progres
 }
 
 pub fn delete_series(series_key: &str) -> Result<()> {
-    delete_progress_on(&DB.lock().unwrap(), "WHERE series_key = ?1", &[series_key])
+    delete_progress_on(&database().lock().unwrap(), "WHERE series_key = ?1", &[series_key])
 }
 
 pub fn clear_history() -> Result<()> {
-    delete_progress_on(&DB.lock().unwrap(), "", &[])
+    delete_progress_on(&database().lock().unwrap(), "", &[])
 }
 
 /// Queues each deletion, timed after its row so it wins.
@@ -347,7 +358,7 @@ pub struct LibrarySeries {
 }
 
 pub fn add_download(d: &Download) -> Result<()> {
-    add_download_on(&DB.lock().unwrap(), d)
+    add_download_on(&database().lock().unwrap(), d)
 }
 
 fn add_download_on(c: &Connection, d: &Download) -> Result<()> {
@@ -393,7 +404,7 @@ fn downloads_on(c: &Connection, filter: &str, args: &[&str]) -> Result<Vec<Downl
 }
 
 pub fn library() -> Result<Vec<LibrarySeries>> {
-    Ok(group_library(downloads_on(&DB.lock().unwrap(), "", &[])?))
+    Ok(group_library(downloads_on(&database().lock().unwrap(), "", &[])?))
 }
 
 /// Groups by source and series URL (by name for rows without a URL), keeping
@@ -427,34 +438,38 @@ fn group_library(rows: Vec<Download>) -> Vec<LibrarySeries> {
 
 /// Episode URL → file, for one series of one source: those play offline.
 pub fn local_episodes(source: &str, series_url: &str) -> Result<HashMap<String, String>> {
-    let rows = downloads_on(&DB.lock().unwrap(), "WHERE source = ?1 AND series_url = ?2", &[source, series_url])?;
+    let rows = downloads_on(&database().lock().unwrap(), "WHERE source = ?1 AND series_url = ?2", &[source, series_url])?;
     Ok(rows.into_iter().map(|d| (d.episode_url, d.path)).collect())
 }
 
-/// Forgets a recorded download; false when `path` was never one (so callers
-/// never delete files the app didn't download).
+/// Only recorded downloads may be deleted from disk.
+pub fn download_recorded(path: &str) -> Result<bool> {
+    Ok(database().lock().unwrap().query_row("SELECT EXISTS(SELECT 1 FROM downloads WHERE path = ?1)", [path], |r| r.get(0))?)
+}
+
+/// Forgets a download after its file was deleted.
 pub fn remove_download(path: &str) -> Result<bool> {
-    Ok(DB.lock().unwrap().execute("DELETE FROM downloads WHERE path = ?1", [path])? > 0)
+    Ok(database().lock().unwrap().execute("DELETE FROM downloads WHERE path = ?1", [path])? > 0)
 }
 
 pub fn local_links() -> Result<HashMap<String, Meta>> {
-    let c = DB.lock().unwrap();
+    let c = database().lock().unwrap();
     let mut st = c.prepare("SELECT path, meta FROM local_series")?;
     let rows = st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
     Ok(rows.into_iter().map(|(path, meta)| (path, serde_json::from_str(&meta).unwrap_or_default())).collect())
 }
 
 pub fn set_local_link(path: &str, meta: &Meta) -> Result<()> {
-    DB.lock().unwrap().execute("INSERT OR REPLACE INTO local_series (path, meta) VALUES (?1, ?2)", params![path, serde_json::to_string(meta)?])?;
+    database().lock().unwrap().execute("INSERT OR REPLACE INTO local_series (path, meta) VALUES (?1, ?2)", params![path, serde_json::to_string(meta)?])?;
     Ok(())
 }
 
 pub fn setting(key: &str) -> Option<String> {
-    DB.lock().unwrap().query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| r.get(0)).optional().ok().flatten()
+    database().lock().unwrap().query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| r.get(0)).optional().ok().flatten()
 }
 
 pub fn set_setting(key: &str, value: &str) -> Result<()> {
-    let c = DB.lock().unwrap();
+    let c = database().lock().unwrap();
     set_setting_on(&c, key, value)?;
     if crate::sync::synced(key) {
         queue_change(&c, "setting", key)?;
@@ -463,7 +478,7 @@ pub fn set_setting(key: &str, value: &str) -> Result<()> {
 }
 
 pub fn settings_with_prefix(prefix: &str) -> Result<Vec<(String, String)>> {
-    let c = DB.lock().unwrap();
+    let c = database().lock().unwrap();
     let mut st = c.prepare("SELECT key, value FROM settings WHERE substr(key, 1, length(?1)) = ?1")?;
     let rows = st.query_map([prefix], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<rusqlite::Result<_>>()?;
     Ok(rows)
@@ -471,7 +486,7 @@ pub fn settings_with_prefix(prefix: &str) -> Result<Vec<(String, String)>> {
 
 /// Local only: nothing is queued for sync.
 pub fn delete_settings_with_prefix(prefix: &str) -> Result<()> {
-    DB.lock().unwrap().execute("DELETE FROM settings WHERE substr(key, 1, length(?1)) = ?1", [prefix])?;
+    database().lock().unwrap().execute("DELETE FROM settings WHERE substr(key, 1, length(?1)) = ?1", [prefix])?;
     Ok(())
 }
 
@@ -499,7 +514,7 @@ pub struct Change {
 
 /// Unsent changes, oldest first, and the id to pass to `sync_ack`.
 pub fn sync_pending(limit: usize) -> Result<(Vec<Change>, i64)> {
-    sync_pending_on(&DB.lock().unwrap(), limit)
+    sync_pending_on(&database().lock().unwrap(), limit)
 }
 
 fn sync_pending_on(c: &Connection, limit: usize) -> Result<(Vec<Change>, i64)> {
@@ -524,7 +539,7 @@ fn sync_pending_on(c: &Connection, limit: usize) -> Result<(Vec<Change>, i64)> {
 }
 
 pub fn sync_ack(last: i64) -> Result<()> {
-    sync_ack_on(&DB.lock().unwrap(), last)
+    sync_ack_on(&database().lock().unwrap(), last)
 }
 
 fn sync_ack_on(c: &Connection, last: i64) -> Result<()> {
@@ -541,7 +556,7 @@ pub struct Applied {
 /// Applies records newer than the local row or its unsent change. Only synced
 /// settings are accepted, so a server can't change device settings.
 pub fn sync_apply(changes: &[Change]) -> Result<Applied> {
-    sync_apply_on(&DB.lock().unwrap(), changes)
+    sync_apply_on(&database().lock().unwrap(), changes)
 }
 
 fn sync_apply_on(c: &Connection, changes: &[Change]) -> Result<Applied> {
@@ -587,7 +602,7 @@ fn sync_apply_on(c: &Connection, changes: &[Change]) -> Result<Applied> {
 /// At sign-in, history keeps its own times so the newest copy wins; settings
 /// go in at time 0 so the account's win.
 pub fn sync_seed() -> Result<()> {
-    sync_seed_on(&DB.lock().unwrap())
+    sync_seed_on(&database().lock().unwrap())
 }
 
 fn sync_seed_on(c: &Connection) -> Result<()> {
@@ -657,6 +672,17 @@ pub fn group_series(entries: &[Progress]) -> Vec<Series> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unavailable_storage_is_an_error() {
+        let dir = std::env::temp_dir().join(format!("aikatsu-storage-test-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("progress.db")).unwrap();
+        assert!(open_database(&dir).unwrap_err().to_string().contains("Couldn't open"));
+        std::fs::remove_dir_all(&dir).unwrap();
+        std::fs::write(&dir, b"not a directory").unwrap();
+        assert!(open_database(&dir).unwrap_err().to_string().contains("Couldn't create"));
+        std::fs::remove_file(dir).unwrap();
+    }
 
     #[test]
     fn migrates_built_in_source_keys() {

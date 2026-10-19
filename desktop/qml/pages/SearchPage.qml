@@ -8,6 +8,7 @@ import Aikatsu
 Item {
     id: root
 
+    property int requestId: 0
     property string query
     property bool searching
     property var results: []
@@ -21,6 +22,7 @@ Item {
         q = q.trim();
         if (q.length < 2)
             return;
+        const request = ++requestId;
         query = q;
         results = [];
         const st = {};
@@ -37,14 +39,20 @@ Item {
         filter = "";
         searching = true;
         Api.call("search", {
-            query: q
+            query: q,
+            requestId: request
         }, () => {
+            if (request !== root.requestId)
+                return;
             root.searching = false;
             for (const k in root.status)
                 if (root.status[k].state === "loading")
                     root.status[k].state = "error";
             root.status = Object.assign({}, root.status);
-        }, () => root.searching = false);
+        }, () => {
+            if (request === root.requestId)
+                root.searching = false;
+        });
     }
 
     // Dev aid: `--search <q> [--open]` searches on launch and opens the first hit.
@@ -76,7 +84,7 @@ Item {
 
         function onPushed(kind: string, data: var): void {
             // Any source while searching: on first launch the plugins arrive during the search.
-            if (kind !== "searchResult" || !root.searching)
+            if (kind !== "searchResult" || !root.searching || data.requestId !== root.requestId)
                 return;
             const st = Object.assign({}, root.status);
             if (data.error)

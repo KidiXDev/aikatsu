@@ -2,6 +2,7 @@
 //! connections that don't look like a browser.
 
 use anyhow::{Result, anyhow, bail};
+use futures_util::StreamExt;
 use scraper::{Html, Selector};
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
@@ -74,9 +75,14 @@ pub async fn fetch(label: &str, rb: wreq::RequestBuilder) -> Result<Fetched> {
                 if status < 400 {
                     let headers = resp.headers().iter().map(|(k, v)| (k.as_str().to_owned(), String::from_utf8_lossy(v.as_bytes()).into_owned())).collect();
                     let url = resp.uri().to_string();
-                    let body = resp.bytes().await?;
-                    if body.len() > MAX_BODY {
-                        bail!("{label}: response over 8 MiB");
+                    let mut body = Vec::new();
+                    let mut stream = resp.bytes_stream();
+                    while let Some(chunk) = stream.next().await {
+                        let chunk = chunk?;
+                        if chunk.len() > MAX_BODY - body.len() {
+                            bail!("{label}: response over 8 MiB");
+                        }
+                        body.extend_from_slice(&chunk);
                     }
                     return Ok(Fetched { status, headers, url, body: String::from_utf8_lossy(&body).into_owned() });
                 }
@@ -194,4 +200,29 @@ pub fn absolute(base: &str, raw: &str) -> String {
 
 pub fn query_escape(s: &str) -> String {
     url::form_urlencoded::byte_serialize(s.as_bytes()).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn rejects_oversized_bodies_before_the_response_ends() {
+        use axum::{Router, body::{Body, Bytes}, routing::get};
+        use futures_util::stream;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let app = Router::new()
+            .route("/small", get(|| async { "small response" }))
+            .route("/large", get(|| async {
+                let first = stream::once(async { Ok::<_, std::io::Error>(Bytes::from(vec![b'x'; MAX_BODY + 1])) });
+                Body::from_stream(first.chain(stream::pending()))
+            }));
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        assert_eq!(text("test", PLAIN.get(format!("http://{addr}/small"))).await.unwrap(), "small response");
+        let error = tokio::time::timeout(Duration::from_secs(5), fetch("test", PLAIN.get(format!("http://{addr}/large"))))
+            .await.expect("the limit must reject a body without waiting for EOF").err().unwrap();
+        assert!(error.to_string().contains("over 8 MiB"));
+        server.abort();
+    }
 }

@@ -69,13 +69,14 @@ static DEBUG_FLAG: AtomicBool = AtomicBool::new(false);
 /// Call once at startup, before anything else here. `debug` forces debug
 /// logging on top of the stored setting (the desktop `--debug` flag).
 /// Keep the returned guard alive: dropping it flushes the log file.
-pub fn init(dirs: Dirs, debug: bool, push: impl Fn(&str, &Value) + Send + Sync + 'static) -> WorkerGuard {
+pub fn init(dirs: Dirs, debug: bool, push: impl Fn(&str, &Value) + Send + Sync + 'static) -> anyhow::Result<WorkerGuard> {
     assert!(DIRS.set(dirs).is_ok(), "aikatsu_core::init must run first, and once");
     let _ = SINK.set(Box::new(push));
     DEBUG_FLAG.store(debug, Ordering::Relaxed);
+    db::initialize()?;
     let guard = init_logging();
     RT.spawn(sync::run());
-    guard
+    Ok(guard)
 }
 
 pub fn debug_enabled() -> bool {
