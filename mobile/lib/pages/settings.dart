@@ -768,6 +768,14 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               const SizedBox(height: 4),
               Text('GPL-3.0 License  ·  (ﾉ´ヮ`)ﾉ*: ･ﾟ', style: t.textTheme.bodySmall?.copyWith(color: c.outline)),
+              const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: () => const MethodChannel(
+                  'io.github.kidixdev.aikatsu/update',
+                ).invokeMethod('open', {'url': 'https://github.com/KidiXDev/aikatsu'}).ignore(),
+                icon: const GithubMark(size: 18),
+                label: const Text('GitHub'),
+              ),
             ],
           ),
         ),

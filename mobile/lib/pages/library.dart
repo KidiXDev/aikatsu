@@ -125,7 +125,17 @@ class _LibraryPageState extends State<LibraryPage> {
     final shown = _recent ? _history : _continuing;
     final folders = _local['folders'] as List;
     final local = _local['series'] as List;
-    return CustomScrollView(
+    return RefreshIndicator(
+      onRefresh: () async {
+        _reload();
+        try {
+          await _loadLocal();
+        } catch (_) {
+          // Offline or a folder scan failed: the rest of the library already refreshed.
+        }
+      },
+      child: CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
       slivers: [
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(20, 14, 16, 4),
@@ -224,6 +234,7 @@ class _LibraryPageState extends State<LibraryPage> {
         ],
         const SliverToBoxAdapter(child: SizedBox(height: 110)), // clearance for the nav capsule
       ],
+    ),
     );
   }
 }
@@ -483,6 +494,7 @@ class _MatchSheetState extends State<_MatchSheet> {
                             ),
                     )
                   : ListView.builder(
+                      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                       itemCount: _results.length,
                       itemBuilder: (context, i) {
                         final m = _results[i] as Map<String, dynamic>;

@@ -271,6 +271,8 @@ ThemeData buildTheme(Brightness brightness) {
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: cardBorder),
       elevation: 6,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      constraints: const BoxConstraints(minWidth: 560, maxWidth: 560),
     ),
 
     bottomSheetTheme: const BottomSheetThemeData(
