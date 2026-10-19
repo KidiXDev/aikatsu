@@ -18,6 +18,7 @@ class SearchPageState extends State<SearchPage> {
   final _field = TextEditingController();
   late final StreamSubscription<(String, dynamic)> _sub;
   String _query = '';
+  int _request = 0;
   bool _searching = false;
   List<dynamic> _results = [];
 
@@ -35,7 +36,7 @@ class SearchPageState extends State<SearchPage> {
     _sub = Api.pushed.listen((event) {
       final (kind, data) = event;
       // Any source while searching: on first launch the plugins arrive during the search.
-      if (kind != 'searchResult' || !_searching) return;
+      if (kind != 'searchResult' || !_searching || data['requestId'] != _request) return;
       setState(() {
         if (data['error'] != null) {
           _status[data['source']] = {'name': data['name'], 'state': 'error', 'count': 0, 'error': data['error']};
@@ -60,6 +61,7 @@ class SearchPageState extends State<SearchPage> {
   Future<void> _search(String q) async {
     q = q.trim();
     if (q.length < 2) return;
+    final request = ++_request;
     _field.text = q;
     final disabled = Api.setting('disabledSources').split(',').map((x) => x.trim());
     setState(() {
@@ -73,9 +75,9 @@ class SearchPageState extends State<SearchPage> {
       };
     });
     try {
-      await Api.call('search', {'query': q});
+      await Api.call('search', {'query': q, 'requestId': request});
     } catch (_) {}
-    if (!mounted || _query != q) return;
+    if (!mounted || _request != request) return;
     setState(() {
       _searching = false;
       for (final s in _status.values) {

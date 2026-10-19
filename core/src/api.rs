@@ -66,8 +66,8 @@ pub async fn call(method: &str, args: Value) -> Result<Value> {
                 push(
                     "searchResult",
                     &match res {
-                        Ok(items) => json!({ "source": p.id, "name": p.label, "items": items }),
-                        Err(e) => json!({ "source": p.id, "name": p.label, "error": format!("{e:#}") }),
+                        Ok(items) => json!({ "requestId": args["requestId"], "source": p.id, "name": p.label, "items": items }),
+                        Err(e) => json!({ "requestId": args["requestId"], "source": p.id, "name": p.label, "error": format!("{e:#}") }),
                     },
                 )
             })
