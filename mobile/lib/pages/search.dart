@@ -203,6 +203,7 @@ class SearchPageState extends State<SearchPage> {
     final shown = _shown;
     if (shown.isNotEmpty) {
       return GridView.builder(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 110), // clearance for bottom nav
         gridDelegate: posterGrid(),
         itemCount: shown.length,
@@ -234,6 +235,7 @@ class SearchPageState extends State<SearchPage> {
       );
     }
     return SingleChildScrollView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.only(bottom: 110),
       child: Column(
         children: [

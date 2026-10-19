@@ -60,8 +60,26 @@ class _AikatsuAppState extends State<AikatsuApp> {
     theme: buildTheme(Brightness.light),
     darkTheme: buildTheme(Brightness.dark),
     themeMode: _theme,
+    navigatorObservers: [_DismissKeyboardObserver()],
+    // Taps that no widget claims (empty space, text) drop the focus and with it the keyboard.
+    builder: (context, child) => GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: dismissKeyboard,
+      child: child,
+    ),
     home: const Shell(),
   );
+}
+
+void dismissKeyboard() => FocusManager.instance.primaryFocus?.unfocus();
+
+/// A keyboard left open over the next screen, or over the page we just returned to, only gets in the way.
+class _DismissKeyboardObserver extends NavigatorObserver {
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) => dismissKeyboard();
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) => dismissKeyboard();
 }
 
 class Shell extends StatefulWidget {
@@ -93,6 +111,7 @@ class _ShellState extends State<Shell> {
   }
 
   void _go(int tab) {
+    dismissKeyboard();
     if (tab == 0 || tab == 2) Api.historyRevision.value++;
     setState(() => _tab = tab);
   }
@@ -105,27 +124,34 @@ class _ShellState extends State<Shell> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      extendBody: true,
-      body: SafeArea(
-        bottom: false,
-        child: IndexedStack(
-          index: _tab,
-          children: [
-            HomePage(
-              onSearch: (q) {
-                _go(1);
-                if (q.isNotEmpty) _searchKey.currentState?.search(q);
-              },
-            ),
-            SearchPage(key: _searchKey),
-            const LibraryPage(),
-            const DownloadsPage(),
-            const SettingsPage(),
-          ],
+    // Back from any other tab goes Home first instead of closing the app.
+    return PopScope(
+      canPop: _tab == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _go(0);
+      },
+      child: Scaffold(
+        extendBody: true,
+        body: SafeArea(
+          bottom: false,
+          child: IndexedStack(
+            index: _tab,
+            children: [
+              HomePage(
+                onSearch: (q) {
+                  _go(1);
+                  if (q.isNotEmpty) _searchKey.currentState?.search(q);
+                },
+              ),
+              SearchPage(key: _searchKey),
+              const LibraryPage(),
+              const DownloadsPage(),
+              const SettingsPage(),
+            ],
+          ),
         ),
+        bottomNavigationBar: _WarmCapsuleNavBar(selectedIndex: _tab, onSelected: _go),
       ),
-      bottomNavigationBar: _WarmCapsuleNavBar(selectedIndex: _tab, onSelected: _go),
     );
   }
 }
