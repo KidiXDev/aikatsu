@@ -2,12 +2,15 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:aikatsu/api.dart';
+import 'package:aikatsu/download_notifications.dart';
 import 'package:aikatsu/pages/search.dart';
 import 'package:aikatsu/src/rust/api.dart';
 import 'package:aikatsu/theme.dart';
 import 'package:aikatsu/src/rust/frb_generated.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 class _Backend extends Fake implements RustLibApi {
   final events = StreamController<Event>();
@@ -92,4 +95,44 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets('notification service skips cancelled jobs and serializes start and stop', (tester) async {
+    AndroidFlutterLocalNotificationsPlugin.registerWith();
+    const channel = MethodChannel('dexterous.com/flutter/local_notifications');
+    final calls = <String>[];
+    final permission = Completer<bool>();
+    final start = Completer<void>();
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
+      calls.add(call.method);
+      if (call.method == 'requestNotificationsPermission') return permission.future;
+      if (call.method == 'startForegroundService') {
+        await start.future;
+        return null;
+      }
+      if (call.method == 'initialize') return true;
+      return null;
+    });
+    addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, null));
+    await backend.ready();
+    await DownloadNotifications.init();
+    void job(String state) => backend.emit('download', {'id': 1, 'state': state, 'title': 'Test', 'episode': 1});
+    job('queued');
+    await tester.pump();
+    expect(calls, contains('requestNotificationsPermission'));
+    job('cancelled');
+    await tester.pump();
+    permission.complete(true);
+    await tester.pump();
+    expect(calls, isNot(contains('startForegroundService')));
+    job('queued');
+    await tester.pump();
+    expect(calls.where((c) => c == 'startForegroundService'), hasLength(1));
+    job('cancelled');
+    await tester.pump();
+    expect(calls, isNot(contains('stopForegroundService')), reason: 'start must finish before stopping');
+    start.complete();
+    await tester.pump();
+    expect(calls.last, 'stopForegroundService');
+    expect(tester.takeException(), isNull);
+  }, variant: TargetPlatformVariant({TargetPlatform.android}));
 }

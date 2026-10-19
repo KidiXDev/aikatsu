@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -20,6 +22,7 @@ abstract final class DownloadNotifications {
   static const _progressId = 1; // the service's notification; finished episodes use 1000 + job id
   static final _active = <int, Map<String, dynamic>>{}; // job id → job, while queued..downloading
   static bool _serviceRunning = false, _askedPermission = false;
+  static Future<void> _pending = Future.value();
   static DateTime _lastShown = DateTime(0);
 
   /// Bumped when a download notification is tapped, so the app can open Downloads.
@@ -80,11 +83,21 @@ abstract final class DownloadNotifications {
 
   /// One notification for everything in flight: the episode downloading now,
   /// how many others wait, and the combined progress of what has a known size.
-  static Future<void> _refresh({bool force = false}) async {
+  static void _refresh({bool force = false}) {
+    _pending = _pending.then((_) => _update(force: force)).catchError((Object error, StackTrace stack) {
+      debugPrint('Download notification failed: $error');
+    });
+  }
+
+  static Future<void> _update({required bool force}) async {
+    if (_active.isNotEmpty && !_serviceRunning && !_askedPermission) {
+      _askedPermission = true;
+      await _android?.requestNotificationsPermission();
+    }
     if (_active.isEmpty) {
       if (_serviceRunning) {
-        _serviceRunning = false;
         await _android?.stopForegroundService();
+        _serviceRunning = false;
       }
       return;
     }
@@ -106,11 +119,6 @@ abstract final class DownloadNotifications {
       await _plugin.show(id: _progressId, title: title, body: body, notificationDetails: details);
       return;
     }
-    _serviceRunning = true;
-    if (!_askedPermission) {
-      _askedPermission = true;
-      await _android?.requestNotificationsPermission(); // Android 13+; downloads run either way
-    }
     await _android?.startForegroundService(
       id: _progressId,
       title: title,
@@ -119,5 +127,6 @@ abstract final class DownloadNotifications {
       startType: AndroidServiceStartType.startNotSticky, // a restart without the app couldn't update it
       foregroundServiceTypes: {AndroidServiceForegroundType.foregroundServiceTypeDataSync},
     );
+    _serviceRunning = true;
   }
 }
