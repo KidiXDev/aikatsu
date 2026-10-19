@@ -22,7 +22,15 @@ Future<void> main() async {
   final data = await getApplicationSupportDirectory();
   // App-specific external storage: no permission needed, removed with the app.
   final videos = await getExternalStorageDirectory() ?? data;
-  Api.init(data.path, '${videos.path}/Anime');
+  try {
+    await Api.init(data.path, '${videos.path}/Anime');
+  } catch (error) {
+    runApp(MaterialApp(home: Scaffold(body: SafeArea(child: Center(child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Text("Couldn't open app storage.\n\n$error"),
+    ))))));
+    return;
+  }
   await DownloadNotifications.init();
   runApp(const AikatsuApp());
 }

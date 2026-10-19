@@ -21,12 +21,24 @@ abstract final class Api {
   /// Bumped when downloaded episodes are deleted (finished ones arrive as `download` pushes).
   static final libraryRevision = ValueNotifier(0);
 
-  static void init(String dataDir, String videosDir) {
+  static Future<void> init(String dataDir, String videosDir) {
+    final ready = Completer<void>();
     rust.init(dataDir: dataDir, videosDir: videosDir).listen((e) {
       final data = jsonDecode(e.json);
+      if (e.kind == 'ready') {
+        ready.complete();
+        return;
+      }
+      if (e.kind == 'startupError') {
+        ready.completeError(data as String);
+        return;
+      }
       _pushed.add((e.kind, data));
       if (e.kind == 'sync' && data['history'] == true) historyRevision.value++;
+    }, onError: (Object error, StackTrace stack) {
+      if (!ready.isCompleted) ready.completeError(error, stack);
     });
+    return ready.future;
   }
 
   static Future<dynamic> call(String method, [Map<String, Object?> args = const {}]) async =>

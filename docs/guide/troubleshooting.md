@@ -56,3 +56,7 @@ For jagged or overly sharp text on Windows, include your display scaling percent
 Include your app version, platform, source name, anime title, and the steps that led to the problem. If it's repeatable, enable Developer Mode and debug logging in Settings, restart, reproduce it, then export the log.
 
 Read the report before posting it. Remove anything you don't want to share. Report app bugs in [Aikatsu issues](https://github.com/KidiXDev/aikatsu/issues). Report source bugs to the plugin repo.
+
+## App storage cannot open
+
+Aikatsu stops at a storage error instead of saving temporary history. Check that the app's data folder is writable and `progress.db` is a file, then reopen the app. Keep the existing database when fixing permissions so your history stays intact.

@@ -3,7 +3,7 @@
 
 mod bridge;
 
-use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QUrl};
+use cxx_qt_lib::{QByteArray, QGuiApplication, QQmlApplicationEngine, QUrl};
 use anyhow::Context;
 
 fn lock_instance(data: &std::path::Path) -> std::io::Result<Option<std::fs::File>> {
@@ -32,7 +32,7 @@ fn dirs() -> aikatsu_core::Dirs {
 fn main() -> anyhow::Result<()> {
     let dirs = dirs();
     let Some(_instance) = lock_instance(&dirs.data).context("couldn't lock the Aikatsu instance")? else { return Ok(()) };
-    let _log = aikatsu_core::init(dirs, std::env::args().any(|a| a == "--debug"), bridge::push);
+    let startup = aikatsu_core::init(dirs, std::env::args().any(|a| a == "--debug"), bridge::push);
     // SAFETY: single-threaded at this point
     unsafe {
         std::env::set_var("QT_QUICK_CONTROLS_STYLE", "Basic");
@@ -41,7 +41,7 @@ fn main() -> anyhow::Result<()> {
             std::env::set_var("QT_LOGGING_RULES", "qt.network.http2*=false");
         }
         // mpv's console chatter (hwdec probing, audio underruns) only with debug logging.
-        if aikatsu_core::debug_enabled() {
+        if startup.is_ok() && aikatsu_core::debug_enabled() {
             std::env::set_var("AIKATSU_MPV_LOG", "1");
         }
     }
@@ -49,13 +49,24 @@ fn main() -> anyhow::Result<()> {
     bridge::ffi::aikatsu_init();
     let mut engine = QQmlApplicationEngine::new();
     if let Some(mut engine) = engine.as_mut() {
-        bridge::ffi::aikatsu_engine_init(engine.as_mut());
-        engine.load(&QUrl::from("qrc:/qt/qml/Aikatsu/qml/Main.qml"));
+        if let Err(error) = &startup {
+            let message = serde_json::to_string(&format!("Couldn't open app storage.\n\n{error:#}"))?;
+            let qml = format!(r#"import QtQuick
+import QtQuick.Controls
+ApplicationWindow {{
+    visible: true; width: 520; height: 260; title: "Aikatsu"
+    Label {{ anchors.fill: parent; anchors.margins: 24; wrapMode: Text.Wrap; textFormat: Text.PlainText; text: {message} }}
+}}"#);
+            engine.load_data(&QByteArray::from(qml.as_str()), &QUrl::default());
+        } else {
+            bridge::ffi::aikatsu_engine_init(engine.as_mut());
+            engine.load(&QUrl::from("qrc:/qt/qml/Aikatsu/qml/Main.qml"));
+        }
     }
     if let Some(app) = app.as_mut() {
         app.exec();
     }
-    Ok(())
+    startup.map(|_| ())
 }
 
 #[cfg(test)]
