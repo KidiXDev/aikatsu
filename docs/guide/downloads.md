@@ -42,4 +42,6 @@ Some sources serve plain video files. Others use HLS, where a video is split int
 
 On Windows, put `ffmpeg.exe` beside `aikatsu.exe` or somewhere on PATH. On Linux, install it with your package manager. The desktop downloader also has a yt-dlp fallback for sources that need it.
 
+HLS playlists that require initialization segments or byte ranges use the desktop yt-dlp fallback. Android reports these as unsupported rather than saving an incomplete video.
+
 The optional TMDB API key helps organize long shows into season folders. You can watch and download without it.
