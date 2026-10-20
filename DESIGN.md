@@ -423,19 +423,21 @@ Selection shapes differ between the two desktop navigation surfaces, and both ar
 - **Android bottom nav:** the selected item is a primary-filled capsule (999 radius) that animates padding and colour over 260ms `easeOutCubic` inside a BouncyTap.
 
 ### Segmented Control (desktop)
+- **Component:** `SegmentedControl` (`desktop/qml/components/SegmentedControl.qml`), plus the fixed-width `Segmented` variant in Settings.
 - **Track:** a pill on surfaceContainerHighest, 36px tall with a 4px inset.
-- **Segments:** each is 72px wide with a label.large label.
-- **Highlight:** a secondaryContainer pill that slides to the selected segment over FastSpatial (350ms, expressive spring).
+- **Segments:** fixed 72px width in Settings (`segWidth: 72`), or auto-sized to content (with optional leading icon and count pill) on browsing and management surfaces.
+- **Highlight:** a secondaryContainer pill that slides and resizes to the selected segment over FastSpatial (350ms, expressive spring).
 - **Keyboard and accessibility:** Left/Right change the value, focus shows a 2px primary ring, and each segment exposes the RadioButton role.
-- **When to use:** in place of chip rows for single-choice settings.
+- **When to use:** in place of chip rows for single-choice settings and view filters (Watch history, Watchlist status, Downloads filter, AnimePage episode filter, DownloadDialog mode/quality).
 
 Android's equivalent is the themed `SegmentedButton`: a stadium on surfaceContainer, with primaryContainer for the selected segment.
 
 ### State Band (desktop)
-- **Purpose:** the first block in each Settings room. It shows what is true right now (what plays, storage used, sources on, account, app identity) together with its actions.
+- **Component:** `StateBand` (`desktop/qml/components/StateBand.qml`).
+- **Purpose:** the first block in each Settings room and management/collection surface (Library, Downloads, Plugins, Folders). It shows what is true right now (what plays, storage used, sources on, active downloads, collection summary, account, app identity) together with its primary actions.
 - **Fill:** `secondaryContainer` washed to 0.4 alpha in dark mode and 0.5 in light mode.
 - **Shape:** 20px corners, 20px padding, 16px gaps.
-- **Rule:** it must never read as one more settings card.
+- **Rule:** it must never read as one more settings or list card.
 
 ### Room List (desktop Settings)
 - **Column:** 280px on surfaceContainerLow, under the headline.large "Settings" title.
