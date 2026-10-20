@@ -117,7 +117,8 @@ pub async fn login(service: &str) -> Result<Value> {
     let (state, verifier) = (crate::lan::secret(), crate::lan::secret());
     let url = if service == "anilist" {
         ensure!(!ANILIST_CLIENT.is_empty(), "This build has no AniList client.");
-        url::Url::parse_with_params("https://anilist.co/api/v2/oauth/authorize", [("client_id", ANILIST_CLIENT), ("response_type", "token")])?
+        let query = [("client_id", ANILIST_CLIENT), ("response_type", "token"), ("state", &state)];
+        url::Url::parse_with_params("https://anilist.co/api/v2/oauth/authorize", query)?
     } else {
         ensure!(!MAL_CLIENT.is_empty(), "This build has no MyAnimeList client.");
         url::Url::parse_with_params(
@@ -200,10 +201,10 @@ fn finish(service: &'static str, result: Result<()>) -> Html<String> {
     Html(format!("<!doctype html><meta charset=utf-8><title>Aikatsu</title><p>{}</p>", html_escape::encode_text(&message)))
 }
 
-/// `state: None` skips the check: AniList's implicit grant has none.
-fn take_login(service: &str, state: Option<&str>) -> Result<Login> {
+/// Only the login started here, so another page can't connect someone else's account.
+fn take_login(service: &str, q: &HashMap<String, String>) -> Result<Login> {
     let mut pending = LOGIN.lock().unwrap();
-    let ok = pending.as_ref().is_some_and(|l| l.service == service && state.is_none_or(|s| s == l.state));
+    let ok = pending.as_ref().is_some_and(|l| l.service == service && q.get("state") == Some(&l.state));
     ensure!(ok, "Start connecting from Aikatsu again.");
     Ok(pending.take().expect("checked above"))
 }
@@ -216,7 +217,7 @@ fn denied(q: &HashMap<String, String>) -> Result<()> {
 }
 
 async fn anilist_login(q: &HashMap<String, String>) -> Result<()> {
-    take_login("anilist", None)?;
+    take_login("anilist", q)?;
     denied(q)?;
     let token = q.get("access_token").context("AniList sent no token")?;
     let d = graphql(token, "query { Viewer { name } }", json!({})).await?;
@@ -226,7 +227,7 @@ async fn anilist_login(q: &HashMap<String, String>) -> Result<()> {
 }
 
 async fn mal_login(q: &HashMap<String, String>) -> Result<()> {
-    let login = take_login("mal", Some(q.get("state").map_or("", String::as_str)))?;
+    let login = take_login("mal", q)?;
     denied(q)?;
     let code = q.get("code").context("MyAnimeList sent no code")?;
     let t = mal_tokens(&[("grant_type", "authorization_code"), ("code", code), ("code_verifier", &login.verifier), ("redirect_uri", &redirect("mal"))]).await?;
@@ -405,10 +406,12 @@ mod tests {
 
     #[test]
     fn a_login_needs_its_own_state() {
+        let q = |state: &str| HashMap::from([("state".to_owned(), state.to_owned())]);
         *LOGIN.lock().unwrap() = Some(Login { service: "mal", state: "s".into(), verifier: "v".into() });
-        assert!(take_login("mal", Some("wrong")).is_err());
-        assert!(take_login("anilist", None).is_err(), "another service's login");
-        assert!(take_login("mal", Some("s")).is_ok());
-        assert!(take_login("mal", Some("s")).is_err(), "used once");
+        assert!(take_login("mal", &q("wrong")).is_err());
+        assert!(take_login("mal", &HashMap::new()).is_err(), "no state");
+        assert!(take_login("anilist", &q("s")).is_err(), "another service's login");
+        assert!(take_login("mal", &q("s")).is_ok());
+        assert!(take_login("mal", &q("s")).is_err(), "used once");
     }
 }
