@@ -17,12 +17,13 @@ You don't need an email address. There's no automatic password reset, so keep th
 | Syncs | Stays on each device |
 | --- | --- |
 | Watch history and episode progress | Theme |
+| [Watchlist](./trackers.md) | AniList and MyAnimeList connections |
 | Autoplay next episode | Anime4K |
 | Skip intro & outro | Download folder and downloaded videos |
 | Preferred quality | Volume |
 | Which sources are on or off | Discord status (desktop) |
 | Your plugin repos | Debug logging |
-| TMDB API key | |
+| TMDB API key | New episode alerts (Android) |
 
 Your plugin repos appear on every device. Open **Plugins** on each one to download the scripts. They do not install automatically.
 

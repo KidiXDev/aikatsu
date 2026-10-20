@@ -14,7 +14,7 @@ If playback fails before it starts, the player can try other available qualities
 
 Aikatsu saves watch progress locally. Reopen a show from Home to continue, or choose an episode from its details page. When a resume choice appears, you can carry on from your saved position or start again.
 
-Progress is saved on your device. Use [Aikatsu sync](./sync.md) to share it with your other devices. History doesn't sync to AniList or MyAnimeList accounts.
+Progress is saved on your device. Use [Aikatsu sync](./sync.md) to share it with your other devices. To update AniList or MyAnimeList as you watch, [connect them](./trackers.md).
 
 ## Skip openings and endings
 
