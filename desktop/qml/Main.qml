@@ -17,6 +17,8 @@ ApplicationWindow {
     property string closeAction: Api.setting("closeAction")
     readonly property bool trayAvailable: tray.available
     property var lan: Api.get("lanStatus") // library sharing, for Settings and the tray
+    property var downloadJobs: ({})
+    readonly property int activeDownloads: Object.values(downloadJobs).filter(j => ["queued", "resolving", "downloading", "remuxing"].includes(j.state)).length
 
     onTabChanged: openedTabs |= 1 << tab
     onVisibilityChanged: {
@@ -133,6 +135,10 @@ ApplicationWindow {
 
     Component.onCompleted: {
         Theme.mode = Api.setting("theme");
+        const map = {};
+        for (const j of Api.get("downloads"))
+            map[j.id] = j;
+        downloadJobs = map;
         // One dialog at a time: plugin updates can wait for the new version.
         if (Api.setting("autoCheckAppUpdates") === "true")
             Api.call("checkAppUpdate", {}, r => r.newer ? offerAppUpdate(r) : checkPluginUpdates(), () => checkPluginUpdates());
@@ -172,7 +178,7 @@ ApplicationWindow {
                 onClicked: appUpdateDialog.close()
             },
             TextButton {
-                type: TextButton.Text
+                type: TextButton.Tonal
                 text: appUpdateDialog.release.installable ? "Update" : "Download"
                 disabled: appUpdateDialog.busy
                 onClicked: {
@@ -209,7 +215,7 @@ ApplicationWindow {
                 onClicked: pluginUpdatesDialog.close()
             },
             TextButton {
-                type: TextButton.Text
+                type: TextButton.Tonal
                 text: "View updates"
                 onClicked: {
                     pluginUpdatesDialog.close();
@@ -274,7 +280,11 @@ ApplicationWindow {
                 win.lan = Api.get("lanStatus"); // its address may have reached the account
             } else if (kind === "lan")
                 win.lan = data;
-            else if (kind === "show")
+            else if (kind === "download") {
+                const map = Object.assign({}, win.downloadJobs);
+                map[data.id] = data;
+                win.downloadJobs = map;
+            } else if (kind === "show")
                 win.showWindow();
             else if (kind === "appUpdate")
                 appUpdateDialog.progress = data.done / Math.max(1, data.total);
@@ -282,7 +292,7 @@ ApplicationWindow {
 
     }
 
-    Rectangle {
+     Rectangle {
         id: shell
 
         anchors.fill: parent
@@ -296,6 +306,7 @@ ApplicationWindow {
             NavRail {
                 Layout.fillHeight: true
                 current: stack.depth > 1 ? -1 : win.tab
+                activeDownloads: win.activeDownloads
                 onSelected: i => win.goTab(i)
             }
 

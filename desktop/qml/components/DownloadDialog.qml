@@ -34,44 +34,28 @@ StyledDialog {
     icon: "download"
     title: "Download episodes"
 
-    RowLayout {
+    ColumnLayout {
+        Layout.fillWidth: true
         spacing: Theme.spacing.small
-        visible: root.single !== null
 
-        Chip {
-            text: `Episode ${root.single?.num ?? ""}`
-            selected: root.mode === "single"
-            clickable: true
-            onClicked: root.mode = "single"
+        StyledText {
+            text: "Episodes"
+            font: Theme.font.label.large
+            color: Theme.palette.onSurfaceVariant
         }
-        Chip {
-            text: "Range"
-            selected: root.mode === "range"
-            clickable: true
-            onClicked: root.mode = "range"
-        }
-        Chip {
-            text: `All ${root.episodes.length}`
-            selected: root.mode === "all"
-            clickable: true
-            onClicked: root.mode = "all"
-        }
-    }
-    RowLayout {
-        spacing: Theme.spacing.small
-        visible: root.single === null
-
-        Chip {
-            text: "Range"
-            selected: root.mode === "range"
-            clickable: true
-            onClicked: root.mode = "range"
-        }
-        Chip {
-            text: `All ${root.episodes.length}`
-            selected: root.mode === "all"
-            clickable: true
-            onClicked: root.mode = "all"
+        SegmentedControl {
+            options: root.single !== null
+                ? [
+                    ["single", `Ep ${root.single.num}`],
+                    ["range", "Range"],
+                    ["all", `All (${root.episodes.length})`]
+                ]
+                : [
+                    ["range", "Range"],
+                    ["all", `All (${root.episodes.length})`]
+                ]
+            value: root.mode
+            onPicked: v => root.mode = v
         }
     }
 
@@ -90,6 +74,7 @@ StyledDialog {
         }
         StyledText {
             text: "–"
+            color: Theme.palette.onSurfaceVariant
         }
         StyledTextField {
             id: toField
@@ -102,26 +87,25 @@ StyledDialog {
         }
     }
 
-    StyledText {
-        text: "Quality"
-        font: Theme.font.label.large
-        color: Theme.palette.onSurfaceVariant
-    }
-    Flow {
+    ColumnLayout {
         Layout.fillWidth: true
         spacing: Theme.spacing.small
 
-        Repeater {
-            model: ["best", "1080p", "720p", "480p", "360p"]
-
-            Chip {
-                required property string modelData
-
-                text: modelData === "best" ? "Auto" : modelData
-                selected: root.quality === modelData
-                clickable: true
-                onClicked: root.quality = modelData
-            }
+        StyledText {
+            text: "Quality"
+            font: Theme.font.label.large
+            color: Theme.palette.onSurfaceVariant
+        }
+        SegmentedControl {
+            options: [
+                ["best", "Auto"],
+                ["1080p", "1080p"],
+                ["720p", "720p"],
+                ["480p", "480p"],
+                ["360p", "360p"]
+            ]
+            value: root.quality
+            onPicked: v => root.quality = v
         }
     }
 
@@ -132,6 +116,7 @@ StyledDialog {
             onClicked: root.close()
         },
         TextButton {
+            type: TextButton.Tonal
             disabled: root.selection.length === 0
             text: root.selection.length > 1 ? `Download ${root.selection.length} episodes` : "Download"
             onClicked: {

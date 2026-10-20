@@ -12,7 +12,7 @@ ColumnLayout {
     property int tabIndex: 0 // 0 Continue, 1 Recent
     readonly property var continuing: series.filter(s => !s.finished)
     readonly property var shown: tabIndex === 0 ? continuing : series
-    default property alias controls: chipRow.data
+    default property alias controls: trailRow.data
 
     function animeOf(s: var): var {
         return {
@@ -30,32 +30,61 @@ ColumnLayout {
     }
 
     Layout.fillWidth: true
-    spacing: Theme.spacing.extraLarge
+    spacing: Theme.spacing.large
 
     RowLayout {
-        id: chipRow
-
         Layout.fillWidth: true
         Layout.leftMargin: Theme.padding.extraLarge
         Layout.rightMargin: Theme.padding.extraLarge
-        spacing: Theme.spacing.small
+        spacing: Theme.spacing.medium
 
-        Chip {
-            text: `Continue  ${root.continuing.length}`
-            icon: "play_circle"
-            selected: root.tabIndex === 0
-            clickable: true
-            onClicked: root.tabIndex = 0
+        StyledRect {
+            implicitWidth: 34
+            implicitHeight: 34
+            radius: Theme.rounding.medium
+            color: Theme.palette.secondaryContainer
+
+            MaterialIcon {
+                anchors.centerIn: parent
+                text: "history"
+                fill: 1
+                size: 16
+                color: Theme.palette.onSecondaryContainer
+            }
         }
-        Chip {
-            text: `Recent  ${root.series.length}`
-            icon: "history"
-            selected: root.tabIndex === 1
-            clickable: true
-            onClicked: root.tabIndex = 1
+        StyledText {
+            text: "Watch history"
+            font: Theme.font.title.large
         }
+
+        SegmentedControl {
+            Layout.leftMargin: Theme.spacing.small
+            options: [
+                {
+                    value: "0",
+                    label: "Continue",
+                    icon: "play_circle",
+                    count: root.continuing.length
+                },
+                {
+                    value: "1",
+                    label: "Recent",
+                    icon: "history",
+                    count: root.series.length
+                }
+            ]
+            value: String(root.tabIndex)
+            onPicked: v => root.tabIndex = parseInt(v)
+        }
+
         Item {
             Layout.fillWidth: true
+        }
+
+        RowLayout {
+            id: trailRow
+
+            spacing: Theme.spacing.small
         }
     }
 
@@ -98,11 +127,12 @@ ColumnLayout {
 
     EmptyState {
         Layout.alignment: Qt.AlignHCenter
-        Layout.topMargin: Theme.spacing.extraLarge
+        Layout.topMargin: Theme.spacing.large
+        Layout.bottomMargin: Theme.spacing.medium
         visible: root.shown.length === 0 && root.series.length > 0
         face: "٩(◕‿◕｡)۶"
         title: "All caught up!"
-        message: "Check Recent to rewatch."
+        message: "Switch to Recent to rewatch a finished series."
     }
 
     StyledMenu {
@@ -154,7 +184,7 @@ ColumnLayout {
                 onClicked: deleteDialog.close()
             },
             TextButton {
-                type: TextButton.Text
+                type: TextButton.Tonal
                 text: "Remove"
                 onClicked: {
                     Api.get("deleteSeries", {
