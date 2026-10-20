@@ -47,6 +47,22 @@ pub struct Series {
     pub episodes: Vec<Progress>,
 }
 
+/// A show on the watchlist. `status`: watching, planning, completed, paused or dropped.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WatchEntry {
+    pub series_key: String,
+    pub status: String,
+    pub anilist_id: i64,
+    pub mal_id: i64,
+    pub title: String,
+    pub cover: String,
+    pub source: String,
+    pub series_url: String,
+    pub total_episodes: i64,
+    pub updated: i64,
+}
+
 /// `anilist:<id>` when known (shares progress across sources), else `<source>:<url>`.
 pub fn series_key(anilist_id: i64, source: &str, series_url: &str) -> String {
     if anilist_id > 0 { format!("anilist:{anilist_id}") } else { format!("{}:{series_url}", source.to_lowercase()) }
@@ -116,6 +132,18 @@ fn init(c: &Connection) -> rusqlite::Result<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_downloads_series ON downloads(source, series_url);
         CREATE TABLE IF NOT EXISTS local_series (path TEXT PRIMARY KEY NOT NULL, meta TEXT NOT NULL DEFAULT '{}');
+        CREATE TABLE IF NOT EXISTS watchlist (
+            series_key     TEXT    PRIMARY KEY NOT NULL,
+            status         TEXT    NOT NULL,
+            anilist_id     INTEGER NOT NULL DEFAULT 0,
+            mal_id         INTEGER NOT NULL DEFAULT 0,
+            title          TEXT    NOT NULL DEFAULT '',
+            cover          TEXT    NOT NULL DEFAULT '',
+            source         TEXT    NOT NULL DEFAULT '',
+            series_url     TEXT    NOT NULL DEFAULT '',
+            total_episodes INTEGER NOT NULL DEFAULT 0,
+            updated        INTEGER NOT NULL
+        );
         -- Unsent changes. REPLACE gives a changed row a new id, above any already sent.
         CREATE TABLE IF NOT EXISTS sync_dirty (
             id   INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -132,9 +160,19 @@ fn init(c: &Connection) -> rusqlite::Result<()> {
 /// The sources that were built in before plugins; Kyoko carries them on.
 const BUILT_IN: [&str; 6] = ["otakudesu", "samehadaku", "nimegami", "ylnime", "moenime", "astronime"];
 
+fn migrate(c: &Connection) -> rusqlite::Result<()> {
+    migrate_v1(c)?;
+    // v2: versions before the watchlist skipped its records but synced past
+    // them, so pull everything again once. Records older than the local copy change nothing.
+    if c.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))? < 2 {
+        c.execute_batch("UPDATE settings SET value = '0' WHERE key = 'syncCursor'; PRAGMA user_version = 2")?;
+    }
+    Ok(())
+}
+
 /// v1: source keys gained their repo ("otakudesu" → "kyoko/otakudesu"), in
 /// history (and the keys built from it), downloads and the disabled list.
-fn migrate(c: &Connection) -> rusqlite::Result<()> {
+fn migrate_v1(c: &Connection) -> rusqlite::Result<()> {
     let version: i64 = c.query_row("PRAGMA user_version", [], |r| r.get(0))?;
     if version >= 1 {
         return Ok(());
@@ -218,11 +256,14 @@ fn now() -> i64 {
 }
 
 /// A row's time only moves forward, so a local change beats the copy it
-/// replaces, even one from a clock running ahead.
-pub fn upsert(p: &Progress) -> Result<()> {
+/// replaces, even one from a clock running ahead. True when the episode has
+/// just been completed: the player keeps saving it as completed after 90%.
+pub fn upsert(p: &Progress) -> Result<bool> {
     let c = database().lock().unwrap();
+    let was = get_on(&c, &p.episode_key)?.is_some_and(|r| r.completed);
     upsert_on(&c, p)?;
-    queue_change(&c, "progress", &p.episode_key)
+    queue_change(&c, "progress", &p.episode_key)?;
+    Ok(p.completed && !was)
 }
 
 fn queue_change(c: &Connection, kind: &str, key: &str) -> Result<()> {
@@ -252,14 +293,17 @@ fn upsert_on(c: &Connection, p: &Progress) -> Result<()> {
 }
 
 /// Marks an episode (not) completed, creating the row if it was never played.
-pub fn set_completed(p: &Progress, completed: bool) -> Result<()> {
+/// True when it has just been completed.
+pub fn set_completed(p: &Progress, completed: bool) -> Result<bool> {
     let c = database().lock().unwrap();
     let existing = get_on(&c, &p.episode_key)?;
+    let was = existing.as_ref().is_some_and(|r| r.completed);
     let mut row = existing.unwrap_or_else(|| p.clone());
     row.completed = completed;
     row.last_updated = 0;
     upsert_on(&c, &row)?;
-    queue_change(&c, "progress", &row.episode_key)
+    queue_change(&c, "progress", &row.episode_key)?;
+    Ok(completed && !was)
 }
 
 fn row(r: &rusqlite::Row) -> rusqlite::Result<Progress> {
@@ -307,6 +351,140 @@ pub fn series_episodes(series_key: &str, series_url: &str) -> Result<Vec<Progres
         "SELECT {COLUMNS} FROM media_progress WHERE series_key = ?1 OR series_url = ?2 ORDER BY episode_number"
     ))?;
     Ok(st.query_map([series_key, series_url], row)?.collect::<rusqlite::Result<_>>()?)
+}
+
+/// The highest completed episode: the progress a tracker gets.
+pub fn highest_watched(series_key: &str, series_url: &str) -> Result<i64> {
+    highest_watched_on(&database().lock().unwrap(), series_key, series_url)
+}
+
+fn highest_watched_on(c: &Connection, series_key: &str, series_url: &str) -> Result<i64> {
+    Ok(c.query_row(
+        "SELECT COALESCE(MAX(episode_number), 0) FROM media_progress WHERE completed = 1 AND (series_key = ?1 OR (?2 != '' AND series_url = ?2))",
+        [series_key, series_url],
+        |r| r.get(0),
+    )?)
+}
+
+const WATCH_COLUMNS: &str = "series_key, status, anilist_id, mal_id, title, cover, source, series_url, total_episodes, updated";
+
+fn watch_row(r: &rusqlite::Row) -> rusqlite::Result<WatchEntry> {
+    Ok(WatchEntry {
+        series_key: r.get(0)?,
+        status: r.get(1)?,
+        anilist_id: r.get(2)?,
+        mal_id: r.get(3)?,
+        title: r.get(4)?,
+        cover: r.get(5)?,
+        source: r.get(6)?,
+        series_url: r.get(7)?,
+        total_episodes: r.get(8)?,
+        updated: r.get(9)?,
+    })
+}
+
+fn watch_get_on(c: &Connection, series_key: &str) -> Result<Option<WatchEntry>> {
+    Ok(c.query_row(&format!("SELECT {WATCH_COLUMNS} FROM watchlist WHERE series_key = ?1"), [series_key], watch_row).optional()?)
+}
+
+/// Matched like `series_episodes`: by key, else by the source URL of an entry
+/// saved before the AniList id was known.
+fn watch_find_on(c: &Connection, series_key: &str, series_url: &str) -> Result<Option<WatchEntry>> {
+    Ok(c.query_row(
+        &format!("SELECT {WATCH_COLUMNS} FROM watchlist WHERE series_key = ?1 OR (?2 != '' AND series_url = ?2) ORDER BY series_key = ?1 DESC LIMIT 1"),
+        [series_key, series_url],
+        watch_row,
+    )
+    .optional()?)
+}
+
+fn watch_key(e: &WatchEntry) -> String {
+    series_key(e.anilist_id, &e.source, &e.series_url)
+}
+
+pub fn watchlist() -> Result<Vec<WatchEntry>> {
+    let c = database().lock().unwrap();
+    let mut st = c.prepare(&format!("SELECT {WATCH_COLUMNS} FROM watchlist ORDER BY updated DESC"))?;
+    Ok(st.query_map([], watch_row)?.collect::<rusqlite::Result<_>>()?)
+}
+
+/// The entry for a show, found from its AniList id, source and URL.
+pub fn watch_entry(e: &WatchEntry) -> Result<Option<WatchEntry>> {
+    watch_find_on(&database().lock().unwrap(), &watch_key(e), &e.series_url)
+}
+
+/// Saved under the show's existing key, so it never gets a second entry.
+pub fn set_watch(e: &WatchEntry) -> Result<WatchEntry> {
+    let c = database().lock().unwrap();
+    let key = watch_key(e);
+    let e = WatchEntry { series_key: watch_find_on(&c, &key, &e.series_url)?.map_or(key, |w| w.series_key), updated: 0, ..e.clone() };
+    set_watch_on(&c, &e)?;
+    queue_change(&c, "watchlist", &e.series_key)?;
+    Ok(e)
+}
+
+pub fn remove_watch(e: &WatchEntry) -> Result<()> {
+    remove_watch_on(&database().lock().unwrap(), e)
+}
+
+fn remove_watch_on(c: &Connection, e: &WatchEntry) -> Result<()> {
+    let Some(w) = watch_find_on(c, &watch_key(e), &e.series_url)? else { return Ok(()) };
+    let tx = c.unchecked_transaction()?;
+    tx.execute("INSERT OR REPLACE INTO sync_dirty (kind, key, at) VALUES ('watchlist', ?1, ?2)", params![w.series_key, now().max(w.updated + 1)])?;
+    tx.execute("DELETE FROM watchlist WHERE series_key = ?1", [&w.series_key])?;
+    tx.commit()?;
+    Ok(())
+}
+
+fn set_watch_on(c: &Connection, e: &WatchEntry) -> Result<()> {
+    let updated = if e.updated > 0 { e.updated } else { now() };
+    c.execute(
+        "INSERT INTO watchlist (series_key, status, anilist_id, mal_id, title, cover, source, series_url, total_episodes, updated)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)
+         ON CONFLICT(series_key) DO UPDATE SET
+            status=excluded.status, anilist_id=excluded.anilist_id, mal_id=excluded.mal_id, title=excluded.title,
+            cover=CASE WHEN excluded.cover != '' THEN excluded.cover ELSE cover END, source=excluded.source, series_url=excluded.series_url,
+            total_episodes=MAX(total_episodes, excluded.total_episodes), updated=MAX(excluded.updated, updated + 1)",
+        params![e.series_key, e.status, e.anilist_id, e.mal_id, e.title, e.cover, e.source, e.series_url, e.total_episodes, updated],
+    )?;
+    Ok(())
+}
+
+/// After finishing episodes up to `highest`: completed at the last one, a
+/// rewatch stays completed, anything else is watching.
+pub fn next_status(current: &str, highest: i64, total: i64) -> &'static str {
+    if current == "completed" || (total > 0 && highest >= total) { "completed" } else { "watching" }
+}
+
+/// A finished episode puts its show on the watchlist, or moves it along.
+/// `total` is AniList's count, unlike the row's (the released episodes when that's unknown).
+pub fn auto_watch(p: &Progress, total: i64) -> Result<WatchEntry> {
+    auto_watch_on(&database().lock().unwrap(), p, total)
+}
+
+fn auto_watch_on(c: &Connection, p: &Progress, total: i64) -> Result<WatchEntry> {
+    let found = watch_find_on(c, &p.series_key, &p.series_url)?;
+    let mut e = found.clone().unwrap_or_else(|| WatchEntry {
+        series_key: p.series_key.clone(),
+        title: p.series_title.clone(),
+        cover: p.cover.clone(),
+        source: p.source.clone(),
+        series_url: p.series_url.clone(),
+        ..Default::default()
+    });
+    if p.anilist_id > 0 {
+        e.anilist_id = p.anilist_id;
+    }
+    if p.mal_id > 0 {
+        e.mal_id = p.mal_id;
+    }
+    e.total_episodes = e.total_episodes.max(total);
+    e.status = next_status(&e.status, highest_watched_on(c, &p.series_key, &p.series_url)?, e.total_episodes).into();
+    if found.as_ref() != Some(&e) {
+        set_watch_on(c, &WatchEntry { updated: 0, ..e.clone() })?;
+        queue_change(c, "watchlist", &e.series_key)?;
+    }
+    Ok(e)
 }
 
 pub fn delete_series(series_key: &str) -> Result<()> {
@@ -499,7 +677,7 @@ fn setting_on(c: &Connection, key: &str) -> Result<Option<String>> {
     Ok(c.query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| r.get(0)).optional()?)
 }
 
-/// A record on the sync server: a history row (`progress`) or a setting.
+/// A record on the sync server: a history row (`progress`), a `watchlist` entry or a setting.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Change {
@@ -531,6 +709,10 @@ fn sync_pending_on(c: &Connection, limit: usize) -> Result<(Vec<Change>, i64)> {
                 Some(p) => (p.last_updated, Some(serde_json::to_value(&p)?)),
                 None => (at, None),
             },
+            "watchlist" => match watch_get_on(c, &key)? {
+                Some(w) => (w.updated, Some(serde_json::to_value(&w)?)),
+                None => (at, None),
+            },
             _ => (at, setting_on(c, &key)?.map(Value::String)),
         };
         out.push(Change { kind, key, updated_at, deleted: data.is_none(), data: data.unwrap_or_default() });
@@ -549,6 +731,7 @@ fn sync_ack_on(c: &Connection, last: i64) -> Result<()> {
 
 #[derive(Debug, Default, PartialEq)]
 pub struct Applied {
+    /// History or the watchlist.
     pub history: bool,
     pub settings: Vec<String>,
 }
@@ -567,6 +750,7 @@ fn sync_apply_on(c: &Connection, changes: &[Change]) -> Result<Applied> {
             tx.query_row("SELECT at FROM sync_dirty WHERE kind = ?1 AND key = ?2", [&ch.kind, &ch.key], |r| r.get(0)).optional()?;
         let local = match ch.kind.as_str() {
             "progress" => get_on(&tx, &ch.key)?.map(|p| p.last_updated).max(queued),
+            "watchlist" => watch_get_on(&tx, &ch.key)?.map(|w| w.updated).max(queued),
             "setting" if crate::sync::synced(&ch.key) => queued,
             _ => continue,
         };
@@ -581,6 +765,14 @@ fn sync_apply_on(c: &Connection, changes: &[Change]) -> Result<Applied> {
                     applied.history = true;
                 }
                 Err(e) => tracing::warn!("sync: skipped unreadable history row {} ({e})", ch.key),
+            },
+            ("watchlist", true) => applied.history |= tx.execute("DELETE FROM watchlist WHERE series_key = ?1", [&ch.key])? > 0,
+            ("watchlist", false) => match serde_json::from_value::<WatchEntry>(ch.data.clone()) {
+                Ok(w) => {
+                    set_watch_on(&tx, &WatchEntry { series_key: ch.key.clone(), updated: ch.updated_at, ..w })?;
+                    applied.history = true;
+                }
+                Err(e) => tracing::warn!("sync: skipped unreadable watchlist entry {} ({e})", ch.key),
             },
             _ => {
                 let value = ch.data.as_str().filter(|_| !ch.deleted);
@@ -609,6 +801,7 @@ fn sync_seed_on(c: &Connection) -> Result<()> {
     let tx = c.unchecked_transaction()?;
     tx.execute("UPDATE sync_dirty SET at = 0 WHERE kind = 'setting'", [])?;
     tx.execute("INSERT OR IGNORE INTO sync_dirty (kind, key, at) SELECT 'progress', episode_key, last_updated FROM media_progress", [])?;
+    tx.execute("INSERT OR IGNORE INTO sync_dirty (kind, key, at) SELECT 'watchlist', series_key, updated FROM watchlist", [])?;
     for key in crate::sync::SYNCED_SETTINGS {
         tx.execute("INSERT OR IGNORE INTO sync_dirty (kind, key, at) SELECT 'setting', key, 0 FROM settings WHERE key = ?1", [key])?;
     }
@@ -694,11 +887,14 @@ mod tests {
                 VALUES ('otakudesu:https://o/a/:ep1', 'otakudesu:https://o/a/', 'https://o/a/', 'otakudesu', 1, 0, 0, 1),
                        ('anilist:7:ep2', 'anilist:7', 'https://s/b/', 'samehadaku', 2, 0, 0, 1);
             INSERT INTO downloads (path, source, episode_number, finished) VALUES ('/v/a.mp4', 'ylnime', 1, 1);
-            INSERT INTO settings (key, value) VALUES ('disabledSources', 'moenime, astronime');",
+            INSERT INTO settings (key, value) VALUES ('disabledSources', 'moenime, astronime'), ('syncCursor', '57');",
         )
         .unwrap();
         migrate(&c).unwrap();
+        assert_eq!(setting_on(&c, "syncCursor").unwrap().as_deref(), Some("0"), "pulls everything again");
+        set_setting_on(&c, "syncCursor", "9").unwrap();
         migrate(&c).unwrap(); // runs once
+        assert_eq!(setting_on(&c, "syncCursor").unwrap().as_deref(), Some("9"));
         let rows: Vec<(String, String, String)> = c
             .prepare("SELECT episode_key, series_key, source FROM media_progress ORDER BY episode_key")
             .unwrap()
@@ -840,6 +1036,57 @@ mod tests {
         delete_progress_on(&c, "", &[]).unwrap();
         let (pending, _) = sync_pending_on(&c, 10).unwrap();
         assert_eq!(pending.iter().find(|p| p.key == a.episode_key).map(|p| (p.updated_at, p.deleted)), Some((ahead + 2, true)));
+    }
+
+    #[test]
+    fn finished_episodes_move_the_watchlist() {
+        assert_eq!(next_status("planning", 1, 0), "watching");
+        assert_eq!(next_status("dropped", 3, 12), "watching");
+        assert_eq!(next_status("watching", 12, 12), "completed");
+        assert_eq!(next_status("completed", 1, 12), "completed", "a rewatch stays completed");
+
+        let c = Connection::open_in_memory().unwrap();
+        init(&c).unwrap();
+        let first = Progress { total_episodes: 2, ..ep(1, 1400, true, 10) };
+        upsert_on(&c, &first).unwrap();
+        assert_eq!(auto_watch_on(&c, &first, 0).unwrap().status, "watching", "added on the first episode");
+        let last = Progress { total_episodes: 2, ..ep(2, 1400, true, 20) };
+        upsert_on(&c, &last).unwrap();
+        assert_eq!(auto_watch_on(&c, &last, 0).unwrap().status, "watching", "2 released isn't 2 in all");
+        auto_watch_on(&c, &last, 2).unwrap();
+        let e = watch_get_on(&c, &first.series_key).unwrap().unwrap();
+        assert_eq!((e.status.as_str(), e.title.as_str(), e.total_episodes), ("completed", "X", 2));
+    }
+
+    #[test]
+    fn watchlist_syncs_newest_and_deletions() {
+        use serde_json::json;
+        let c = Connection::open_in_memory().unwrap();
+        init(&c).unwrap();
+        let e = WatchEntry { series_key: "anilist:7".into(), status: "planning".into(), anilist_id: 7, updated: 100, ..Default::default() };
+        set_watch_on(&c, &e).unwrap();
+        queue_change(&c, "watchlist", &e.series_key).unwrap();
+        let (pending, last) = sync_pending_on(&c, 10).unwrap();
+        assert_eq!((pending[0].kind.as_str(), pending[0].updated_at, pending[0].deleted), ("watchlist", 100, false));
+        assert_eq!(serde_json::from_value::<WatchEntry>(pending[0].data.clone()).unwrap(), e);
+        sync_ack_on(&c, last).unwrap();
+
+        let remote = |updated_at: i64, status: &str| Change {
+            kind: "watchlist".into(),
+            key: e.series_key.clone(),
+            updated_at,
+            deleted: false,
+            data: json!(WatchEntry { status: status.into(), ..e.clone() }),
+        };
+        assert!(!sync_apply_on(&c, &[remote(90, "dropped")]).unwrap().history, "older than the local entry");
+        assert!(sync_apply_on(&c, &[remote(200, "watching")]).unwrap().history);
+        assert_eq!(watch_get_on(&c, &e.series_key).unwrap().unwrap().status, "watching");
+
+        remove_watch_on(&c, &e).unwrap();
+        let (pending, _) = sync_pending_on(&c, 10).unwrap();
+        assert!(pending[0].deleted && pending[0].updated_at > 200);
+        assert!(!sync_apply_on(&c, &[remote(150, "watching")]).unwrap().history, "an older copy doesn't bring it back");
+        assert!(watch_get_on(&c, &e.series_key).unwrap().is_none());
     }
 
     #[test]

@@ -51,7 +51,7 @@ impl Meta {
     }
 }
 
-const ANILIST: &str = "https://graphql.anilist.co";
+pub(crate) const ANILIST: &str = "https://graphql.anilist.co";
 const MEDIA_FIELDS: &str = "id idMal title { romaji english native } coverImage { extraLarge large color } bannerImage
     description(asHtml: false) genres averageScore episodes status startDate { year month }
     relations { edges { relationType node { id episodes format startDate { year month } } } }";
@@ -286,6 +286,34 @@ pub async fn discover() -> Result<Discover> {
     let v = anilist(&query, json!({ "dayAgo": now - 86400, "now": now, "dayAhead": now + 86400 })).await?;
     anyhow::ensure!(v["data"].is_object(), "AniList returned no data: {}", v["errors"]);
     Ok(parse_discover(&v["data"]))
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct Upcoming {
+    pub anilist_id: i64,
+    pub episode: i64,
+    pub airing_at: i64, // unix seconds
+}
+
+/// The next two weeks of episodes for these shows, soonest first, at most 100
+/// (Android keeps only about 500 alarms per app).
+pub async fn upcoming(ids: &[i64]) -> Result<Vec<Upcoming>> {
+    let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as i64;
+    let query = "query ($ids: [Int], $now: Int, $until: Int, $page: Int) { Page(perPage: 50, page: $page) { pageInfo { hasNextPage }
+        airingSchedules(mediaId_in: $ids, airingAt_greater: $now, airingAt_lesser: $until, sort: TIME) { episode airingAt mediaId } } }";
+    let mut out = Vec::new();
+    for page in 1..=2 {
+        let v = anilist(query, json!({ "ids": ids, "now": now, "until": now + 14 * 86400, "page": page })).await?;
+        anyhow::ensure!(v["data"].is_object(), "AniList returned no data: {}", v["errors"]);
+        let p = &v["data"]["Page"];
+        out.extend(p["airingSchedules"].as_array().into_iter().flatten().filter_map(|s| {
+            Some(Upcoming { anilist_id: s["mediaId"].as_i64()?, episode: s["episode"].as_i64()?, airing_at: s["airingAt"].as_i64()? })
+        }));
+        if p["pageInfo"]["hasNextPage"] != true {
+            break;
+        }
+    }
+    Ok(out)
 }
 
 pub async fn search(query: &str) -> Result<Vec<Meta>> {
