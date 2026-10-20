@@ -8,6 +8,10 @@ Desktop Settings has five sections: **General**, **Watch**, **Library**, **Sourc
 
 **Sync** signs you in to keep watch history and settings the same on your phone and computer. It's under **Account** on desktop and at the top of Settings on Android. See [sync between devices](./sync.md) for what follows you and what stays per device.
 
+## Trackers
+
+**Trackers** (under **Account** on desktop) and **Tracking** (on Android) connect AniList and MyAnimeList. On Android, **Tracking** also turns **New episode alerts** on or off. See [watchlist, AniList and MyAnimeList](./trackers.md).
+
 ## Appearance and playback
 
 | Setting | What it changes | Default |
@@ -46,7 +50,7 @@ The Windows ZIP and builds from source can't replace themselves, so the dialog o
 
 Home has Continue and Recent views. Aikatsu saves episode progress on this device. Use a series card's menu to remove it from history.
 
-Signed in to [sync](./sync.md), removing a series removes it on your other devices too. Metadata from AniList or MyAnimeList doesn't mean Aikatsu is connected to your personal account on those services.
+Signed in to [sync](./sync.md), removing a series removes it on your other devices too. Your AniList or MyAnimeList list updates only after you [connect them](./trackers.md).
 
 ## Downloads
 

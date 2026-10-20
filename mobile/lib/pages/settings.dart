@@ -148,6 +148,7 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   Map<String, dynamic> _s = Api.get('settings');
   Map<String, dynamic> _account = Api.get('syncStatus');
+  Map<String, dynamic> _trackers = Api.get('trackers');
   StreamSubscription<(String, dynamic)>? _pushSub;
   final List<dynamic> _modes = Api.get('anime4kModes');
   bool _shadersInstalled = Api.get('anime4kInstalled');
@@ -163,6 +164,7 @@ class _SettingsPageState extends State<SettingsPage> {
       if (!mounted) return;
       if (e.$1 == 'plugins') setState(() {});
       if (e.$1 == 'anime4k') setState(() => _shaderProgress = toDouble(e.$2['progress']));
+      if (e.$1 == 'tracker') setState(() => _trackers = Map<String, dynamic>.from(e.$2));
       if (e.$1 == 'sync') {
         setState(() {
           _account = Map<String, dynamic>.from(e.$2);
@@ -391,6 +393,15 @@ class _SettingsPageState extends State<SettingsPage> {
     return all.isEmpty ? 'None installed' : (on == all.length ? '${all.length} $noun' : '$on of ${all.length} $noun on');
   }
 
+  Future<void> _connect(String service) async {
+    try {
+      final r = await Api.call('trackerLogin', {'service': service});
+      await const MethodChannel('io.github.kidixdev.aikatsu/update').invokeMethod('open', {'url': r['url']});
+    } catch (e) {
+      toast('$e');
+    }
+  }
+
   void _set(String key, Object value) {
     Api.setSetting(key, value);
     setState(() => _s = Api.get('settings'));
@@ -600,6 +611,29 @@ class _SettingsPageState extends State<SettingsPage> {
               title: const Text('Server', style: TextStyle(fontWeight: FontWeight.w600)),
               subtitle: Text(_host.isEmpty ? 'Default' : _host),
               trailing: TextButton(onPressed: _signedIn ? null : _changeServer, child: const Text('Change')),
+            ),
+          ],
+        ),
+
+        _SettingsGroup(
+          title: 'Tracking',
+          icon: Icons.bookmark_rounded,
+          children: [
+            for (final (key, name) in const [('anilist', 'AniList'), ('mal', 'MyAnimeList')])
+              ListTile(
+                title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: Text(text([_trackers[key]?['error'], _trackers[key]?['user'], 'Not connected'])),
+                trailing: text([_trackers[key]?['user']]).isNotEmpty
+                    ? TextButton(
+                        onPressed: () => setState(() => _trackers = Api.get('trackerLogout', {'service': key})),
+                        child: const Text('Disconnect'),
+                      )
+                    : FilledButton.tonal(onPressed: () => _connect(key), child: const Text('Connect')),
+              ),
+            SwitchListTile(
+              title: const Text('New episode alerts', style: TextStyle(fontWeight: FontWeight.w600)),
+              value: _s['airingAlerts'] == 'true',
+              onChanged: (v) => _set('airingAlerts', v),
             ),
           ],
         ),

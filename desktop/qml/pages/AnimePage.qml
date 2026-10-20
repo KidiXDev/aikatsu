@@ -17,6 +17,7 @@ Item {
     property var episodes: []
     property var info: ({}) // episode number -> {title, filler, recap}
     property var progress: ({}) // episode number -> progress row
+    property var watchEntry: null
     property bool loading: true
     property string error
     property bool descending: false
@@ -50,7 +51,28 @@ Item {
         return firstUnwatched >= 0 ? firstUnwatched : 0;
     }
 
+    function listEntry(): var {
+        return {
+            anilist_id: meta?.anilist_id ?? 0,
+            mal_id: meta?.mal_id ?? 0,
+            title: meta?.title_english || meta?.title_romaji || anime.name,
+            cover: meta?.cover || anime.image || "",
+            source: anime.source,
+            series_url: anime.url,
+            total_episodes: meta?.episodes || 0
+        };
+    }
+
+    function setWatchStatus(status: string): void {
+        Api.get("setWatchStatus", {
+            entry: listEntry(),
+            status: status
+        });
+        ApplicationWindow.window.historyRevision++;
+    }
+
     function refreshProgress(): void {
+        watchEntry = metaLoaded ? Api.get("watchEntry", listEntry()) : null;
         const map = {};
         for (const p of Api.get("seriesProgress", {
             key: seriesKey,
@@ -87,6 +109,7 @@ Item {
             source: anime.source,
             episode_url: ep.url,
             total_episodes: meta?.episodes || episodes.length,
+            meta_episodes: meta?.episodes || 0,
             episode_number: ep.num,
             playback_time: progress[ep.num]?.playback_time ?? 0,
             duration: progress[ep.num]?.duration ?? 0,
@@ -142,6 +165,7 @@ Item {
         }, () => {
             root.meta = {};
             root.metaLoaded = true;
+            root.refreshProgress();
         });
     }
 
@@ -341,6 +365,33 @@ Item {
                             verticalPadding: Theme.padding.medium
                             horizontalPadding: Theme.padding.large
                             onClicked: matchDialog.openFor(root.anime.url, root.anime.name)
+                        }
+                        IconTextButton {
+                            readonly property var current: Api.watchStatuses.find(s => s.value === root.watchEntry?.status)
+
+                            type: TextButton.Tonal
+                            disabled: !root.metaLoaded
+                            icon: current?.icon ?? "bookmark_add"
+                            text: current?.text ?? "Add to list"
+                            verticalPadding: Theme.padding.medium
+                            horizontalPadding: Theme.padding.large
+                            onClicked: watchMenu.toggle()
+
+                            StyledMenu {
+                                id: watchMenu
+
+                                y: parent.height + 4
+                                model: Api.watchStatuses.map(s => Object.assign({
+                                        checked: s.value === root.watchEntry?.status
+                                    }, s)).concat(root.watchEntry ? [
+                                        {
+                                            text: "Remove from list",
+                                            icon: "bookmark_remove",
+                                            value: ""
+                                        }
+                                    ] : [])
+                                onTriggered: item => root.setWatchStatus(item.value)
+                            }
                         }
                         IconButton {
                             type: IconButton.Text

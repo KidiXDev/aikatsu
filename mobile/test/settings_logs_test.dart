@@ -55,6 +55,7 @@ class _Backend extends Fake implements RustLibApi {
         },
       ],
       'syncStatus' => {'signedIn': false, 'server': '', 'error': ''},
+      'trackers' => {'anilist': {'user': '', 'error': ''}, 'mal': {'user': '', 'error': ''}},
       'anime4kInstalled' => true,
       'downloadDir' => '/downloads',
       'version' => 'test',

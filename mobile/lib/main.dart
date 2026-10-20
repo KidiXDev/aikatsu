@@ -6,6 +6,8 @@ import 'package:path_provider/path_provider.dart';
 
 import 'api.dart';
 import 'download_notifications.dart';
+import 'episode_notifications.dart';
+import 'pages/anime.dart';
 import 'pages/downloads.dart';
 import 'pages/home.dart';
 import 'pages/library.dart';
@@ -32,6 +34,7 @@ Future<void> main() async {
     return;
   }
   await DownloadNotifications.init();
+  await EpisodeNotifications.init();
   runApp(const AikatsuApp());
 }
 
@@ -106,14 +109,18 @@ class _ShellState extends State<Shell> {
   void initState() {
     super.initState();
     DownloadNotifications.tapped.addListener(_showDownloads);
+    EpisodeNotifications.opened.addListener(_openNotified);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) checkUpdatesOnOpen(context);
+      if (!mounted) return;
+      checkUpdatesOnOpen(context);
+      _openNotified(); // the app was started from one
     });
   }
 
   @override
   void dispose() {
     DownloadNotifications.tapped.removeListener(_showDownloads);
+    EpisodeNotifications.opened.removeListener(_openNotified);
     _lifecycle.dispose();
     super.dispose();
   }
@@ -128,6 +135,17 @@ class _ShellState extends State<Shell> {
   void _showDownloads() {
     Navigator.popUntil(context, (route) => route.isFirst);
     _go(3);
+  }
+
+  /// A tapped episode notification: that show's page, over the current tab.
+  void _openNotified() {
+    final key = EpisodeNotifications.opened.value;
+    if (key == null) return;
+    EpisodeNotifications.opened.value = null;
+    final w = (Api.get('watchlist') as List).where((w) => w['series_key'] == key).firstOrNull;
+    if (w == null) return;
+    Navigator.popUntil(context, (route) => route.isFirst);
+    openAnime(context, watchedAnime(w));
   }
 
   @override

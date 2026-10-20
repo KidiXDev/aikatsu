@@ -19,6 +19,7 @@ Item {
     property bool checkingPlugins
     property bool checkingApp
     property var account: Api.get("syncStatus")
+    property var trackers: Api.get("trackers")
     property real now: Date.now()
     property var tools: Api.get("tools")
     property var library: listOf(Api.get("library"))
@@ -154,6 +155,8 @@ Item {
                 root.shaderProgress = data.progress;
             if (kind === "download" && data.state === "done")
                 root.library = root.listOf(Api.get("library"));
+            if (kind === "tracker")
+                root.trackers = data;
             if (kind === "sync") {
                 root.account = data;
                 root.now = Date.now();
@@ -1586,6 +1589,49 @@ Item {
                             text: "Change…"
                             disabled: root.account.signedIn
                             onClicked: serverDialog.show()
+                        }
+                    }
+                }
+
+                Group {
+                    title: "Trackers"
+
+                    Repeater {
+                        model: [
+                            {
+                                key: "anilist",
+                                name: "AniList"
+                            },
+                            {
+                                key: "mal",
+                                name: "MyAnimeList"
+                            }
+                        ]
+
+                        SettingRow {
+                            id: trackerRow
+
+                            required property var modelData
+                            readonly property var tracker: root.trackers[modelData.key] ?? {}
+
+                            label: modelData.name
+                            hint: tracker.error || tracker.user || "Not connected"
+                            hintColor: tracker.error ? Theme.palette.error : Theme.palette.onSurfaceVariant
+
+                            TextButton {
+                                type: TextButton.Tonal
+                                text: trackerRow.tracker.user ? "Disconnect" : "Connect"
+                                onClicked: {
+                                    if (trackerRow.tracker.user)
+                                        root.trackers = Api.get("trackerLogout", {
+                                            service: trackerRow.modelData.key
+                                        });
+                                    else
+                                        Api.call("trackerLogin", {
+                                            service: trackerRow.modelData.key
+                                        }, r => Qt.openUrlExternally(r.url), e => ApplicationWindow.window.toast(e));
+                                }
+                            }
                         }
                     }
                 }

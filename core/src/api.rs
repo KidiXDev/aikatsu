@@ -4,7 +4,7 @@
 use crate::plugins::{self, Plugin};
 use crate::push;
 use crate::sources;
-use crate::{anime4k, db, download, local, meta, proxy, sync, update};
+use crate::{anime4k, db, download, local, meta, proxy, sync, tracker, update};
 use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
 
@@ -40,6 +40,7 @@ pub const SETTING_DEFAULTS: &[(&str, &str)] = &[
     ("debug", "false"),
     ("anime4k", "off"),
     ("volume", "100"),
+    ("airingAlerts", "true"),
     (crate::lan::SETTING, "false"),
 ];
 
@@ -130,6 +131,26 @@ pub async fn call(method: &str, args: Value) -> Result<Value> {
         "syncSetServer" => sync::set_server(s(&args, "server")),
         "syncSignIn" => sync::sign_in(s(&args, "username"), s(&args, "password"), args["create"].as_bool().unwrap_or(false)).await,
         "syncSignOut" => Ok(sync::sign_out().await),
+        "trackerLogin" => tracker::login(s(&args, "service")).await,
+        // Watching and planned shows' next two weeks, for Android's notifications.
+        "upcomingEpisodes" => {
+            let shows: Vec<db::WatchEntry> =
+                db::watchlist()?.into_iter().filter(|w| w.anilist_id > 0 && matches!(w.status.as_str(), "watching" | "planning")).collect();
+            let mut ids: Vec<i64> = shows.iter().map(|w| w.anilist_id).collect();
+            ids.sort();
+            ids.dedup();
+            if ids.is_empty() {
+                return Ok(json!([]));
+            }
+            let key = format!("airing:{}", ids.iter().map(i64::to_string).collect::<Vec<_>>().join(","));
+            let airing = db::cached(&key, std::time::Duration::from_secs(6 * 3600), false, meta::upcoming(&ids)).await?;
+            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_secs() as i64;
+            let episodes = airing.iter().filter(|a| a.airing_at > now).filter_map(|a| {
+                let w = shows.iter().find(|w| w.anilist_id == a.anilist_id)?;
+                Some(json!({ "key": w.series_key, "title": w.title, "episode": a.episode, "airing_at": a.airing_at }))
+            });
+            Ok(json!(episodes.collect::<Vec<_>>()))
+        }
         "syncNow" => Ok(sync::sync().await),
         "syncChangePassword" => {
             sync::change_password(s(&args, "current"), s(&args, "password")).await?;
@@ -191,14 +212,38 @@ pub fn get(method: &str, args: Value) -> Result<Value> {
     match method {
         "history" => Ok(serde_json::to_value(db::group_series(&db::all()?))?),
         "seriesProgress" => Ok(serde_json::to_value(db::series_episodes(s(&args, "key"), s(&args, "url"))?)?),
+        // `meta_episodes`: AniList's episode count, 0 when unknown.
         "saveProgress" => {
-            db::upsert(&serde_json::from_value(args)?)?;
+            let total = i(&args, "meta_episodes");
+            let p = serde_json::from_value(args)?;
+            if db::upsert(&p)? {
+                tracker::watched(&p, total)?;
+            }
             Ok(Value::Null)
         }
         "setCompleted" => {
-            db::set_completed(&serde_json::from_value(args["progress"].clone())?, args["completed"].as_bool().unwrap_or(true))?;
+            let p = serde_json::from_value(args["progress"].clone())?;
+            if db::set_completed(&p, args["completed"].as_bool().unwrap_or(true))? {
+                tracker::watched(&p, i(&args["progress"], "meta_episodes"))?;
+            }
             Ok(Value::Null)
         }
+        "watchlist" => Ok(serde_json::to_value(db::watchlist()?)?),
+        "watchEntry" => Ok(serde_json::to_value(db::watch_entry(&serde_json::from_value(args)?)?)?),
+        // An empty status takes the show off the list, here only: trackers keep it.
+        "setWatchStatus" => {
+            let e: db::WatchEntry = serde_json::from_value(args["entry"].clone())?;
+            match s(&args, "status") {
+                "" => db::remove_watch(&e)?,
+                status => {
+                    anyhow::ensure!(tracker::is_status(status), "unknown status {status}");
+                    tracker::set_status(db::set_watch(&db::WatchEntry { status: status.into(), ..e })?);
+                }
+            }
+            Ok(Value::Null)
+        }
+        "trackers" => Ok(tracker::status()),
+        "trackerLogout" => tracker::logout(s(&args, "service")),
         "deleteSeries" => {
             db::delete_series(s(&args, "key"))?;
             Ok(Value::Null)

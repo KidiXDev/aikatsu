@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Release builds shrink unused resources; the notification icon is only named
-     from Dart (download_notifications.dart), so keep it explicitly. -->
+<!-- Release builds shrink unused resources; the notification icons are only named
+     from Dart (download_notifications.dart, episode_notifications.dart), so keep them explicitly. -->
 <resources xmlns:tools="http://schemas.android.com/tools"
-    tools:keep="@drawable/ic_stat_download" />
+    tools:keep="@drawable/ic_stat_download,@drawable/ic_stat_episode" />

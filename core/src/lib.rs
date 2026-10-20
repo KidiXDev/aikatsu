@@ -19,6 +19,7 @@ mod plugins;
 mod proxy;
 mod sources;
 mod sync;
+mod tracker;
 mod update;
 
 use serde_json::Value;
