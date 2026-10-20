@@ -17,6 +17,10 @@ Item {
     property bool discoverFailed
     property real discoverAt // ms; Home re-reads it when shown 10 min later so "Up next" moves on
     readonly property var shelves: discover ? shelvesOf(discover) : []
+    readonly property var spotlight: !hero && discover?.trending?.length > 0 ? discover.trending[0] : null
+    readonly property string bannerSource: hero ? (heroMeta?.banner || heroMeta?.cover || hero.cover || "") : (spotlight?.banner || spotlight?.cover || "")
+    readonly property string posterSource: hero ? (heroMeta?.cover || hero.cover || "") : (spotlight?.cover || "")
+    readonly property string heroDescription: hero ? (heroMeta?.description ?? "") : (spotlight?.description ?? "")
 
     function refresh(): void {
         series = Api.get("history");
@@ -135,14 +139,14 @@ Item {
 
             Item {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 380
+                Layout.preferredHeight: 390
 
                 ClippedImage {
                     id: banner
 
                     anchors.fill: parent
                     radius: 0
-                    source: root.heroMeta?.banner || root.heroMeta?.cover || root.hero?.cover || ""
+                    source: root.bannerSource
                     visible: false
                 }
 
@@ -151,7 +155,7 @@ Item {
                     source: banner
                     autoPaddingEnabled: false // the padded blur halo shows as a line under the hero
                     blurEnabled: true
-                    blur: root.heroMeta?.banner ? 0.15 : 0.9
+                    blur: (root.hero ? root.heroMeta?.banner : root.spotlight?.banner) ? 0.15 : 0.9
                     blurMax: 48
                     saturation: 0.1
                     opacity: banner.status === Image.Ready ? 1 : 0
@@ -185,11 +189,11 @@ Item {
                     gradient: Gradient {
                         GradientStop {
                             position: 0
-                            color: Qt.alpha(Theme.palette.surface, 0.15)
+                            color: Qt.alpha(Theme.palette.surface, 0.12)
                         }
                         GradientStop {
                             position: 0.55
-                            color: Qt.alpha(Theme.palette.surface, 0.55)
+                            color: Qt.alpha(Theme.palette.surface, 0.58)
                         }
                         GradientStop {
                             position: 1
@@ -203,10 +207,10 @@ Item {
                         orientation: Gradient.Horizontal
                         GradientStop {
                             position: 0
-                            color: Qt.alpha(Theme.palette.surface, 0.85)
+                            color: Qt.alpha(Theme.palette.surface, 0.88)
                         }
                         GradientStop {
-                            position: 0.6
+                            position: 0.65
                             color: "transparent"
                         }
                     }
@@ -224,11 +228,11 @@ Item {
                     spacing: Theme.spacing.extraLarge
 
                     ClippedImage {
-                        visible: root.hero !== null
-                        Layout.preferredWidth: 150
-                        Layout.preferredHeight: 218
+                        visible: root.posterSource !== ""
+                        Layout.preferredWidth: 156
+                        Layout.preferredHeight: 226
                         radius: Theme.rounding.large
-                        source: root.heroMeta?.cover || root.hero?.cover || ""
+                        source: root.posterSource
 
                         Elevation {
                             z: -1
@@ -243,43 +247,112 @@ Item {
                         spacing: Theme.spacing.small
 
                         StyledText {
-                            text: root.hero ? "CONTINUE WATCHING" : "おかえり · WELCOME"
-                            font: Theme.font.label.large
-                            color: Theme.palette.primary
-                        }
-                        StyledText {
                             Layout.fillWidth: true
-                            text: root.hero ? (root.heroMeta?.title_english || root.hero.title) : "Aikatsu"
+                            text: root.hero ? (root.heroMeta?.title_english || root.hero.title) : root.spotlight ? (root.spotlight.title_english || root.spotlight.title_romaji) : "Aikatsu"
                             font: Theme.font.display.medium
+                            wrapMode: Text.Wrap
+                            maximumLineCount: 2
                             elide: Text.ElideRight
                         }
+
+                        Flow {
+                            Layout.fillWidth: true
+                            spacing: Theme.spacing.small
+                            visible: root.hero !== null || root.spotlight !== null
+
+                            Chip {
+                                visible: root.hero !== null
+                                selected: true
+                                icon: "play_circle"
+                                text: root.hero ? `Episode ${root.hero.continue_episode}` + (root.hero.total_episodes >= root.hero.continue_episode ? ` of ${root.hero.total_episodes}` : "") : ""
+                            }
+                            Chip {
+                                visible: root.hero !== null
+                                text: root.hero ? Api.sourceName(root.hero.source) : ""
+                            }
+                            Chip {
+                                visible: root.hero === null && root.spotlight !== null
+                                selected: true
+                                icon: "local_fire_department"
+                                text: "Trending now"
+                            }
+                            Chip {
+                                readonly property int sc: (root.hero ? root.heroMeta?.score : root.spotlight?.score) ?? 0
+                                visible: sc > 0
+                                selected: true
+                                tint: Theme.palette.tertiaryContainer
+                                onTint: Theme.palette.onTertiaryContainer
+                                text: `★ ${(sc / 10).toFixed(1)}`
+                            }
+                            Repeater {
+                                model: ((root.hero ? root.heroMeta?.genres : root.spotlight?.genres) ?? []).slice(0, 3)
+
+                                Chip {
+                                    required property string modelData
+
+                                    text: modelData
+                                }
+                            }
+                        }
+
                         StyledText {
                             Layout.fillWidth: true
+                            Layout.maximumWidth: 680
                             visible: text !== ""
-                            text: root.hero ? `Episode ${root.hero.continue_episode}` + (root.hero.total_episodes >= root.hero.continue_episode ? ` of ${root.hero.total_episodes}` : "") + (root.heroMeta?.genres?.length ? "  ·  " + root.heroMeta.genres.slice(0, 3).join(" · ") : "") : ""
+                            text: root.hero || root.spotlight ? root.heroDescription : "Stream anime from your sources or local library, with watch progress and settings synced across devices."
                             color: Theme.palette.onSurfaceVariant
                             wrapMode: Text.Wrap
+                            maximumLineCount: 2
+                            elide: Text.ElideRight
                             font: Theme.font.body.large
+                            lineHeight: 1.15
                         }
+
                         RowLayout {
-                            Layout.topMargin: Theme.spacing.medium
+                            Layout.topMargin: Theme.spacing.small
                             spacing: Theme.spacing.small
 
                             IconTextButton {
                                 icon: root.hero ? "play_arrow" : "search"
-                                text: root.hero ? `Continue  ·  Ep ${root.hero.continue_episode}` : "Find something to watch"
+                                text: root.hero ? `Continue  ·  Ep ${root.hero.continue_episode}` : root.spotlight ? "Search sources" : "Find something to watch"
                                 verticalPadding: Theme.padding.medium
                                 horizontalPadding: Theme.padding.large
-                                onClicked: root.hero ? ApplicationWindow.window.openAnime(history.animeOf(root.hero), root.hero.continue_episode) : ApplicationWindow.window.goTab(1)
+                                onClicked: {
+                                    if (root.hero)
+                                        ApplicationWindow.window.openAnime(history.animeOf(root.hero), root.hero.continue_episode);
+                                    else if (root.spotlight)
+                                        ApplicationWindow.window.searchFor(root.spotlight.title_romaji || root.spotlight.title_english);
+                                    else
+                                        ApplicationWindow.window.goTab(1);
+                                }
                             }
                             IconTextButton {
-                                visible: root.hero !== null
+                                visible: root.hero !== null || root.spotlight !== null
                                 type: TextButton.Tonal
                                 icon: "info"
                                 text: "Details"
                                 verticalPadding: Theme.padding.medium
                                 horizontalPadding: Theme.padding.large
-                                onClicked: ApplicationWindow.window.openAnime(history.animeOf(root.hero), 0)
+                                onClicked: {
+                                    if (root.hero)
+                                        ApplicationWindow.window.openAnime(history.animeOf(root.hero), 0);
+                                    else if (root.spotlight) {
+                                        infoDialog.item = {
+                                            meta: root.spotlight,
+                                            note: ""
+                                        };
+                                        infoDialog.open();
+                                    }
+                                }
+                            }
+                            IconTextButton {
+                                visible: root.hero === null && root.spotlight === null
+                                type: TextButton.Tonal
+                                icon: "folder_open"
+                                text: "Open library"
+                                verticalPadding: Theme.padding.medium
+                                horizontalPadding: Theme.padding.large
+                                onClicked: ApplicationWindow.window.goTab(2)
                             }
                         }
                     }
@@ -289,22 +362,36 @@ Item {
             HistoryGrid {
                 id: history
 
+                visible: root.series.length > 0
                 series: root.series
 
-                StyledText {
-                    text: "Autoplay"
-                    color: Theme.palette.onSurfaceVariant
-                    font: Theme.font.label.large
-                }
-                StyledSwitch {
-                    checked: root.autoplay
-                    onToggled: {
-                        root.autoplay = checked;
-                        Api.setSetting("autoplay", checked);
+                StyledRect {
+                    implicitWidth: autoRow.implicitWidth + Theme.padding.medium * 2
+                    implicitHeight: 36
+                    radius: Theme.rounding.full
+                    color: Theme.palette.surfaceContainer
+
+                    RowLayout {
+                        id: autoRow
+
+                        anchors.centerIn: parent
+                        spacing: Theme.spacing.small
+
+                        StyledText {
+                            text: "Autoplay"
+                            color: Theme.palette.onSurfaceVariant
+                            font: Theme.font.label.large
+                        }
+                        StyledSwitch {
+                            checked: root.autoplay
+                            onToggled: {
+                                root.autoplay = checked;
+                                Api.setSetting("autoplay", checked);
+                            }
+                        }
                     }
                 }
                 IconTextButton {
-                    Layout.leftMargin: Theme.spacing.medium
                     visible: root.series.length > 0
                     type: TextButton.Text
                     icon: "delete_sweep"
@@ -366,26 +453,52 @@ Item {
         RowLayout {
             Layout.leftMargin: Theme.padding.extraLarge
             Layout.rightMargin: Theme.padding.extraLarge
-            spacing: Theme.spacing.small
+            spacing: Theme.spacing.medium
 
-            MaterialIcon {
-                text: shelf.modelData.icon
-                fill: 1
-                color: Theme.palette.primary
+            StyledRect {
+                implicitWidth: 34
+                implicitHeight: 34
+                radius: Theme.rounding.medium
+                color: Theme.palette.secondaryContainer
+
+                MaterialIcon {
+                    anchors.centerIn: parent
+                    text: shelf.modelData.icon
+                    fill: 1
+                    size: 16
+                    color: Theme.palette.onSecondaryContainer
+                }
             }
             StyledText {
-                Layout.fillWidth: true
                 text: shelf.modelData.title
                 font: Theme.font.title.large
             }
+            StyledRect {
+                implicitWidth: Math.max(24, countText.implicitWidth + 10)
+                implicitHeight: 22
+                radius: Theme.rounding.full
+                color: Theme.palette.surfaceContainerHigh
+
+                StyledText {
+                    id: countText
+
+                    anchors.centerIn: parent
+                    text: String(shelf.modelData.items.length)
+                    font: Theme.font.label.medium
+                    color: Theme.palette.onSurfaceVariant
+                }
+            }
+            Item {
+                Layout.fillWidth: true
+            }
             IconButton {
-                type: IconButton.Text
+                type: IconButton.Tonal
                 icon: "chevron_left"
                 disabled: list.atXBeginning
                 onClicked: list.page(-1)
             }
             IconButton {
-                type: IconButton.Text
+                type: IconButton.Tonal
                 icon: "chevron_right"
                 disabled: list.atXEnd
                 onClicked: list.page(1)
@@ -473,6 +586,13 @@ Item {
                 Layout.preferredHeight: 174
                 radius: Theme.rounding.large
                 source: infoDialog.m.cover ?? ""
+
+                Elevation {
+                    z: -1
+                    anchors.fill: parent
+                    radius: parent.radius
+                    level: 3
+                }
             }
             ColumnLayout {
                 Layout.fillWidth: true
@@ -540,6 +660,7 @@ Item {
                 onClicked: infoDialog.close()
             },
             IconTextButton {
+                type: TextButton.Tonal
                 icon: "search"
                 text: "Search sources"
                 onClicked: {
@@ -564,7 +685,7 @@ Item {
                 onClicked: clearDialog.close()
             },
             TextButton {
-                type: TextButton.Text
+                type: TextButton.Tonal
                 text: "Clear all"
                 onClicked: {
                     Api.get("clearHistory");
