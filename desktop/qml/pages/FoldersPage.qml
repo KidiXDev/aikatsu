@@ -11,6 +11,7 @@ Item {
     objectName: "foldersPage"
 
     property var folders: []
+    readonly property int totalAnime: folders.reduce((n, f) => n + (f.anime || 0), 0)
 
     function load(): void {
         Api.call("localLibrary", {
@@ -38,15 +39,14 @@ Item {
             x: (flick.width - width) / 2
             y: Theme.padding.extraLarge
             width: Math.min(820, flick.width - Theme.padding.extraLarge * 2)
-            spacing: Theme.spacing.medium
+            spacing: Theme.spacing.extraLarge
 
             RowLayout {
                 Layout.fillWidth: true
-                Layout.bottomMargin: Theme.spacing.small
                 spacing: Theme.spacing.medium
 
                 IconButton {
-                    type: IconButton.Text
+                    type: IconButton.Tonal
                     icon: "arrow_back"
                     iconSize: 18
                     onClicked: root.StackView.view.pop()
@@ -56,76 +56,148 @@ Item {
                     text: "Folders"
                     font: Theme.font.headline.large
                 }
+            }
+
+            StateBand {
+                StyledRect {
+                    implicitWidth: 44
+                    implicitHeight: 44
+                    radius: Theme.rounding.medium
+                    color: Theme.palette.primary
+
+                    MaterialIcon {
+                        anchors.centerIn: parent
+                        text: "folder"
+                        fill: 1
+                        size: 20
+                        color: Theme.palette.onPrimary
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+
+                    StyledText {
+                        Layout.fillWidth: true
+                        text: root.folders.length === 0 ? "No folders added" : `${root.folders.length} folder${root.folders.length === 1 ? "" : "s"}  ·  ${root.totalAnime} series`
+                        font: Theme.font.title.medium
+                        elide: Text.ElideRight
+                    }
+                    StyledText {
+                        Layout.fillWidth: true
+                        text: "Subfolders with video files appear in Library and link to AniList metadata."
+                        color: Theme.palette.onSurfaceVariant
+                        font: Theme.font.body.medium
+                        wrapMode: Text.Wrap
+                    }
+                }
+
                 IconTextButton {
-                    type: TextButton.Filled
+                    type: TextButton.Tonal
                     icon: "create_new_folder"
                     text: "Add folder"
                     onClicked: localFolders.add()
                 }
             }
 
-            Repeater {
-                model: root.folders
+            StyledRect {
+                visible: root.folders.length > 0
+                Layout.fillWidth: true
+                implicitHeight: folderList.implicitHeight
+                radius: Theme.rounding.largeIncreased
+                color: Theme.palette.surfaceContainer
 
-                StyledRect {
-                    id: card
+                ColumnLayout {
+                    id: folderList
 
-                    required property var modelData
+                    width: parent.width
+                    spacing: 0
 
-                    Layout.fillWidth: true
-                    implicitHeight: row.implicitHeight + Theme.padding.large * 2
-                    radius: Theme.rounding.extraLarge
-                    color: Theme.palette.surfaceContainer
+                    Repeater {
+                        model: root.folders
 
-                    RowLayout {
-                        id: row
+                        Item {
+                            id: card
 
-                        anchors.fill: parent
-                        anchors.margins: Theme.padding.large
-                        anchors.leftMargin: Theme.padding.extraLarge
-                        spacing: Theme.spacing.large
+                            required property var modelData
+                            required property int index
 
-                        MaterialIcon {
-                            text: card.modelData.available ? "folder" : "folder_off"
-                            fill: 1
-                            size: 22
-                            color: card.modelData.available ? Theme.palette.primary : Theme.palette.error
-                        }
-                        ColumnLayout {
                             Layout.fillWidth: true
-                            spacing: 2
+                            implicitHeight: Math.max(72, row.implicitHeight + Theme.padding.large * 2)
 
-                            StyledText {
-                                Layout.fillWidth: true
-                                text: root.nameOf(card.modelData.path)
-                                font: Theme.font.title.medium
-                                elide: Text.ElideRight
+                            Rectangle {
+                                visible: card.index > 0
+                                anchors.top: parent.top
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.leftMargin: Theme.padding.largeIncreased
+                                anchors.rightMargin: Theme.padding.largeIncreased
+                                height: 1
+                                color: Theme.palette.outlineVariant
+                                opacity: 0.6
                             }
-                            StyledText {
-                                Layout.fillWidth: true
-                                text: card.modelData.path
-                                font: Theme.font.body.small
-                                color: Theme.palette.onSurfaceVariant
-                                elide: Text.ElideMiddle
+
+                            RowLayout {
+                                id: row
+
+                                anchors.fill: parent
+                                anchors.leftMargin: Theme.padding.largeIncreased
+                                anchors.rightMargin: Theme.padding.large
+                                spacing: Theme.spacing.large
+
+                                StyledRect {
+                                    implicitWidth: 40
+                                    implicitHeight: 40
+                                    radius: Theme.rounding.medium
+                                    color: card.modelData.available ? Theme.palette.surfaceContainerHighest : Theme.palette.errorContainer
+
+                                    MaterialIcon {
+                                        anchors.centerIn: parent
+                                        text: card.modelData.available ? "folder" : "folder_off"
+                                        fill: 1
+                                        size: 18
+                                        color: card.modelData.available ? Theme.palette.primary : Theme.palette.onErrorContainer
+                                    }
+                                }
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 2
+
+                                    StyledText {
+                                        Layout.fillWidth: true
+                                        text: root.nameOf(card.modelData.path)
+                                        font: Theme.font.title.medium
+                                        elide: Text.ElideRight
+                                    }
+                                    StyledText {
+                                        Layout.fillWidth: true
+                                        text: card.modelData.path
+                                        font: Theme.font.body.small
+                                        color: Theme.palette.onSurfaceVariant
+                                        elide: Text.ElideMiddle
+                                    }
+                                }
+                                Chip {
+                                    text: !card.modelData.available ? "Disconnected" : card.modelData.anime ? `${card.modelData.anime} anime` : "No videos"
+                                    selected: !card.modelData.available
+                                    tint: Theme.palette.errorContainer
+                                    onTint: Theme.palette.onErrorContainer
+                                }
+                                TextButton {
+                                    visible: card.modelData.available
+                                    type: TextButton.Tonal
+                                    text: "Open"
+                                    onClicked: Qt.openUrlExternally(Api.get("fileUrl", {
+                                        path: card.modelData.path
+                                    }))
+                                }
+                                TextButton {
+                                    type: TextButton.Text
+                                    text: "Remove"
+                                    onClicked: localFolders.remove(card.modelData)
+                                }
                             }
-                        }
-                        StyledText {
-                            text: !card.modelData.available ? "Not connected" : card.modelData.anime ? `${card.modelData.anime} anime` : "No videos"
-                            font: Theme.font.label.large
-                            color: card.modelData.available ? Theme.palette.onSurfaceVariant : Theme.palette.error
-                        }
-                        TextButton {
-                            visible: card.modelData.available
-                            type: TextButton.Text
-                            text: "Open"
-                            onClicked: Qt.openUrlExternally(Api.get("fileUrl", {
-                                path: card.modelData.path
-                            }))
-                        }
-                        TextButton {
-                            type: TextButton.Text
-                            text: "Remove"
-                            onClicked: localFolders.remove(card.modelData)
                         }
                     }
                 }
@@ -133,10 +205,11 @@ Item {
 
             EmptyState {
                 Layout.alignment: Qt.AlignHCenter
-                Layout.topMargin: Theme.spacing.extraLarge * 3
+                Layout.topMargin: Theme.spacing.extraLarge * 2
                 visible: root.folders.length === 0
                 face: "( ˘▽˘)っ♨"
                 title: "No folders yet"
+                message: "Add a folder containing your downloaded or local anime episodes."
             }
         }
     }

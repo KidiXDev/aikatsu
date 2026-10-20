@@ -16,6 +16,7 @@ Item {
     property bool syncing
     property bool developerMode: Api.setting("developerMode") === "true"
     readonly property int updates: repos.reduce((n, r) => n + (r.updates || 0), 0)
+    readonly property int totalPlugins: repos.reduce((n, r) => n + (r.plugins?.length || 0), 0)
 
     function refresh(): void {
         repos = Api.get("repos");
@@ -114,14 +115,14 @@ Item {
             x: (flick.width - width) / 2
             y: Theme.padding.extraLarge
             width: Math.min(820, flick.width - Theme.padding.extraLarge * 2)
-            spacing: Theme.spacing.large
+            spacing: Theme.spacing.extraLarge
 
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Theme.spacing.medium
 
                 IconButton {
-                    type: IconButton.Text
+                    type: IconButton.Tonal
                     icon: "arrow_back"
                     iconSize: 18
                     onClicked: root.StackView.view.pop()
@@ -131,42 +132,66 @@ Item {
                     text: "Plugins"
                     font: Theme.font.headline.large
                 }
-                IconButton {
-                    visible: root.updates > 0
-                    type: IconButton.Text
-                    icon: "download"
-                    iconSize: 18
-                    disabled: root.syncing
-                    ToolTip.visible: hovered
-                    ToolTip.text: `Download ${root.updates} plugin update${root.updates === 1 ? "" : "s"}`
-                    onClicked: root.checkUpdates(true)
-                }
-                IconButton {
-                    id: refreshButton
+            }
 
-                    type: IconButton.Text
-                    icon: "refresh"
-                    iconSize: 18
-                    disabled: root.syncing
-                    ToolTip.visible: hovered
-                    ToolTip.text: "Check for updates"
-                    onClicked: root.checkUpdates(false)
+            StateBand {
+                StyledRect {
+                    implicitWidth: 44
+                    implicitHeight: 44
+                    radius: Theme.rounding.medium
+                    color: Theme.palette.primary
 
-                    RotationAnimator {
-                        target: refreshButton.label
-                        running: root.syncing
-                        from: 0
-                        to: 360
-                        duration: 900
-                        loops: Animation.Infinite
-                        onRunningChanged: if (!running)
-                            refreshButton.label.rotation = 0
+                    MaterialIcon {
+                        anchors.centerIn: parent
+                        text: "extension"
+                        fill: 1
+                        size: 20
+                        color: Theme.palette.onPrimary
                     }
                 }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+
+                    StyledText {
+                        Layout.fillWidth: true
+                        text: root.repos.length === 0
+                            ? "No plugin repositories installed"
+                            : `${root.totalPlugins} source${root.totalPlugins === 1 ? "" : "s"} across ${root.repos.length} repo${root.repos.length === 1 ? "" : "s"}` + (root.updates > 0 ? `  ·  ${root.updates} update${root.updates === 1 ? "" : "s"} available` : "")
+                        font: Theme.font.title.medium
+                        elide: Text.ElideRight
+                    }
+                    StyledText {
+                        Layout.fillWidth: true
+                        text: root.updates > 0
+                            ? "Updates are ready to download and install."
+                            : "Plugin repositories provide site scrapers for Search and video playback."
+                        color: root.updates > 0 ? Theme.palette.primary : Theme.palette.onSurfaceVariant
+                        font: Theme.font.body.medium
+                        wrapMode: Text.Wrap
+                    }
+                }
+
+                TextButton {
+                    visible: root.repos.length > 0
+                    type: TextButton.Text
+                    text: root.syncing ? "Checking…" : "Check updates"
+                    disabled: root.syncing
+                    onClicked: root.checkUpdates(false)
+                }
                 IconTextButton {
-                    type: TextButton.Filled
+                    visible: root.updates > 0
+                    type: TextButton.Tonal
+                    icon: "download"
+                    text: `Update (${root.updates})`
+                    disabled: root.syncing
+                    onClicked: root.checkUpdates(true)
+                }
+                IconTextButton {
+                    type: root.updates > 0 ? TextButton.Text : TextButton.Tonal
                     icon: "add"
-                    text: "Add"
+                    text: "Add repo"
                     disabled: root.syncing
                     onClicked: {
                         addDialog.error = "";
@@ -179,98 +204,179 @@ Item {
             Repeater {
                 model: root.repos
 
-                StyledRect {
+                ColumnLayout {
                     id: card
 
                     required property var modelData
 
                     Layout.fillWidth: true
-                    implicitHeight: inner.implicitHeight + Theme.padding.extraLarge * 2
-                    radius: Theme.rounding.extraLarge
-                    color: Theme.palette.surfaceContainer
+                    spacing: Theme.spacing.small
 
-                    ColumnLayout {
-                        id: inner
-
-                        anchors.fill: parent
-                        anchors.margins: Theme.padding.extraLarge
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: Theme.padding.small
+                        Layout.rightMargin: Theme.padding.small
                         spacing: Theme.spacing.medium
 
-                        RowLayout {
-                            Layout.fillWidth: true
-                            Layout.bottomMargin: Theme.spacing.small
-                            spacing: Theme.spacing.medium
-
-                            // Names and links come from repo authors, so both elide.
-                            ColumnLayout {
-                                Layout.fillWidth: true
-                                spacing: 2
-
-                                StyledText {
-                                    Layout.fillWidth: true
-                                    text: card.modelData.name
-                                    font: Theme.font.title.large
-                                    elide: Text.ElideRight
-                                }
-                                StyledText {
-                                    Layout.fillWidth: true
-                                    text: card.modelData.error ? `Couldn't update · ${card.modelData.error}` : card.modelData.short
-                                    color: card.modelData.error ? Theme.palette.error : Theme.palette.onSurfaceVariant
-                                    font: Theme.font.body.small
-                                    elide: Text.ElideRight
-                                }
-                            }
-                            Chip {
-                                visible: !card.modelData.official
-                                text: "Third-party"
-                                selected: true
-                                tint: Theme.palette.tertiaryContainer
-                                onTint: Theme.palette.onTertiaryContainer
-                            }
-                            TextButton {
-                                type: TextButton.Text
-                                text: "Remove"
-                                disabled: root.syncing
-                                onClicked: {
-                                    removeDialog.repo = card.modelData;
-                                    removeDialog.open();
-                                }
-                            }
+                        StyledText {
+                            text: card.modelData.name
+                            font: Theme.font.title.medium
+                            elide: Text.ElideRight
                         }
-                        Repeater {
-                            model: card.modelData.plugins
-
-                            RowLayout {
-                                id: plugin
-
-                                required property var modelData
-
-                                Layout.fillWidth: true
-                                spacing: Theme.spacing.large
-
-                                StyledText {
-                                    Layout.fillWidth: true
-                                    text: plugin.modelData.name
-                                    font: Theme.font.body.large
-                                }
-                                StyledText {
-                                    visible: !plugin.modelData.loaded
-                                    text: plugin.modelData.compatible ? plugin.modelData.updateAvailable ? "Download to enable" : "Couldn't load" : "Needs a newer Aikatsu"
-                                    color: Theme.palette.onSurfaceVariant
-                                    font: Theme.font.body.small
-                                }
-                                StyledSwitch {
-                                    visible: plugin.modelData.loaded
-                                    checked: !root.disabled.includes(plugin.modelData.key)
-                                    onToggled: root.toggle(plugin.modelData.key, checked)
-                                }
-                            }
+                        Chip {
+                            text: card.modelData.official ? "Official" : "Third-party"
+                            selected: true
+                            tint: card.modelData.official ? Theme.palette.secondaryContainer : Theme.palette.tertiaryContainer
+                            onTint: card.modelData.official ? Theme.palette.onSecondaryContainer : Theme.palette.onTertiaryContainer
+                        }
+                        StyledText {
+                            Layout.fillWidth: true
+                            text: card.modelData.error ? `Couldn't update · ${card.modelData.error}` : card.modelData.short
+                            color: card.modelData.error ? Theme.palette.error : Theme.palette.onSurfaceVariant
+                            font: Theme.font.body.small
+                            elide: Text.ElideRight
                         }
                         StyledText {
                             visible: (card.modelData.updates || 0) > 0
-                            text: `${card.modelData.updates} plugin update${card.modelData.updates === 1 ? "" : "s"} available`
-                            font: Theme.font.body.small
+                            text: `${card.modelData.updates} update${card.modelData.updates === 1 ? "" : "s"}`
+                            font: Theme.font.label.large
                             color: Theme.palette.primary
+                        }
+                        TextButton {
+                            type: TextButton.Text
+                            text: "Remove"
+                            disabled: root.syncing
+                            onClicked: {
+                                removeDialog.repo = card.modelData;
+                                removeDialog.open();
+                            }
+                        }
+                    }
+
+                    StyledRect {
+                        Layout.fillWidth: true
+                        implicitHeight: pluginCol.implicitHeight
+                        radius: Theme.rounding.largeIncreased
+                        color: Theme.palette.surfaceContainer
+
+                        ColumnLayout {
+                            id: pluginCol
+
+                            width: parent.width
+                            spacing: 0
+
+                            Item {
+                                visible: (card.modelData.plugins?.length ?? 0) === 0
+                                Layout.fillWidth: true
+                                implicitHeight: 60
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: Theme.padding.largeIncreased
+                                    anchors.rightMargin: Theme.padding.large
+                                    spacing: Theme.spacing.large
+
+                                    StyledRect {
+                                        implicitWidth: 36
+                                        implicitHeight: 36
+                                        radius: Theme.rounding.medium
+                                        color: card.modelData.error ? Theme.palette.errorContainer : Theme.palette.surfaceContainerHighest
+
+                                        MaterialIcon {
+                                            anchors.centerIn: parent
+                                            text: card.modelData.error ? "cloud_off" : "extension_off"
+                                            fill: 1
+                                            size: 16
+                                            color: card.modelData.error ? Theme.palette.onErrorContainer : Theme.palette.onSurfaceVariant
+                                        }
+                                    }
+
+                                    StyledText {
+                                        Layout.fillWidth: true
+                                        text: card.modelData.error ? "Repository unreachable. Check your connection and refresh." : "No sources loaded from this repository yet."
+                                        color: Theme.palette.onSurfaceVariant
+                                        font: Theme.font.body.medium
+                                        elide: Text.ElideRight
+                                    }
+                                }
+                            }
+
+                            Repeater {
+                                model: card.modelData.plugins
+
+                                Item {
+                                    id: plugin
+
+                                    required property var modelData
+                                    required property int index
+                                    readonly property bool enabledPlugin: plugin.modelData.loaded && !root.disabled.includes(plugin.modelData.key)
+
+                                    Layout.fillWidth: true
+                                    implicitHeight: 60
+
+                                    Rectangle {
+                                        visible: plugin.index > 0
+                                        anchors.top: parent.top
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        anchors.leftMargin: Theme.padding.largeIncreased
+                                        anchors.rightMargin: Theme.padding.largeIncreased
+                                        height: 1
+                                        color: Theme.palette.outlineVariant
+                                        opacity: 0.6
+                                    }
+
+                                    RowLayout {
+                                        anchors.fill: parent
+                                        anchors.leftMargin: Theme.padding.largeIncreased
+                                        anchors.rightMargin: Theme.padding.large
+                                        spacing: Theme.spacing.large
+
+                                        StyledRect {
+                                            implicitWidth: 36
+                                            implicitHeight: 36
+                                            radius: Theme.rounding.medium
+                                            color: !plugin.modelData.loaded ? Theme.palette.errorContainer : plugin.enabledPlugin ? Theme.palette.secondaryContainer : Theme.palette.surfaceContainerHighest
+
+                                            MaterialIcon {
+                                                anchors.centerIn: parent
+                                                text: plugin.modelData.loaded ? "public" : "error"
+                                                fill: 1
+                                                size: 16
+                                                color: !plugin.modelData.loaded ? Theme.palette.onErrorContainer : plugin.enabledPlugin ? Theme.palette.onSecondaryContainer : Theme.palette.onSurfaceVariant
+                                            }
+                                        }
+
+                                        ColumnLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 2
+
+                                            StyledText {
+                                                Layout.fillWidth: true
+                                                text: plugin.modelData.name
+                                                font: Theme.font.body.large
+                                                elide: Text.ElideRight
+                                            }
+                                            StyledText {
+                                                Layout.fillWidth: true
+                                                visible: !plugin.modelData.loaded || plugin.modelData.updateAvailable
+                                                text: !plugin.modelData.loaded
+                                                    ? (plugin.modelData.compatible ? plugin.modelData.updateAvailable ? "Download update to enable" : "Couldn't load" : "Needs a newer Aikatsu")
+                                                    : "Update available"
+                                                color: !plugin.modelData.loaded ? Theme.palette.error : Theme.palette.primary
+                                                font: Theme.font.body.small
+                                                elide: Text.ElideRight
+                                            }
+                                        }
+
+                                        StyledSwitch {
+                                            visible: plugin.modelData.loaded
+                                            checked: plugin.enabledPlugin
+                                            onToggled: root.toggle(plugin.modelData.key, checked)
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -278,11 +384,11 @@ Item {
 
             EmptyState {
                 Layout.alignment: Qt.AlignHCenter
-                Layout.topMargin: Theme.spacing.extraLarge * 3
+                Layout.topMargin: Theme.spacing.extraLarge * 2
                 visible: root.repos.length === 0
                 face: "(・・ )?"
                 title: "No plugins"
-                message: "Search needs at least one."
+                message: "Add the official Kyoko repository or a custom plugin source to start searching."
 
                 TextButton {
                     Layout.alignment: Qt.AlignHCenter
@@ -295,8 +401,8 @@ Item {
             }
             TextButton {
                 visible: root.repos.length > 0 && !root.repos.some(r => r.official)
-                type: TextButton.Text
-                text: "Add Kyoko"
+                type: TextButton.Tonal
+                text: "Add official Kyoko repo"
                 disabled: root.syncing
                 onClicked: root.add(Api.get("officialRepo"), "Kyoko")
             }
@@ -358,7 +464,7 @@ Item {
                 onClicked: addDialog.close()
             },
             TextButton {
-                type: TextButton.Text
+                type: TextButton.Tonal
                 text: addDialog.busy ? "Checking…" : "Add"
                 disabled: addDialog.busy || !urlField.text.trim()
                 onClicked: root.check(urlField.text)
@@ -397,7 +503,7 @@ Item {
                 onClicked: trustDialog.close()
             },
             TextButton {
-                type: TextButton.Text
+                type: TextButton.Tonal
                 text: "Trust and add"
                 onClicked: {
                     trustDialog.close();
@@ -422,7 +528,7 @@ Item {
                 onClicked: removeDialog.close()
             },
             TextButton {
-                type: TextButton.Text
+                type: TextButton.Tonal
                 text: "Remove"
                 onClicked: {
                     if (root.syncing)
