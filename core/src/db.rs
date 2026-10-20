@@ -720,6 +720,12 @@ fn sync_pending_on(c: &Connection, limit: usize) -> Result<(Vec<Change>, i64)> {
     Ok((out, last))
 }
 
+/// Whether a change still waits to be sent.
+pub fn sync_queued(kind: &str, key: &str) -> bool {
+    let c = database().lock().unwrap();
+    c.query_row("SELECT 1 FROM sync_dirty WHERE kind = ?1 AND key = ?2", [kind, key], |_| Ok(())).optional().ok().flatten().is_some()
+}
+
 pub fn sync_ack(last: i64) -> Result<()> {
     sync_ack_on(&database().lock().unwrap(), last)
 }

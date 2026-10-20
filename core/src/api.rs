@@ -41,6 +41,7 @@ pub const SETTING_DEFAULTS: &[(&str, &str)] = &[
     ("anime4k", "off"),
     ("volume", "100"),
     ("airingAlerts", "true"),
+    ("closeAction", "quit"),
     (crate::lan::SETTING, "false"),
 ];
 
@@ -164,10 +165,12 @@ pub async fn call(method: &str, args: Value) -> Result<Value> {
         }
         "localLibrary" => {
             let mut lib = serde_json::to_value(tokio::task::spawn_blocking(local::library).await?)?;
-            if args["lan"].as_bool() != Some(false)
-                && let Some(series) = lib["series"].as_array_mut()
-            {
-                series.extend(crate::lan::library().await);
+            if args["lan"].as_bool() != Some(false) {
+                let (shared, unreachable) = crate::lan::library().await;
+                if let Some(series) = lib["series"].as_array_mut() {
+                    series.extend(shared);
+                }
+                lib["unreachable"] = json!(unreachable);
             }
             Ok(lib)
         }
@@ -257,6 +260,7 @@ pub fn get(method: &str, args: Value) -> Result<Value> {
             Ok(json!({ "series": series, "episode": db::episode_key(&series, i(&args, "episode")) }))
         }
         "syncStatus" => Ok(sync::status()),
+        "lanStatus" => Ok(crate::lan::state()),
         "settings" => Ok(Value::Object(SETTING_DEFAULTS.iter().map(|(k, _)| (k.to_string(), Value::String(setting(k)))).collect())),
         "setSetting" => {
             db::set_setting(s(&args, "key"), s(&args, "value"))?;
