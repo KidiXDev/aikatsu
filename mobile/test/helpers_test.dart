@@ -18,6 +18,7 @@ void main() {
     expect(Api.describe(null), 'Something went wrong.');
     expect(Api.describe('Could not initialize video chain.'), "This video's format can't play on this device.");
     expect(Api.describe('archcele is offline: client error (Connect)'), 'archcele is offline. Open Aikatsu there and try again.');
+    expect(Api.describe("archcele can't be reached: operation timed out"), "Can't reach archcele. Check its firewall and that you're on the same network.");
   });
 
   test('airingLabel', () {

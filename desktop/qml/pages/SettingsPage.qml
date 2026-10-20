@@ -20,6 +20,7 @@ Item {
     property bool checkingApp
     property var account: Api.get("syncStatus")
     property var trackers: Api.get("trackers")
+    readonly property var lan: ApplicationWindow.window?.lan ?? ({})
     property real now: Date.now()
     property var tools: Api.get("tools")
     property var library: listOf(Api.get("library"))
@@ -45,7 +46,8 @@ Item {
         {
             icon: "video_library",
             title: "Library",
-            status: downloadedEpisodes ? `${Theme.formatBytes(downloadedBytes)} · ${downloadedEpisodes} episode${downloadedEpisodes === 1 ? "" : "s"}` : "No downloads yet"
+            status: lan.state === "error" ? lan.error : downloadedEpisodes ? `${Theme.formatBytes(downloadedBytes)} · ${downloadedEpisodes} episode${downloadedEpisodes === 1 ? "" : "s"}` : "No downloads yet",
+            error: lan.state === "error"
         },
         {
             icon: "extension",
@@ -1038,6 +1040,22 @@ Item {
                 }
 
                 Group {
+                    title: "Window"
+
+                    SettingRow {
+                        label: "When closed"
+                        hint: root.ApplicationWindow.window?.trayAvailable ? "The tray keeps downloads and sharing running." : "No system tray found."
+
+                        Segmented {
+                            enabled: root.ApplicationWindow.window?.trayAvailable
+                            options: [["quit", "Quit"], ["tray", "To tray"]]
+                            value: root.ApplicationWindow.window?.trayAvailable ? root.s.closeAction : "quit"
+                            onPicked: v => root.set("closeAction", v)
+                        }
+                    }
+                }
+
+                Group {
                     title: "Integrations"
 
                     SettingRow {
@@ -1386,8 +1404,18 @@ Item {
                     title: "Your phone"
 
                     SettingRow {
+                        readonly property bool shown: root.account.signedIn && root.lan.state !== "off"
+
                         label: "Share your folders"
-                        hint: root.account.signedIn ? "Phones signed in to your account can play them on this network." : "Sign in to share with your phone."
+                        hint: !root.account.signedIn ? "Sign in to share with your phone." : ({
+                                starting: "Starting…",
+                                waiting: root.account.error || "Waiting for sync…",
+                                on: "Online",
+                                error: root.lan.error
+                            })[root.lan.state] ?? "Phones signed in to your account can play them on this network."
+                        hintColor: shown && root.lan.state === "error" ? Theme.palette.error : Theme.palette.onSurfaceVariant
+                        icon: !shown ? "" : root.lan.state === "on" ? "check_circle" : root.lan.state === "error" ? "error" : "pending"
+                        iconColor: root.lan.state === "on" ? Theme.palette.success : root.lan.state === "error" ? Theme.palette.error : Theme.palette.onSurfaceVariant
 
                         StyledSwitch {
                             enabled: root.account.signedIn

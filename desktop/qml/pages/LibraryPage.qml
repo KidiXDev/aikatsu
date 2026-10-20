@@ -185,6 +185,12 @@ Item {
                 icon: "folder"
                 title: "Your folders"
 
+                StyledText {
+                    visible: text !== ""
+                    text: root.library.unreachable?.length ? `Can't reach ${root.library.unreachable.join(", ")}` : ""
+                    color: Theme.palette.onSurfaceVariant
+                    font: Theme.font.body.medium
+                }
                 TextButton {
                     visible: root.library.folders.length > 0
                     type: TextButton.Text

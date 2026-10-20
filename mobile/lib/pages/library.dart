@@ -218,6 +218,7 @@ class _LibraryPageState extends State<LibraryPage> {
           context,
           'Your folders',
           Icons.folder_rounded,
+          subtitle: (_local['unreachable'] as List?)?.isNotEmpty ?? false ? "Can't reach ${(_local['unreachable'] as List).join(', ')}" : '',
           action: folders.isEmpty ? null : TextButton(onPressed: _manageFolders, child: const Text('Manage')),
         ),
         if (folders.isEmpty && local.isEmpty)
