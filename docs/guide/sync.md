@@ -24,6 +24,7 @@ You don't need an email address. There's no automatic password reset, so keep th
 | Which sources are on or off | Discord status (desktop) |
 | Your plugin repos | Debug logging |
 | TMDB API key | New episode alerts (Android) |
+| | When closed (desktop) |
 
 Your plugin repos appear on every device. Open **Plugins** on each one to download the scripts. They do not install automatically.
 

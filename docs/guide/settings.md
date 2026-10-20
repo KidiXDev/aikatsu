@@ -58,6 +58,12 @@ Desktop's **Library** section shows the download folder and how much you've down
 
 The optional **TMDB API key** helps organize season folders for long shows. Leave it empty if you don't need that.
 
+## Closing the desktop window
+
+**When closed** in **General** chooses what the close button does. **Quit** exits Aikatsu. **To tray** hides it in the system tray, so downloads and [folder sharing](./local-library.md#watch-your-desktop-folders-on-your-phone) keep running, and pauses a playing episode. Click the tray icon, or open Aikatsu again, to bring the window back. Choose **Quit** in the tray icon's menu to exit.
+
+**To tray** needs a system tray. On GNOME, that takes an AppIndicator extension. Without one, the option is off.
+
 ## Discord activity on desktop
 
 **Discord status** shares what you're watching through Discord's desktop activity integration. It's enabled by default in the desktop settings. Turn it off to keep your activity private.
