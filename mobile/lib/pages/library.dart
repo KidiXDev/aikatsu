@@ -30,6 +30,8 @@ class LibraryPage extends StatefulWidget {
 class _LibraryPageState extends State<LibraryPage> {
   List<dynamic> _series = [];
   List<dynamic> _history = [];
+  List<dynamic> _watchlist = [];
+  String _watchTab = 'watching';
   Map<String, dynamic> _local = {'folders': [], 'series': []};
   bool _recent = false;
   late final StreamSubscription<(String, dynamic)> _sub;
@@ -60,6 +62,7 @@ class _LibraryPageState extends State<LibraryPage> {
   void _reload() => setState(() {
     _series = Api.get('library');
     _history = Api.get('history');
+    _watchlist = Api.get('watchlist');
   });
 
   void _refreshAll() {
@@ -125,6 +128,9 @@ class _LibraryPageState extends State<LibraryPage> {
     final shown = _recent ? _history : _continuing;
     final folders = _local['folders'] as List;
     final local = _local['series'] as List;
+    final statuses = [for (final s in watchStatuses) if (_watchlist.any((w) => w['status'] == s.$1)) s];
+    final status = statuses.any((s) => s.$1 == _watchTab) ? _watchTab : statuses.firstOrNull?.$1;
+    final listed = _watchlist.where((w) => w['status'] == status).toList();
     return RefreshIndicator(
       onRefresh: () async {
         _reload();
@@ -174,6 +180,39 @@ class _LibraryPageState extends State<LibraryPage> {
             const SliverToBoxAdapter(child: EmptyState(face: '٩(◕‿◕｡)۶', title: 'All caught up!', message: 'Check Recent to rewatch.'))
           else
             _grid(shown.length, (i) => HistoryCard(shown[i] as Map<String, dynamic>)),
+        ],
+        if (_watchlist.isNotEmpty) ...[
+          _section(context, 'Watchlist', Icons.bookmark_rounded),
+          SliverToBoxAdapter(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Row(
+                children: [
+                  for (final (value, label, icon) in statuses)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ChoiceChip(
+                        avatar: Icon(icon, size: 18),
+                        label: Text('$label  ${_watchlist.where((w) => w['status'] == value).length}'),
+                        selected: value == status,
+                        showCheckmark: false,
+                        onSelected: (_) => setState(() => _watchTab = value),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          _grid(listed.length, (i) {
+            final w = listed[i] as Map<String, dynamic>;
+            return PosterCard(
+              title: text([w['title']]),
+              image: text([w['cover']]),
+              subtitle: toInt(w['total_episodes']) > 0 ? '${w['total_episodes']} episodes' : '',
+              onTap: () => openAnime(context, watchedAnime(w)),
+            );
+          }),
         ],
         _section(
           context,

@@ -9,6 +9,15 @@ import 'theme.dart';
 
 final messenger = GlobalKey<ScaffoldMessengerState>();
 
+/// Watchlist statuses in menu order (core db::WatchEntry).
+const watchStatuses = [
+  ('watching', 'Watching', Icons.play_circle_rounded),
+  ('planning', 'Plan to watch', Icons.schedule_rounded),
+  ('completed', 'Completed', Icons.check_circle_rounded),
+  ('paused', 'On hold', Icons.pause_circle_rounded),
+  ('dropped', 'Dropped', Icons.cancel_rounded),
+];
+
 void toast(String message) {
   messenger.currentState
     ?..hideCurrentSnackBar()

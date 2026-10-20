@@ -18,6 +18,10 @@ void openAnime(BuildContext context, Map<String, dynamic> anime, {int autoplayEp
   );
 }
 
+/// The anime page's input for a watchlist entry.
+Map<String, dynamic> watchedAnime(Map<String, dynamic> w) =>
+    {'name': w['title'], 'url': w['series_url'], 'image': w['cover'], 'source': w['source'], 'anilistId': w['anilist_id']};
+
 /// What the anime page knows about a series. The player listens to it too,
 /// since details can land after playback has started.
 class AnimeData extends ChangeNotifier {
@@ -49,6 +53,7 @@ class AnimeData extends ChangeNotifier {
   Map<int, dynamic> info = {}; // episode number → {title, filler, recap}
   Map<int, dynamic> progress = {}; // episode number → progress row
   Map<String, String> localFiles = {}; // episode URL → downloaded file, played instead of streaming
+  Map<String, dynamic>? watchEntry;
   bool loading = true;
   String error = '';
   bool _disposed = false;
@@ -84,7 +89,18 @@ class AnimeData extends ChangeNotifier {
     notifyListeners();
   }
 
+  Map<String, Object?> get listEntry => {
+    'anilist_id': toInt(meta?['anilist_id']),
+    'mal_id': toInt(meta?['mal_id']),
+    'title': title,
+    'cover': cover,
+    'source': anime['source'],
+    'series_url': anime['url'],
+    'total_episodes': toInt(meta?['episodes']),
+  };
+
   void refreshProgress() {
+    watchEntry = metaLoaded ? Api.get('watchEntry', listEntry) : null;
     progress = {
       for (final p in Api.get('seriesProgress', {'key': seriesKey, 'url': anime['url']}) as List) toInt(p['episode_number']): p,
     };
@@ -102,6 +118,7 @@ class AnimeData extends ChangeNotifier {
     'source': anime['source'],
     'episode_url': ep['url'],
     'total_episodes': toInt(meta?['episodes']) > 0 ? toInt(meta?['episodes']) : episodes.length,
+    'meta_episodes': toInt(meta?['episodes']),
     'episode_number': ep['num'],
     'playback_time': (playbackTime ?? toInt(progress[ep['num']]?['playback_time'])).floor(),
     'duration': (duration ?? toInt(progress[ep['num']]?['duration'])).floor(),
@@ -132,7 +149,7 @@ class AnimeData extends ChangeNotifier {
       onError: (_) {
         meta = {};
         metaLoaded = true;
-        notifyListeners();
+        refreshProgress();
       },
     );
     return Api.call('episodes', {'source': anime['source'], 'url': anime['url'], 'refresh': refresh}).then(
@@ -253,6 +270,17 @@ class _AnimePageState extends State<AnimePage> {
     }
   }
 
+  Future<void> _watchMenu() async {
+    final current = _data.watchEntry?['status'];
+    final choice = await pickFrom(context, 'Watchlist', [
+      for (final (value, label, _) in watchStatuses) (label, value, value == current),
+      if (current != null) ('Remove from list', '', false),
+    ]);
+    if (choice == null || !mounted) return;
+    Api.get('setWatchStatus', {'entry': _data.listEntry, 'status': choice});
+    Api.historyRevision.value++;
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
@@ -281,7 +309,14 @@ class _AnimePageState extends State<AnimePage> {
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
-            actions: [IconButton(icon: const Icon(Icons.refresh_rounded), onPressed: () => d.load(refresh: true))],
+            actions: [
+              IconButton(
+                icon: Icon(watchStatuses.where((s) => s.$1 == d.watchEntry?['status']).firstOrNull?.$3 ?? Icons.bookmark_add_outlined),
+                tooltip: 'Watchlist',
+                onPressed: d.metaLoaded ? _watchMenu : null,
+              ),
+              IconButton(icon: const Icon(Icons.refresh_rounded), onPressed: () => d.load(refresh: true)),
+            ],
             flexibleSpace: FlexibleSpaceBar(
               background: BlurredArt(
                 banner,

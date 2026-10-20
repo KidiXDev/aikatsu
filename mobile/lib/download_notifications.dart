@@ -5,6 +5,7 @@ import 'package:flutter/painting.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'api.dart';
+import 'episode_notifications.dart';
 import 'pages/downloads.dart';
 
 /// Download progress in the notification shade, like any download app.
@@ -31,7 +32,14 @@ abstract final class DownloadNotifications {
   static Future<void> init() async {
     await _plugin.initialize(
       settings: const InitializationSettings(android: AndroidInitializationSettings('ic_stat_download')),
-      onDidReceiveNotificationResponse: (_) => tapped.value++,
+      // The plugin has one tap handler; episode notifications carry a payload.
+      onDidReceiveNotificationResponse: (r) {
+        if (r.payload?.isNotEmpty ?? false) {
+          EpisodeNotifications.opened.value = r.payload;
+        } else {
+          tapped.value++;
+        }
+      },
     );
     Api.pushed.listen((event) {
       if (event.$1 == 'download') _onJob(event.$2);
