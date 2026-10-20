@@ -91,6 +91,7 @@ FocusScope {
             source: anime.source,
             episode_url: ep.url,
             total_episodes: meta.episodes || episodes.length,
+            meta_episodes: meta.episodes || 0,
             episode_number: ep.num,
             playback_time: Math.floor(completed ? mpv.duration : mpv.position), // time-pos is gone at end-file
             duration: Math.floor(mpv.duration),

@@ -69,6 +69,35 @@ QtObject {
 
     signal settingChanged(string key, string value)
 
+    // Watchlist statuses, in menu order (core db::WatchEntry).
+    readonly property var watchStatuses: [
+        {
+            value: "watching",
+            text: "Watching",
+            icon: "play_circle"
+        },
+        {
+            value: "planning",
+            text: "Plan to watch",
+            icon: "schedule"
+        },
+        {
+            value: "completed",
+            text: "Completed",
+            icon: "check_circle"
+        },
+        {
+            value: "paused",
+            text: "On hold",
+            icon: "pause_circle"
+        },
+        {
+            value: "dropped",
+            text: "Dropped",
+            icon: "cancel"
+        }
+    ]
+
     property Connections conn: Connections {
         target: Backend
 

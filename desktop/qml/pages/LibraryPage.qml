@@ -9,6 +9,10 @@ Item {
     id: root
 
     property var history: []
+    property var watchlist: []
+    property string watchTab: "watching"
+    // The chosen status, else the first one with shows in it.
+    readonly property string shownStatus: watchlist.some(w => w.status === watchTab) ? watchTab : (Api.watchStatuses.find(s => watchlist.some(w => w.status === s.value))?.value ?? "")
     property var library: ({
             folders: [],
             series: []
@@ -16,6 +20,7 @@ Item {
 
     function refreshHistory(): void {
         history = Api.get("history");
+        watchlist = Api.get("watchlist");
     }
 
     function load(): void {
@@ -111,6 +116,69 @@ Item {
             HistoryGrid {
                 visible: root.history.length > 0
                 series: root.history
+            }
+
+            Section {
+                visible: root.watchlist.length > 0
+                icon: "bookmark"
+                title: "Watchlist"
+            }
+            RowLayout {
+                visible: root.watchlist.length > 0
+                Layout.fillWidth: true
+                Layout.leftMargin: Theme.padding.extraLarge
+                Layout.rightMargin: Theme.padding.extraLarge
+                spacing: Theme.spacing.small
+
+                Repeater {
+                    model: Api.watchStatuses.filter(s => root.watchlist.some(w => w.status === s.value))
+
+                    Chip {
+                        required property var modelData
+
+                        text: `${modelData.text}  ${root.watchlist.filter(w => w.status === modelData.value).length}`
+                        icon: modelData.icon
+                        selected: root.shownStatus === modelData.value
+                        clickable: true
+                        onClicked: root.watchTab = modelData.value
+                    }
+                }
+                Item {
+                    Layout.fillWidth: true
+                }
+            }
+            Flow {
+                id: watchGrid
+
+                readonly property int columns: Math.max(2, Math.floor((width + spacing) / (168 + spacing)))
+                readonly property real cardWidth: (width - spacing * (columns - 1)) / columns
+
+                Layout.fillWidth: true
+                Layout.leftMargin: Theme.padding.extraLarge
+                Layout.rightMargin: Theme.padding.extraLarge
+                spacing: Theme.spacing.large
+                visible: root.watchlist.length > 0
+
+                Repeater {
+                    model: root.watchlist.filter(w => w.status === root.shownStatus)
+
+                    PosterCard {
+                        required property var modelData
+
+                        width: watchGrid.cardWidth
+                        height: implicitHeight + Theme.spacing.large
+                        title: modelData.title
+                        subtitle: modelData.total_episodes > 0 ? `${modelData.total_episodes} episodes` : ""
+                        image: modelData.cover
+                        onClicked: ApplicationWindow.window.openAnime({
+                            name: modelData.title,
+                            url: modelData.series_url,
+                            image: modelData.cover,
+                            source: modelData.source,
+                            anilistId: modelData.anilist_id
+                        }, 0)
+                    }
+                }
             }
 
             Section {
