@@ -8,8 +8,7 @@ Aikatsu is a cross-platform anime streaming application with Indonesian subtitle
 - **Positioning:** Fast, ad-free, sleek, native performance powered by Rust with a warm, delightful Japanese anime aesthetic.
 
 ## Platform
-- `android` (Flutter mobile client)
-- Desktop QML client exists in parallel.
+adaptive
 
 ## Aesthetic & Visual Direction
 - **Theme:** Soft Pastel / Warm Japanese Anime & Sakura Blossom.

@@ -22,7 +22,9 @@ Item {
     property string error
     property bool descending: false
     property string jump: ""
+    property string epFilter: "all" // all | unwatched | watched
     readonly property bool local: anime.source === "local"
+    readonly property int watchedCount: episodes.filter(e => progress[e.num]?.completed).length
 
     readonly property string seriesKey: Api.get("keys", {
         anilistId: meta?.anilist_id ?? 0,
@@ -32,6 +34,10 @@ Item {
     }).series
     readonly property var shownEpisodes: {
         let eps = episodes;
+        if (epFilter === "unwatched")
+            eps = eps.filter(e => !progress[e.num]?.completed);
+        else if (epFilter === "watched")
+            eps = eps.filter(e => !!progress[e.num]?.completed);
         if (jump)
             eps = eps.filter(e => String(e.num).startsWith(jump));
         return descending ? eps.slice().reverse() : eps;
@@ -195,7 +201,7 @@ Item {
 
             Item {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 300
+                Layout.preferredHeight: 310
 
                 ClippedImage {
                     id: banner
@@ -228,8 +234,26 @@ Item {
                             color: Qt.alpha(Theme.palette.surface, 0.2)
                         }
                         GradientStop {
+                            position: 0.6
+                            color: Qt.alpha(Theme.palette.surface, 0.65)
+                        }
+                        GradientStop {
                             position: 1
                             color: Theme.palette.surface
+                        }
+                    }
+                }
+                Rectangle {
+                    anchors.fill: parent
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
+                        GradientStop {
+                            position: 0
+                            color: Qt.alpha(Theme.palette.surface, 0.78)
+                        }
+                        GradientStop {
+                            position: 0.65
+                            color: "transparent"
                         }
                     }
                 }
@@ -244,6 +268,8 @@ Item {
                     anchors.margins: Theme.padding.large
                     type: IconButton.Tonal
                     icon: "arrow_back"
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Back"
                     onClicked: root.StackView.view.pop()
                 }
             }
@@ -252,7 +278,7 @@ Item {
                 Layout.fillWidth: true
                 Layout.leftMargin: Theme.padding.extraLarge
                 Layout.rightMargin: Theme.padding.extraLarge
-                Layout.topMargin: -200
+                Layout.topMargin: -210
                 spacing: Theme.spacing.extraLarge
 
                 ClippedImage {
@@ -396,33 +422,50 @@ Item {
                         IconButton {
                             type: IconButton.Text
                             icon: "refresh"
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Refresh episodes and metadata"
                             onClicked: root.load(true)
                         }
                     }
                 }
             }
 
-            StyledText {
-                id: synopsis
-
-                property bool expanded
-
+            ColumnLayout {
                 Layout.fillWidth: true
                 Layout.leftMargin: Theme.padding.extraLarge
                 Layout.rightMargin: Theme.padding.extraLarge
                 Layout.maximumWidth: 980
-                visible: text !== ""
-                text: root.meta?.description ?? ""
-                color: Theme.palette.onSurfaceVariant
-                font: Theme.font.body.large
-                wrapMode: Text.Wrap
-                maximumLineCount: expanded ? 100 : 3
-                elide: Text.ElideRight
-                lineHeight: 1.15
+                visible: synopsis.text !== ""
+                spacing: Theme.spacing.extraSmall
 
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
+                StyledText {
+                    id: synopsis
+
+                    property bool expanded
+
+                    Layout.fillWidth: true
+                    text: root.meta?.description ?? ""
+                    color: Theme.palette.onSurfaceVariant
+                    font: Theme.font.body.large
+                    wrapMode: Text.Wrap
+                    maximumLineCount: expanded ? 100 : 3
+                    elide: Text.ElideRight
+                    lineHeight: 1.15
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: synopsis.truncated || synopsis.expanded ? Qt.PointingHandCursor : Qt.ArrowCursor
+                        onClicked: if (synopsis.truncated || synopsis.expanded)
+                            synopsis.expanded = !synopsis.expanded
+                    }
+                }
+
+                TextButton {
+                    visible: synopsis.truncated || synopsis.expanded
+                    type: TextButton.Text
+                    horizontalPadding: 0
+                    verticalPadding: 2
+                    text: synopsis.expanded ? "Show less" : "Read more"
                     onClicked: synopsis.expanded = !synopsis.expanded
                 }
             }
@@ -434,28 +477,74 @@ Item {
                 Layout.topMargin: Theme.spacing.medium
                 spacing: Theme.spacing.medium
 
+                StyledRect {
+                    implicitWidth: 34
+                    implicitHeight: 34
+                    radius: Theme.rounding.medium
+                    color: Theme.palette.secondaryContainer
+
+                    MaterialIcon {
+                        anchors.centerIn: parent
+                        text: "video_library"
+                        fill: 1
+                        size: 16
+                        color: Theme.palette.onSecondaryContainer
+                    }
+                }
                 StyledText {
                     text: "Episodes"
                     font: Theme.font.headline.small
                 }
+                StyledRect {
+                    visible: root.episodes.length > 0
+                    implicitWidth: Math.max(24, epBadge.implicitWidth + 12)
+                    implicitHeight: 24
+                    radius: Theme.rounding.full
+                    color: Theme.palette.surfaceContainerHigh
+
+                    StyledText {
+                        id: epBadge
+
+                        anchors.centerIn: parent
+                        text: root.watchedCount > 0 ? `${root.watchedCount} / ${root.episodes.length} watched` : String(root.episodes.length)
+                        font: Theme.font.label.medium
+                        color: Theme.palette.onSurfaceVariant
+                    }
+                }
+
                 Item {
                     Layout.fillWidth: true
                 }
+
+                SegmentedControl {
+                    visible: root.watchedCount > 0 && root.watchedCount < root.episodes.length
+                    options: [
+                        ["all", "All"],
+                        ["unwatched", "Unwatched"],
+                        ["watched", "Watched"]
+                    ]
+                    value: root.epFilter
+                    onPicked: v => root.epFilter = v
+                }
+
                 StyledRect {
-                    implicitWidth: 150
+                    implicitWidth: 164
                     implicitHeight: 36
                     radius: Theme.rounding.full
-                    color: Theme.palette.surfaceContainerHigh
+                    color: jumpField.activeFocus ? Theme.palette.surfaceContainerHighest : Theme.palette.surfaceContainerHigh
+                    border.width: jumpField.activeFocus ? 2 : 1
+                    border.color: jumpField.activeFocus ? Theme.palette.primary : Qt.alpha(Theme.palette.outlineVariant, 0.5)
 
                     RowLayout {
                         anchors.fill: parent
                         anchors.leftMargin: Theme.padding.medium
-                        anchors.rightMargin: Theme.padding.medium
+                        anchors.rightMargin: Theme.padding.small
+                        spacing: Theme.spacing.extraSmall
 
                         MaterialIcon {
                             text: "tag"
                             size: 13
-                            color: Theme.palette.onSurfaceVariant
+                            color: jumpField.activeFocus ? Theme.palette.primary : Theme.palette.onSurfaceVariant
                         }
                         TextFieldBase {
                             id: jumpField
@@ -471,13 +560,26 @@ Item {
                                 visible: !jumpField.text
                                 text: "Jump to…"
                                 color: Theme.palette.onSurfaceVariant
+                                font: Theme.font.body.medium
+                            }
+                        }
+                        IconButton {
+                            visible: jumpField.text !== ""
+                            type: IconButton.Text
+                            icon: "close"
+                            iconSize: 13
+                            onClicked: {
+                                jumpField.text = "";
+                                jumpField.forceActiveFocus();
                             }
                         }
                     }
                 }
                 IconButton {
-                    type: IconButton.Text
+                    type: IconButton.Tonal
                     icon: root.descending ? "arrow_upward" : "arrow_downward"
+                    ToolTip.visible: hovered
+                    ToolTip.text: root.descending ? "Sort oldest first" : "Sort newest first"
                     onClicked: root.descending = !root.descending
                 }
             }
@@ -498,7 +600,7 @@ Item {
                         required property int index
 
                         Layout.fillWidth: true
-                        implicitHeight: 64
+                        implicitHeight: 68
                         radius: Theme.rounding.large
                         color: Theme.palette.surfaceContainer
 

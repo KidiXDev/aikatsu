@@ -73,6 +73,7 @@ fn main() {
     files.sort();
     println!("cargo::rerun-if-changed=qml");
     let qml = files.into_iter().map(|p| {
+        println!("cargo::rerun-if-changed={}", p.display());
         let singleton = std::fs::read_to_string(&p).unwrap().contains("pragma Singleton");
         QmlFile::from(p).singleton(singleton)
     });

@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Layouts
 import Aikatsu
@@ -11,6 +13,7 @@ StyledRect {
     property bool recap
     property var record: null // progress row
     property bool current
+    readonly property bool hovered: stateLayer.containsMouse
 
     readonly property bool completed: record?.completed ?? false
     readonly property real fraction: record && record.duration > 0 ? record.playback_time / record.duration : 0
@@ -18,11 +21,16 @@ StyledRect {
     signal clicked
     signal rightClicked(real x, real y)
 
-    implicitHeight: 64
+    implicitHeight: 68
     radius: Theme.rounding.large
-    color: current ? Theme.palette.secondaryContainer : Theme.palette.surfaceContainer
-    border.width: current ? 0 : 1
-    border.color: Qt.alpha(Theme.palette.outlineVariant, 0.5)
+    color: current ? Theme.palette.secondaryContainer : hovered ? Theme.palette.surfaceContainerHigh : Theme.palette.surfaceContainer
+    border.width: activeFocus ? 2 : current ? 0 : 1
+    border.color: activeFocus ? Theme.palette.primary : hovered ? Theme.palette.outline : Qt.alpha(Theme.palette.outlineVariant, 0.5)
+    activeFocusOnTab: true
+    Accessible.role: Accessible.Button
+    Accessible.name: `${title || `Episode ${num}`}, ${completed ? "Watched" : current ? "Up next" : `Episode ${num}`}`
+    Keys.onReturnPressed: clicked()
+    Keys.onSpacePressed: clicked()
 
     RowLayout {
         anchors.fill: parent
@@ -34,14 +42,14 @@ StyledRect {
             implicitWidth: 44
             implicitHeight: 44
             radius: Theme.rounding.medium
-            color: root.completed ? Theme.palette.primary : root.current ? Theme.palette.primaryContainer : Theme.palette.surfaceContainerHighest
+            color: root.completed || root.current ? Theme.palette.primary : root.hovered ? Theme.palette.secondaryContainer : Theme.palette.surfaceContainerHighest
 
             StyledText {
                 anchors.centerIn: parent
                 visible: !root.completed
-                text: root.num
+                text: String(root.num)
                 font: Theme.font.title.medium
-                color: root.current ? Theme.palette.onPrimaryContainer : Theme.palette.onSurface
+                color: root.current ? Theme.palette.onPrimary : root.hovered ? Theme.palette.onSecondaryContainer : Theme.palette.onSurface
             }
             MaterialIcon {
                 anchors.centerIn: parent
@@ -89,28 +97,46 @@ StyledRect {
                 visible: !root.fraction || root.completed
                 text: root.completed ? "Watched" : root.current ? "Up next" : `Episode ${root.num}`
                 font: Theme.font.label.medium
-                color: Theme.palette.onSurfaceVariant
+                color: root.current ? Qt.alpha(Theme.palette.onSecondaryContainer, 0.8) : Theme.palette.onSurfaceVariant
             }
             RowLayout {
                 visible: root.fraction > 0 && !root.completed
                 spacing: Theme.spacing.small
 
                 LinearProgress {
-                    Layout.preferredWidth: 90
+                    Layout.preferredWidth: 96
                     value: root.fraction
+                    trackColor: root.current ? Qt.alpha(Theme.palette.onSecondaryContainer, 0.22) : Theme.palette.secondaryContainer
                 }
                 StyledText {
                     text: `${Math.round(root.fraction * 100)}%`
                     font: Theme.font.label.small
-                    color: Theme.palette.onSurfaceVariant
+                    color: root.current ? Qt.alpha(Theme.palette.onSecondaryContainer, 0.85) : Theme.palette.onSurfaceVariant
+                }
+            }
+        }
+
+        MaterialIcon {
+            visible: root.hovered || root.current
+            text: "play_arrow"
+            fill: 1
+            size: 16
+            color: root.current ? Theme.palette.onSecondaryContainer : Theme.palette.primary
+            opacity: root.hovered || root.current ? 1 : 0
+
+            Behavior on opacity {
+                Anim {
+                    type: Anim.FastEffects
                 }
             }
         }
     }
 
     StateLayer {
+        id: stateLayer
+
         acceptedButtons: Qt.LeftButton | Qt.RightButton
-        color: Theme.palette.onSurface
+        color: root.current ? Theme.palette.onSecondaryContainer : Theme.palette.onSurface
         onClicked: e => e.button === Qt.RightButton ? root.rightClicked(e.x, e.y) : root.clicked()
     }
 }

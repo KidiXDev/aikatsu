@@ -90,29 +90,78 @@ Item {
             width: flick.width
             spacing: Theme.spacing.extraLarge
 
-            RowLayout {
+            ColumnLayout {
                 Layout.fillWidth: true
                 Layout.leftMargin: Theme.padding.extraLarge
                 Layout.rightMargin: Theme.padding.extraLarge
+                spacing: Theme.spacing.large
 
                 StyledText {
                     Layout.fillWidth: true
                     text: "Library"
                     font: Theme.font.headline.large
                 }
-                IconTextButton {
-                    type: TextButton.Tonal
-                    icon: "create_new_folder"
-                    text: "Add folder"
-                    onClicked: localFolders.add()
+
+                StateBand {
+                    StyledRect {
+                        implicitWidth: 44
+                        implicitHeight: 44
+                        radius: Theme.rounding.medium
+                        color: Theme.palette.primary
+
+                        MaterialIcon {
+                            anchors.centerIn: parent
+                            text: "video_library"
+                            fill: 1
+                            size: 20
+                            color: Theme.palette.onPrimary
+                        }
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+
+                        StyledText {
+                            Layout.fillWidth: true
+                            text: (root.library.series.length || root.watchlist.length || root.history.length)
+                                ? [
+                                    `${root.library.series.length} local series`,
+                                    `${root.watchlist.length} in watchlist`,
+                                    `${root.history.length} in history`
+                                ].join("  ·  ")
+                                : "Your anime collection"
+                            font: Theme.font.title.medium
+                            elide: Text.ElideRight
+                        }
+                        StyledText {
+                            Layout.fillWidth: true
+                            text: root.library.unreachable?.length
+                                ? `Can't reach ${root.library.unreachable.join(", ")}`
+                                : root.library.folders.length > 0
+                                    ? `Watching ${root.library.folders.length} local folder${root.library.folders.length === 1 ? "" : "s"}`
+                                    : "Save shows to your watchlist or add folders of local video files."
+                            color: root.library.unreachable?.length ? Theme.palette.error : Theme.palette.onSurfaceVariant
+                            font: Theme.font.body.medium
+                            elide: Text.ElideRight
+                        }
+                    }
+
+                    TextButton {
+                        visible: root.library.folders.length > 0
+                        type: TextButton.Text
+                        text: "Manage folders"
+                        onClicked: ApplicationWindow.window.openFolders()
+                    }
+                    IconTextButton {
+                        type: TextButton.Tonal
+                        icon: "create_new_folder"
+                        text: "Add folder"
+                        onClicked: localFolders.add()
+                    }
                 }
             }
 
-            Section {
-                visible: root.history.length > 0
-                icon: "history"
-                title: "Continue watching"
-            }
             HistoryGrid {
                 visible: root.history.length > 0
                 series: root.history
@@ -122,29 +171,17 @@ Item {
                 visible: root.watchlist.length > 0
                 icon: "bookmark"
                 title: "Watchlist"
-            }
-            RowLayout {
-                visible: root.watchlist.length > 0
-                Layout.fillWidth: true
-                Layout.leftMargin: Theme.padding.extraLarge
-                Layout.rightMargin: Theme.padding.extraLarge
-                spacing: Theme.spacing.small
+                count: root.watchlist.length
 
-                Repeater {
-                    model: Api.watchStatuses.filter(s => root.watchlist.some(w => w.status === s.value))
-
-                    Chip {
-                        required property var modelData
-
-                        text: `${modelData.text}  ${root.watchlist.filter(w => w.status === modelData.value).length}`
-                        icon: modelData.icon
-                        selected: root.shownStatus === modelData.value
-                        clickable: true
-                        onClicked: root.watchTab = modelData.value
-                    }
-                }
-                Item {
-                    Layout.fillWidth: true
+                SegmentedControl {
+                    options: Api.watchStatuses.filter(s => root.watchlist.some(w => w.status === s.value)).map(s => ({
+                                value: s.value,
+                                label: s.text,
+                                icon: s.icon,
+                                count: root.watchlist.filter(w => w.status === s.value).length
+                            }))
+                    value: root.shownStatus
+                    onPicked: v => root.watchTab = v
                 }
             }
             Flow {
@@ -170,6 +207,7 @@ Item {
                         title: modelData.title
                         subtitle: modelData.total_episodes > 0 ? `${modelData.total_episodes} episodes` : ""
                         image: modelData.cover
+                        badge: Api.sourceName(modelData.source)
                         onClicked: ApplicationWindow.window.openAnime({
                             name: modelData.title,
                             url: modelData.series_url,
@@ -182,18 +220,14 @@ Item {
             }
 
             Section {
+                visible: root.library.series.length > 0 || root.library.folders.length > 0
                 icon: "folder"
                 title: "Your folders"
+                count: root.library.series.length
 
-                StyledText {
-                    visible: text !== ""
-                    text: root.library.unreachable?.length ? `Can't reach ${root.library.unreachable.join(", ")}` : ""
-                    color: Theme.palette.onSurfaceVariant
-                    font: Theme.font.body.medium
-                }
                 TextButton {
                     visible: root.library.folders.length > 0
-                    type: TextButton.Text
+                    type: TextButton.Tonal
                     text: "Manage"
                     onClicked: ApplicationWindow.window.openFolders()
                 }
@@ -237,6 +271,7 @@ Item {
 
             EmptyState {
                 Layout.alignment: Qt.AlignHCenter
+                Layout.topMargin: Theme.spacing.extraLarge
                 visible: root.library.folders.length === 0
                 face: "( ˘▽˘)っ♨"
                 title: "Bring your own anime"
@@ -250,21 +285,55 @@ Item {
 
         property string icon
         property string title
+        property int count: -1
+        default property alias trailing: trail.data
 
         Layout.fillWidth: true
         Layout.leftMargin: Theme.padding.extraLarge
         Layout.rightMargin: Theme.padding.extraLarge
-        spacing: Theme.spacing.small
+        spacing: Theme.spacing.medium
 
-        MaterialIcon {
-            text: section.icon
-            fill: 1
-            color: Theme.palette.primary
+        StyledRect {
+            implicitWidth: 34
+            implicitHeight: 34
+            radius: Theme.rounding.medium
+            color: Theme.palette.secondaryContainer
+
+            MaterialIcon {
+                anchors.centerIn: parent
+                text: section.icon
+                fill: 1
+                size: 16
+                color: Theme.palette.onSecondaryContainer
+            }
         }
         StyledText {
-            Layout.fillWidth: true
             text: section.title
             font: Theme.font.title.large
+        }
+        StyledRect {
+            visible: section.count >= 0
+            implicitWidth: Math.max(24, countLabel.implicitWidth + 10)
+            implicitHeight: 22
+            radius: Theme.rounding.full
+            color: Theme.palette.surfaceContainerHigh
+
+            StyledText {
+                id: countLabel
+
+                anchors.centerIn: parent
+                text: String(section.count)
+                font: Theme.font.label.medium
+                color: Theme.palette.onSurfaceVariant
+            }
+        }
+        Item {
+            Layout.fillWidth: true
+        }
+        RowLayout {
+            id: trail
+
+            spacing: Theme.spacing.small
         }
     }
 
