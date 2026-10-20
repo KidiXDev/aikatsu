@@ -69,6 +69,8 @@ abstract final class Api {
   static String describe(Object? err) {
     final offline = RegExp(r'^(.+?) is offline\b').firstMatch('${err ?? ''}');
     if (offline != null) return '${offline[1]} is offline. Open Aikatsu there and try again.';
+    final unreachable = RegExp(r"^(.+?) can't be reached\b").firstMatch('${err ?? ''}');
+    if (unreachable != null) return "Can't reach ${unreachable[1]}. Check its firewall and that you're on the same network.";
     final e = '${err ?? ''}'.toLowerCase();
     bool has(String pattern) => RegExp(pattern).hasMatch(e);
     if (has(r'video chain')) return "This video's format can't play on this device.";

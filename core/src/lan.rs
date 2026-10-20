@@ -10,15 +10,19 @@ use axum::extract::Request;
 use axum::http::{HeaderValue, Method, StatusCode, header};
 use axum::response::Response;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 pub const SETTING: &str = "shareLibrary";
 pub const RECORD: &str = "lanHost:";
+/// `lanMiss:<id>`: when a device on the same network last timed out reaching that one.
+pub const MISS: &str = "lanMiss:";
 const ID: &str = "lanId";
 const KEY: &str = "lanKey";
 const PORT: u16 = 47821;
@@ -44,6 +48,15 @@ struct Server {
 
 static SERVER: Mutex<Option<Server>> = Mutex::new(None);
 static ONE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+static ERROR: Mutex<String> = Mutex::new(String::new());
+// Unix times: misses before SINCE or LAST_PEER are old news.
+static SINCE: AtomicI64 = AtomicI64::new(0);
+static LAST_PEER: AtomicI64 = AtomicI64::new(0);
+static LAST_REFRESH: AtomicI64 = AtomicI64::new(0);
+
+fn now() -> i64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64)
+}
 
 pub(crate) fn secret() -> String {
     let mut bytes = [0; 32];
@@ -75,29 +88,74 @@ fn lan_ip() -> Option<IpAddr> {
     Some(s.local_addr().ok()?.ip()).filter(|ip| !ip.is_unspecified())
 }
 
+fn sharing() -> bool {
+    crate::api::setting(SETTING) == "true" && crate::sync::signed_in()
+}
+
 /// Serves while sharing is on and signed in, and keeps this device's record current.
 pub async fn refresh() {
-    let _one = ONE.lock().await;
-    let on = crate::api::setting(SETTING) == "true" && crate::sync::signed_in();
-    let port = if on {
-        start().await.map_err(|e| tracing::warn!("lan: couldn't share the library ({e:#})")).ok()
-    } else {
-        stop();
-        None
-    };
-    let record = port
-        .and_then(|port| lan_ip().map(|ip| SocketAddr::new(ip, port)))
-        .and_then(|addr| {
-            let cert = SERVER.lock().unwrap().as_ref()?.cert.clone();
-            serde_json::to_string(&Host { id: own(ID), name: device_name(), addr, key: own(KEY), cert }).ok()
-        })
-        .unwrap_or_default();
-    let key = format!("{RECORD}{}", own(ID));
-    if db::setting(&key).unwrap_or_default() != record
-        && let Err(e) = db::set_setting(&key, &record)
     {
-        tracing::warn!("lan: couldn't save this device's address ({e:#})");
+        let _one = ONE.lock().await;
+        // Refreshes come every two minutes; a longer gap means this computer slept,
+        // and devices that missed it meanwhile say nothing about its firewall.
+        if now() - LAST_REFRESH.swap(now(), Ordering::Relaxed) > 600 {
+            SINCE.store(now(), Ordering::Relaxed);
+        }
+        let (record, error) = if sharing() {
+            publish().await
+        } else {
+            stop();
+            Default::default()
+        };
+        *ERROR.lock().unwrap() = error;
+        let key = format!("{RECORD}{}", own(ID));
+        if db::setting(&key).unwrap_or_default() != record
+            && let Err(e) = db::set_setting(&key, &record)
+        {
+            tracing::warn!("lan: couldn't save this device's address ({e:#})");
+        }
     }
+    crate::push("lan", &state());
+}
+
+/// This device's record, or none and why.
+async fn publish() -> (String, String) {
+    let port = match start().await {
+        Ok(port) => port,
+        Err(e) => {
+            tracing::warn!("lan: couldn't share the library ({e:#})");
+            return (String::new(), format!("Couldn't start sharing: {e}"));
+        }
+    };
+    let Some(ip) = lan_ip() else { return (String::new(), "Not connected to a network".into()) };
+    if !on_lan(ip) {
+        return (String::new(), "Not on a local network. A VPN can cause this.".into());
+    }
+    let cert = SERVER.lock().unwrap().as_ref().map(|s| s.cert.clone()).unwrap_or_default();
+    let host = Host { id: own(ID), name: device_name(), addr: SocketAddr::new(ip, port), key: own(KEY), cert };
+    (serde_json::to_string(&host).unwrap_or_default(), String::new())
+}
+
+/// For Settings: `off`, `starting`, `waiting` (the address isn't on the account
+/// yet, so phones can't find this device), `on` or `error`.
+pub fn state() -> Value {
+    let running = SERVER.lock().unwrap().as_ref().is_some_and(|s| !s.task.is_finished());
+    let record = format!("{RECORD}{}", db::setting(ID).unwrap_or_default());
+    let address = db::setting(&record).and_then(|r| serde_json::from_str::<Host>(&r).ok()).map(|h| h.addr.ip().to_string()).unwrap_or_default();
+    let missed = db::setting(&format!("{MISS}{}", db::setting(ID).unwrap_or_default())).and_then(|v| v.parse::<i64>().ok()).unwrap_or(0);
+    let blocked = running && missed > SINCE.load(Ordering::Relaxed).max(LAST_PEER.load(Ordering::Relaxed));
+    let mut error = ERROR.lock().unwrap().clone();
+    if error.is_empty() && blocked {
+        error = "A device couldn't connect. Check the firewall.".into();
+    }
+    let state = match () {
+        _ if !sharing() => "off",
+        _ if !error.is_empty() => "error",
+        _ if !running || address.is_empty() => "starting",
+        _ if db::sync_queued("setting", &record) => "waiting",
+        _ => "on",
+    };
+    json!({ "state": state, "address": address, "error": error })
 }
 
 async fn start() -> Result<u16> {
@@ -117,8 +175,9 @@ async fn start() -> Result<u16> {
     let handle = axum_server::Handle::new();
     let server = axum_server::from_tcp_rustls(listener.into_std()?, config)?.handle(handle.clone());
     db::set_setting(KEY, &secret())?;
+    SINCE.store(now(), Ordering::Relaxed);
     let task = tokio::spawn(async move {
-        if let Err(e) = server.serve(axum::Router::new().fallback(serve).into_make_service()).await {
+        if let Err(e) = server.serve(axum::Router::new().fallback(serve).into_make_service_with_connect_info::<SocketAddr>()).await {
             tracing::error!("lan: library sharing stopped: {e}");
         }
     });
@@ -139,15 +198,20 @@ pub fn forget() {
     stop();
     crate::proxy::clear();
     let _ = db::delete_settings_with_prefix(RECORD);
+    let _ = db::delete_settings_with_prefix(MISS);
 }
 
 async fn serve(req: Request) -> Response {
     let q: HashMap<String, String> = url::form_urlencoded::parse(req.uri().query().unwrap_or("").as_bytes()).into_owned().collect();
     let key = db::setting(KEY).unwrap_or_default();
-    if crate::api::setting(SETTING) != "true" || !crate::sync::signed_in() || key.is_empty()
-        || req.headers().get(header::AUTHORIZATION).and_then(|v| v.to_str().ok()) != Some(format!("Bearer {key}").as_str())
-    {
+    let given = req.headers().get(header::AUTHORIZATION).and_then(|v| v.to_str().ok()).and_then(|v| v.strip_prefix("Bearer ")).unwrap_or_default();
+    let peer = req.extensions().get::<axum::extract::ConnectInfo<SocketAddr>>().map(|c| c.0.ip());
+    // Digests, so how long the comparison takes says nothing about the key.
+    if !sharing() || key.is_empty() || !peer.is_some_and(on_lan) || Sha256::digest(given) != Sha256::digest(&key) {
         return status(StatusCode::FORBIDDEN);
+    }
+    if peer.is_some_and(|ip| !ip.is_loopback()) {
+        LAST_PEER.store(now(), Ordering::Relaxed);
     }
     let head = req.method() == Method::HEAD;
     if req.method() != Method::GET && !head {
@@ -252,9 +316,21 @@ fn url(h: &Host, route: &str, path: &str) -> String {
     u.into()
 }
 
-/// Both UIs' `describe` match "<name> is offline"; keep filesystem paths out of network errors.
+/// Both UIs' `describe` match "<name> is offline" and "<name> can't be reached";
+/// keep filesystem paths out of network errors. A refused connection means
+/// Aikatsu isn't sharing there; silence means a firewall, sleep or another network.
 fn offline(h: &Host, e: reqwest::Error) -> anyhow::Error {
-    anyhow::Error::new(e.without_url()).context(format!("{} is offline", h.name))
+    let what = if e.is_timeout() { "can't be reached" } else { "is offline" };
+    anyhow::Error::new(e.without_url()).context(format!("{} {what}", h.name))
+}
+
+fn timed_out(e: &anyhow::Error) -> bool {
+    e.chain().any(|c| c.downcast_ref::<reqwest::Error>().is_some_and(reqwest::Error::is_timeout))
+}
+
+/// Same /24 as this device, so a home network rather than mobile data.
+fn same_network(ip: IpAddr) -> bool {
+    matches!((lan_ip(), ip), (Some(IpAddr::V4(a)), IpAddr::V4(b)) if a.octets()[..3] == b.octets()[..3])
 }
 
 fn client(h: &Host) -> Result<reqwest::Client> {
@@ -299,22 +375,40 @@ async fn ask(h: &Host, route: &str, path: &str) -> Result<Value> {
     Ok(serde_json::from_str(&text)?)
 }
 
-/// Series shared by the account's devices on this network, each tagged with its device.
-pub async fn library() -> Vec<Value> {
+/// Series shared by the account's devices on this network, each tagged with
+/// its device, and the names of the devices that didn't answer. A device that
+/// timed out on this network hears about it through sync: its firewall is the
+/// usual cause, and it can't see that itself.
+pub async fn library() -> (Vec<Value>, Vec<String>) {
     let hosts = hosts();
     let found = futures_util::future::join_all(hosts.iter().map(|h| ask(h, "library", ""))).await;
-    let mut out = Vec::new();
+    let (mut out, mut missing, mut missed) = (Vec::new(), Vec::new(), false);
     for (h, res) in hosts.iter().zip(found) {
+        let miss = format!("{MISS}{}", h.id);
         match res {
-            Ok(mut lib) => out.extend(lib["series"].as_array_mut().map(std::mem::take).unwrap_or_default().into_iter().map(|mut s| {
-                s["host"] = h.name.clone().into();
-                s["path"] = location(&h.id, s["path"].as_str().unwrap_or_default()).into();
-                s
-            })),
-            Err(e) => tracing::info!("lan: {} isn't sharing right now ({e:#})", h.name),
+            Ok(mut lib) => {
+                out.extend(lib["series"].as_array_mut().map(std::mem::take).unwrap_or_default().into_iter().map(|mut s| {
+                    s["host"] = h.name.clone().into();
+                    s["path"] = location(&h.id, s["path"].as_str().unwrap_or_default()).into();
+                    s
+                }));
+                if db::setting(&miss).is_some_and(|v| !v.is_empty()) {
+                    let _ = db::set_setting(&miss, "");
+                }
+            }
+            Err(e) => {
+                tracing::info!("lan: {} isn't sharing right now ({e:#})", h.name);
+                missing.push(h.name.clone());
+                if timed_out(&e) && same_network(h.addr.ip()) {
+                    missed |= db::set_setting(&miss, &now().to_string()).is_ok();
+                }
+            }
         }
     }
-    out
+    if missed {
+        tokio::spawn(crate::sync::sync());
+    }
+    (out, missing)
 }
 
 pub async fn episodes(folder: &str) -> Result<Vec<Episode>> {
@@ -412,13 +506,20 @@ mod tests {
         crate::RT.block_on(async {
             refresh().await;
             let port = SERVER.lock().unwrap().as_ref().map(|s| s.port).expect("sharing started");
+            ERROR.lock().unwrap().clear(); // whatever this machine's network is
+            let own_miss = format!("{MISS}{}", db::setting(ID).unwrap());
+            db::set_setting(&own_miss, &(now() + 1).to_string()).unwrap();
+            assert!(state()["error"].as_str().unwrap().contains("firewall"), "a device on this network timed out");
+            LAST_PEER.store(now() + 2, Ordering::Relaxed);
+            assert_eq!(state()["error"], "", "one got through since");
+            db::set_setting(&own_miss, "").unwrap();
             let desk = Host { id: "test-desk".into(), name: "Desk".into(), addr: SocketAddr::from(([127, 0, 0, 1], port)), key: db::setting(KEY).unwrap(), cert: SERVER.lock().unwrap().as_ref().unwrap().cert.clone() };
             let far = Host { id: "test-far".into(), name: "Far".into(), addr: SocketAddr::from(([8, 8, 8, 8], port)), key: desk.key.clone(), cert: desk.cert.clone() };
             db::set_setting(&format!("{RECORD}test-desk"), &serde_json::to_string(&desk).unwrap()).unwrap();
             db::set_setting(&format!("{RECORD}test-far"), &serde_json::to_string(&far).unwrap()).unwrap();
             assert_eq!(hosts(), [desk], "own record and public addresses are skipped");
 
-            let shared = library().await;
+            let (shared, _) = library().await;
             assert!(shared.iter().any(|s| s["path"] == location("test-desk", &show) && s["host"] == "Desk"), "{shared:?}");
             assert_eq!(episodes(&show).await.unwrap().len(), 1);
             let s = stream(&video).await.unwrap();

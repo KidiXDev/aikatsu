@@ -5,6 +5,7 @@ mod bridge;
 
 use cxx_qt_lib::{QByteArray, QGuiApplication, QQmlApplicationEngine, QUrl};
 use anyhow::Context;
+use std::net::{SocketAddr, TcpListener, TcpStream};
 
 fn lock_instance(data: &std::path::Path) -> std::io::Result<Option<std::fs::File>> {
     std::fs::create_dir_all(data)?;
@@ -13,6 +14,27 @@ fn lock_instance(data: &std::path::Path) -> std::io::Result<Option<std::fs::File
         Ok(()) => Ok(Some(file)),
         Err(std::fs::TryLockError::WouldBlock) => Ok(None),
         Err(std::fs::TryLockError::Error(e)) => Err(e),
+    }
+}
+
+/// The running copy may be hidden in the tray, so a second launch asks it to
+/// show its window instead.
+fn listen_for_launches(data: &std::path::Path) {
+    let Ok(listener) = TcpListener::bind("127.0.0.1:0") else { return };
+    let Ok(addr) = listener.local_addr() else { return };
+    if std::fs::write(data.join("instance.port"), addr.port().to_string()).is_err() {
+        return;
+    }
+    std::thread::spawn(move || {
+        for _ in listener.incoming().flatten() {
+            bridge::push("show", &serde_json::Value::Null);
+        }
+    });
+}
+
+fn show_running(data: &std::path::Path) {
+    if let Some(port) = std::fs::read_to_string(data.join("instance.port")).ok().and_then(|p| p.trim().parse::<u16>().ok()) {
+        let _ = TcpStream::connect_timeout(&SocketAddr::from(([127, 0, 0, 1], port)), std::time::Duration::from_secs(1));
     }
 }
 
@@ -31,7 +53,11 @@ fn dirs() -> aikatsu_core::Dirs {
 
 fn main() -> anyhow::Result<()> {
     let dirs = dirs();
-    let Some(_instance) = lock_instance(&dirs.data).context("couldn't lock the Aikatsu instance")? else { return Ok(()) };
+    let Some(_instance) = lock_instance(&dirs.data).context("couldn't lock the Aikatsu instance")? else {
+        show_running(&dirs.data);
+        return Ok(());
+    };
+    listen_for_launches(&dirs.data);
     let startup = aikatsu_core::init(dirs, std::env::args().any(|a| a == "--debug"), bridge::push);
     // SAFETY: single-threaded at this point
     unsafe {

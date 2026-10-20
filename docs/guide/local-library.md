@@ -59,9 +59,19 @@ Watch videos from your desktop on your phone over your home network without copy
 2. On the desktop, turn on **Settings > Library > Share your folders**.
 3. Keep both devices on the same network. The desktop's shows appear in the phone's **Your folders**, marked **On** and the computer's name.
 
-The desktop must be running. On Windows, allow Aikatsu through the firewall on private networks when asked. Choose the anime for each folder on desktop. Your phone uses the same match.
+The desktop must be running. To keep sharing with its window closed, set **Settings > General > When closed** to **To tray**. On Windows, allow Aikatsu through the firewall on private networks when asked. Choose the anime for each folder on desktop. Your phone uses the same match.
 
-Video and library requests are encrypted over your network. Your devices use the sharing certificate and key delivered through account sync to verify the desktop. Use HTTPS for a self-hosted sync server too, because it carries those credentials.
+The line under **Share your folders** shows where sharing stands:
+
+- **Starting…** while the desktop gets ready.
+- **Waiting for sync…** until the desktop's address reaches your account. If sync can't reach the server, the line shows that error instead, and phones can't find the desktop yet.
+- **Online** once phones on the network can play your folders.
+- An error in red, such as **Not connected to a network**, when sharing can't work. **Library** in the Settings list turns red too. A VPN can hide the desktop from your network.
+- **A device couldn't connect. Check the firewall.** when your phone, on the same network, got no answer from the desktop. Allow Aikatsu through the desktop's firewall on private networks. On Linux with ufw, run `sudo ufw allow 47821/tcp`. The message clears once a device connects.
+
+On the phone, **Your folders** shows **Can't reach** and the desktop's name when it doesn't answer. Check that both are on the same Wi-Fi, that the desktop is awake, and its firewall.
+
+Video and library requests are encrypted over your network. Your devices use the sharing certificate and key delivered through account sync to verify the desktop, so only Aikatsu signed in to your account can read your folders. The desktop also refuses connections from outside your local network. Use HTTPS for a self-hosted sync server too, because it carries those credentials.
 
 Update both devices for encrypted sharing. Older versions cannot connect. Turning sharing off or signing out closes active transfers, and turning it back on creates a new certificate and key. Give the other device a moment to sync the new connection details.
 

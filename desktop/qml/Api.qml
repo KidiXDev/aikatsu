@@ -34,6 +34,9 @@ QtObject {
         const offline = /^(.+?) is offline\b/.exec(String(err ?? ""));
         if (offline)
             return `${offline[1]} is offline. Open Aikatsu there and try again.`;
+        const unreachable = /^(.+?) can't be reached\b/.exec(String(err ?? ""));
+        if (unreachable)
+            return `Can't reach ${unreachable[1]}. Check its firewall and that you're on the same network.`;
         const e = String(err ?? "").toLowerCase();
         if (/video chain/.test(e))
             return "This video's format can't play on this device.";

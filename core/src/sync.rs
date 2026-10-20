@@ -14,9 +14,10 @@ const DEFAULT_SERVER: Option<&str> = option_env!("AIKATSU_SYNC_SERVER");
 pub const SYNCED_SETTINGS: [&str; 7] =
     ["autoplay", "autoSkip", "quality", "disabledSources", "autoCheckPluginUpdates", "tmdbKey", plugins::REPOS_SETTING];
 
-/// Also each device's shared-library address, so phones on the account find it.
+/// Also each device's shared-library address, so phones on the account find it,
+/// and when they couldn't.
 pub fn synced(key: &str) -> bool {
-    SYNCED_SETTINGS.contains(&key) || key.starts_with(crate::lan::RECORD)
+    SYNCED_SETTINGS.contains(&key) || key.starts_with(crate::lan::RECORD) || key.starts_with(crate::lan::MISS)
 }
 
 // Outside SETTING_DEFAULTS, so the UIs never see the token.

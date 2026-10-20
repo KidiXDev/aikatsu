@@ -289,6 +289,10 @@ FocusScope {
         osd.show(sec < 0 ? "fast_rewind" : "fast_forward", `${sec < 0 ? "−" : "+"}${Math.abs(sec)}s`);
     }
 
+    function pause(): void {
+        mpv.paused = true;
+    }
+
     function togglePause(): void {
         clickDelay.stop();
         const p = !mpv.paused;

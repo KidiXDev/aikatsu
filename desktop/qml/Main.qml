@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import Qt.labs.platform as Platform
 import Aikatsu
 
 ApplicationWindow {
@@ -13,6 +14,9 @@ ApplicationWindow {
     readonly property bool playing: playerLoader.active
     property bool developerMode: Api.setting("developerMode") === "true"
     property int windowedVisibility: Window.Windowed
+    property string closeAction: Api.setting("closeAction")
+    readonly property bool trayAvailable: tray.available
+    property var lan: Api.get("lanStatus") // library sharing, for Settings and the tray
 
     onTabChanged: openedTabs |= 1 << tab
     onVisibilityChanged: {
@@ -69,6 +73,23 @@ ApplicationWindow {
         playerLoader.active = false;
         historyRevision++;
         Api.call("syncNow", {});
+    }
+
+    // From the tray, or a second launch.
+    function showWindow(): void {
+        if (!visible)
+            visibility = windowedVisibility;
+        raise();
+        requestActivate();
+    }
+
+    onClosing: close => {
+        if (closeAction !== "tray" || !tray.available)
+            return;
+        close.accepted = false;
+        if (playing)
+            playerLoader.item.pause();
+        hide();
     }
 
     function toggleFullScreen(): void {
@@ -240,14 +261,25 @@ ApplicationWindow {
                 if (!win.developerMode)
                     logs.close();
             }
+            if (key === "closeAction")
+                win.closeAction = value;
+            if (key === "shareLibrary")
+                win.lan = Api.get("lanStatus");
         }
 
         function onPushed(kind: string, data: var): void {
-            if (kind === "sync" && data.history)
-                win.historyRevision++;
+            if (kind === "sync") {
+                if (data.history)
+                    win.historyRevision++;
+                win.lan = Api.get("lanStatus"); // its address may have reached the account
+            } else if (kind === "lan")
+                win.lan = data;
+            else if (kind === "show")
+                win.showWindow();
             else if (kind === "appUpdate")
                 appUpdateDialog.progress = data.done / Math.max(1, data.total);
         }
+
     }
 
     Rectangle {
@@ -395,5 +427,27 @@ ApplicationWindow {
 
     Snackbar {
         id: snackbar
+    }
+
+    Platform.SystemTrayIcon {
+        id: tray
+
+        visible: win.closeAction === "tray"
+        icon.source: "qrc:/icon.svg"
+        tooltip: win.lan.state === "on" ? "Aikatsu · Sharing your folders" : "Aikatsu"
+        onActivated: reason => {
+            if (reason !== Platform.SystemTrayIcon.Context)
+                win.showWindow();
+        }
+        menu: Platform.Menu {
+            Platform.MenuItem {
+                text: "Show Aikatsu"
+                onTriggered: win.showWindow()
+            }
+            Platform.MenuItem {
+                text: "Quit"
+                onTriggered: Qt.quit()
+            }
+        }
     }
 }
