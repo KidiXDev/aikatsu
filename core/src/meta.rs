@@ -16,6 +16,70 @@ pub struct SeasonRange {
     pub end: u32,
 }
 
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct NextAiring {
+    pub episode: i64,
+    pub airing_at: i64,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct CharacterEntry {
+    pub id: i64,
+    pub name: String,
+    pub native_name: String,
+    pub image: String,
+    pub role: String,
+    pub va_name: String,
+    pub va_native_name: String,
+    pub va_image: String,
+    pub va_language: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct StaffEntry {
+    pub id: i64,
+    pub name: String,
+    pub native_name: String,
+    pub image: String,
+    pub role: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct RelatedAnime {
+    pub anilist_id: i64,
+    pub mal_id: i64,
+    pub media_type: String,
+    pub relation: String,
+    pub title_romaji: String,
+    pub title_english: String,
+    pub cover: String,
+    pub format: String,
+    pub status: String,
+    pub episodes: i64,
+    pub year: i64,
+    pub score: i64,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct RecommendedAnime {
+    pub anilist_id: i64,
+    pub mal_id: i64,
+    pub title_romaji: String,
+    pub title_english: String,
+    pub cover: String,
+    pub format: String,
+    pub episodes: i64,
+    pub year: i64,
+    pub score: i64,
+    pub rating: i64,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct MediaTag {
+    pub name: String,
+    pub rank: i64,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Meta {
     pub anilist_id: i64,
@@ -33,6 +97,48 @@ pub struct Meta {
     pub year: i64,
     pub status: String,
     pub season_map: Vec<SeasonRange>,
+    #[serde(default)]
+    pub format: String,
+    #[serde(default)]
+    pub season: String,
+    #[serde(default)]
+    pub season_year: i64,
+    #[serde(default)]
+    pub duration: i64,
+    #[serde(default)]
+    pub source: String,
+    #[serde(default)]
+    pub start_date: String,
+    #[serde(default)]
+    pub end_date: String,
+    #[serde(default)]
+    pub mean_score: i64,
+    #[serde(default)]
+    pub popularity: i64,
+    #[serde(default)]
+    pub favourites: i64,
+    #[serde(default)]
+    pub hashtag: String,
+    #[serde(default)]
+    pub country_of_origin: String,
+    #[serde(default)]
+    pub synonyms: Vec<String>,
+    #[serde(default)]
+    pub studios: Vec<String>,
+    #[serde(default)]
+    pub producers: Vec<String>,
+    #[serde(default)]
+    pub next_airing: Option<NextAiring>,
+    #[serde(default)]
+    pub tags: Vec<MediaTag>,
+    #[serde(default)]
+    pub characters: Vec<CharacterEntry>,
+    #[serde(default)]
+    pub staff: Vec<StaffEntry>,
+    #[serde(default)]
+    pub relations: Vec<RelatedAnime>,
+    #[serde(default)]
+    pub recommendations: Vec<RecommendedAnime>,
 }
 
 impl Meta {
@@ -53,8 +159,37 @@ impl Meta {
 
 pub(crate) const ANILIST: &str = "https://graphql.anilist.co";
 const MEDIA_FIELDS: &str = "id idMal title { romaji english native } coverImage { extraLarge large color } bannerImage
-    description(asHtml: false) genres averageScore episodes status startDate { year month }
-    relations { edges { relationType node { id episodes format startDate { year month } } } }";
+    description(asHtml: false) genres synonyms format status source(version: 3) season seasonYear episodes duration
+    averageScore meanScore popularity favourites hashtag countryOfOrigin
+    startDate { year month day } endDate { year month day }
+    nextAiringEpisode { episode airingAt }
+    studios { edges { isMain node { name } } }
+    tags { name rank isMediaSpoiler isGeneralSpoiler }
+    characters(sort: [ROLE, RELEVANCE, ID], perPage: 18) {
+        edges {
+            role
+            node { id name { full native } image { large medium } }
+            voiceActors(language: JAPANESE, sort: [RELEVANCE, ID]) { id name { full native } image { large medium } languageV2 }
+        }
+    }
+    staff(sort: [RELEVANCE, ID], perPage: 12) {
+        edges {
+            role
+            node { id name { full native } image { large medium } }
+        }
+    }
+    relations {
+        edges {
+            relationType(version: 2)
+            node { id idMal type title { romaji english } format status episodes averageScore coverImage { large medium } startDate { year month } }
+        }
+    }
+    recommendations(sort: [RATING_DESC, ID], perPage: 10) {
+        nodes {
+            rating
+            mediaRecommendation { id idMal type title { romaji english } format status episodes averageScore seasonYear coverImage { large medium } }
+        }
+    }";
 
 async fn anilist(query: &str, variables: Value) -> Result<Value> {
     let resp = http::PLAIN
@@ -72,26 +207,200 @@ async fn anilist(query: &str, variables: Value) -> Result<Value> {
     Ok(body)
 }
 
+fn format_fuzzy_date(d: &Value) -> String {
+    const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    let y = d["year"].as_i64().unwrap_or(0);
+    let m = d["month"].as_u64().unwrap_or(0) as usize;
+    let day = d["day"].as_i64().unwrap_or(0);
+    match (y > 0, (1..=12).contains(&m), day > 0) {
+        (true, true, true) => format!("{} {day}, {y}", MONTHS[m - 1]),
+        (true, true, false) => format!("{} {y}", MONTHS[m - 1]),
+        (true, false, _) => y.to_string(),
+        _ => String::new(),
+    }
+}
+
 fn parse_media(m: &Value) -> Option<Meta> {
     let id = m["id"].as_i64().filter(|&id| id > 0)?;
     let s = |v: &Value| v.as_str().unwrap_or_default().to_owned();
+    let img = |v: &Value| v["extraLarge"].as_str().or(v["large"].as_str()).or(v["medium"].as_str()).unwrap_or_default().to_owned();
     let episodes = m["episodes"].as_i64().unwrap_or(0);
+
+    let mut studios = Vec::new();
+    let mut producers = Vec::new();
+    for edge in m["studios"]["edges"].as_array().into_iter().flatten() {
+        let name = s(&edge["node"]["name"]);
+        if name.is_empty() {
+            continue;
+        }
+        if edge["isMain"].as_bool().unwrap_or(false) {
+            if !studios.contains(&name) {
+                studios.push(name);
+            }
+        } else if !producers.contains(&name) {
+            producers.push(name);
+        }
+    }
+
+    let next_airing = m["nextAiringEpisode"]["episode"].as_i64().and_then(|ep| {
+        let at = m["nextAiringEpisode"]["airingAt"].as_i64()?;
+        Some(NextAiring { episode: ep, airing_at: at })
+    });
+
+    let tags = m["tags"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|t| !t["isMediaSpoiler"].as_bool().unwrap_or(false) && !t["isGeneralSpoiler"].as_bool().unwrap_or(false))
+        .filter_map(|t| {
+            let name = t["name"].as_str()?.trim().to_owned();
+            if name.is_empty() {
+                return None;
+            }
+            Some(MediaTag { name, rank: t["rank"].as_i64().unwrap_or(0) })
+        })
+        .take(12)
+        .collect();
+
+    let characters = m["characters"]["edges"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|edge| {
+            let node = &edge["node"];
+            let name = s(&node["name"]["full"]);
+            if name.is_empty() {
+                return None;
+            }
+            let va = edge["voiceActors"].as_array().and_then(|v| v.first());
+            Some(CharacterEntry {
+                id: node["id"].as_i64().unwrap_or(0),
+                name,
+                native_name: s(&node["name"]["native"]),
+                image: img(&node["image"]),
+                role: s(&edge["role"]),
+                va_name: va.map(|v| s(&v["name"]["full"])).unwrap_or_default(),
+                va_native_name: va.map(|v| s(&v["name"]["native"])).unwrap_or_default(),
+                va_image: va.map(|v| img(&v["image"])).unwrap_or_default(),
+                va_language: va.map(|v| s(&v["languageV2"])).unwrap_or_default(),
+            })
+        })
+        .collect();
+
+    let staff = m["staff"]["edges"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|edge| {
+            let node = &edge["node"];
+            let name = s(&node["name"]["full"]);
+            if name.is_empty() {
+                return None;
+            }
+            Some(StaffEntry {
+                id: node["id"].as_i64().unwrap_or(0),
+                name,
+                native_name: s(&node["name"]["native"]),
+                image: img(&node["image"]),
+                role: s(&edge["role"]),
+            })
+        })
+        .collect();
+
+    let relations = m["relations"]["edges"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|edge| {
+            let node = &edge["node"];
+            let rel_id = node["id"].as_i64().filter(|&x| x > 0)?;
+            let title_romaji = s(&node["title"]["romaji"]);
+            let title_english = s(&node["title"]["english"]);
+            if title_romaji.is_empty() && title_english.is_empty() {
+                return None;
+            }
+            Some(RelatedAnime {
+                anilist_id: rel_id,
+                mal_id: node["idMal"].as_i64().unwrap_or(0),
+                media_type: s(&node["type"]),
+                relation: s(&edge["relationType"]),
+                title_romaji,
+                title_english,
+                cover: img(&node["coverImage"]),
+                format: s(&node["format"]),
+                status: s(&node["status"]),
+                episodes: node["episodes"].as_i64().unwrap_or(0),
+                year: node["startDate"]["year"].as_i64().unwrap_or(0),
+                score: node["averageScore"].as_i64().unwrap_or(0),
+            })
+        })
+        .collect();
+
+    let recommendations = m["recommendations"]["nodes"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|n| {
+            let rec = &n["mediaRecommendation"];
+            let rec_id = rec["id"].as_i64().filter(|&x| x > 0)?;
+            let title_romaji = s(&rec["title"]["romaji"]);
+            let title_english = s(&rec["title"]["english"]);
+            if title_romaji.is_empty() && title_english.is_empty() {
+                return None;
+            }
+            Some(RecommendedAnime {
+                anilist_id: rec_id,
+                mal_id: rec["idMal"].as_i64().unwrap_or(0),
+                title_romaji,
+                title_english,
+                cover: img(&rec["coverImage"]),
+                format: s(&rec["format"]),
+                episodes: rec["episodes"].as_i64().unwrap_or(0),
+                year: rec["seasonYear"].as_i64().unwrap_or(0),
+                score: rec["averageScore"].as_i64().unwrap_or(0),
+                rating: n["rating"].as_i64().unwrap_or(0),
+            })
+        })
+        .collect();
+
+    let year = m["seasonYear"].as_i64().filter(|&y| y > 0).unwrap_or_else(|| m["startDate"]["year"].as_i64().unwrap_or(0));
     let mut meta = Meta {
         anilist_id: id,
         mal_id: m["idMal"].as_i64().unwrap_or(0),
         title_romaji: s(&m["title"]["romaji"]),
         title_english: s(&m["title"]["english"]),
         title_native: s(&m["title"]["native"]),
-        cover: m["coverImage"]["extraLarge"].as_str().or(m["coverImage"]["large"].as_str()).unwrap_or_default().to_owned(),
+        cover: img(&m["coverImage"]),
         banner: s(&m["bannerImage"]),
         color: s(&m["coverImage"]["color"]),
         description: strip_html(&s(&m["description"])),
         genres: m["genres"].as_array().map(|g| g.iter().filter_map(|x| x.as_str().map(str::to_owned)).collect()).unwrap_or_default(),
         score: m["averageScore"].as_i64().unwrap_or(0),
         episodes,
-        year: m["startDate"]["year"].as_i64().unwrap_or(0),
+        year,
         status: s(&m["status"]),
         season_map: Vec::new(),
+        format: s(&m["format"]),
+        season: s(&m["season"]),
+        season_year: m["seasonYear"].as_i64().unwrap_or(year),
+        duration: m["duration"].as_i64().unwrap_or(0),
+        source: s(&m["source"]),
+        start_date: format_fuzzy_date(&m["startDate"]),
+        end_date: format_fuzzy_date(&m["endDate"]),
+        mean_score: m["meanScore"].as_i64().unwrap_or(0),
+        popularity: m["popularity"].as_i64().unwrap_or(0),
+        favourites: m["favourites"].as_i64().unwrap_or(0),
+        hashtag: s(&m["hashtag"]),
+        country_of_origin: s(&m["countryOfOrigin"]),
+        synonyms: m["synonyms"].as_array().map(|g| g.iter().filter_map(|x| x.as_str().map(str::to_owned)).collect()).unwrap_or_default(),
+        studios,
+        producers,
+        next_airing,
+        tags,
+        characters,
+        staff,
+        relations,
+        recommendations,
     };
     meta.season_map = season_map_from_relations(episodes, &m["relations"]["edges"]);
     Some(meta)
@@ -349,6 +658,10 @@ async fn jikan_search(name: &str) -> Result<Meta> {
     let v = jikan(&format!("/anime?q={}&limit=1", http::query_escape(name))).await?;
     let a = v["data"].get(0).ok_or_else(|| anyhow!("no Jikan result for {name:?}"))?;
     let s = |v: &Value| v.as_str().unwrap_or_default().to_owned();
+    let names = |v: &Value| -> Vec<String> {
+        v.as_array().map(|arr| arr.iter().filter_map(|x| x["name"].as_str().map(str::to_owned)).collect()).unwrap_or_default()
+    };
+    let year = a["year"].as_i64().unwrap_or_else(|| a["aired"]["prop"]["from"]["year"].as_i64().unwrap_or(0));
     Ok(Meta {
         mal_id: a["mal_id"].as_i64().unwrap_or(0),
         title_romaji: s(&a["title"]),
@@ -356,11 +669,21 @@ async fn jikan_search(name: &str) -> Result<Meta> {
         title_native: s(&a["title_japanese"]),
         cover: s(&a["images"]["jpg"]["large_image_url"]),
         description: s(&a["synopsis"]),
-        genres: a["genres"].as_array().map(|g| g.iter().filter_map(|x| x["name"].as_str().map(str::to_owned)).collect()).unwrap_or_default(),
+        genres: names(&a["genres"]),
         score: (a["score"].as_f64().unwrap_or(0.0) * 10.0) as i64,
         episodes: a["episodes"].as_i64().unwrap_or(0),
-        year: a["year"].as_i64().unwrap_or(0),
+        year,
         status: s(&a["status"]),
+        format: s(&a["type"]),
+        season: s(&a["season"]).to_uppercase(),
+        season_year: year,
+        source: s(&a["source"]),
+        start_date: s(&a["aired"]["string"]),
+        popularity: a["members"].as_i64().unwrap_or(0),
+        favourites: a["favorites"].as_i64().unwrap_or(0),
+        synonyms: a["title_synonyms"].as_array().map(|g| g.iter().filter_map(|x| x.as_str().map(str::to_owned)).collect()).unwrap_or_default(),
+        studios: names(&a["studios"]),
+        producers: names(&a["producers"]),
         ..Default::default()
     })
 }
@@ -526,6 +849,81 @@ mod tests {
         assert_eq!(sched, [(1, 5), (3, 3)], "adult and id-less entries dropped, oldest first");
         assert_eq!(d.trending[0].title_romaji, "Show 4");
         assert!(d.coming_soon.is_empty());
+    }
+
+    #[test]
+    fn rich_media_parse() {
+        let m = parse_media(&json!({
+            "id": 154587,
+            "idMal": 52991,
+            "title": { "romaji": "Sousou no Frieren", "english": "Frieren: Beyond Journey's End", "native": "葬送のフリーレン" },
+            "format": "TV",
+            "status": "FINISHED",
+            "source": "MANGA",
+            "season": "FALL",
+            "seasonYear": 2023,
+            "episodes": 28,
+            "duration": 24,
+            "averageScore": 93,
+            "meanScore": 93,
+            "popularity": 320000,
+            "favourites": 45000,
+            "startDate": { "year": 2023, "month": 9, "day": 29 },
+            "endDate": { "year": 2024, "month": 3, "day": 22 },
+            "studios": {
+                "edges": [
+                    { "isMain": true, "node": { "name": "MADHOUSE" } },
+                    { "isMain": false, "node": { "name": "TOHO animation" } }
+                ]
+            },
+            "characters": {
+                "edges": [
+                    {
+                        "role": "MAIN",
+                        "node": { "id": 1, "name": { "full": "Frieren", "native": "フリーレン" }, "image": { "large": "https://img/frieren.jpg" } },
+                        "voiceActors": [
+                            { "id": 10, "name": { "full": "Atsumi Tanezaki", "native": "種﨑敦美" }, "image": { "large": "https://img/tanezaki.jpg" }, "languageV2": "Japanese" }
+                        ]
+                    }
+                ]
+            },
+            "staff": {
+                "edges": [
+                    {
+                        "role": "Director",
+                        "node": { "id": 20, "name": { "full": "Keiichirou Saitou", "native": "斎藤圭一郎" }, "image": { "large": "https://img/saitou.jpg" } }
+                    }
+                ]
+            },
+            "relations": {
+                "edges": [
+                    {
+                        "relationType": "ADAPTATION",
+                        "node": { "id": 118586, "idMal": 126287, "type": "MANGA", "title": { "romaji": "Sousou no Frieren" }, "format": "MANGA", "status": "RELEASING" }
+                    }
+                ]
+            },
+            "recommendations": {
+                "nodes": [
+                    {
+                        "rating": 850,
+                        "mediaRecommendation": { "id": 161645, "idMal": 54492, "title": { "romaji": "Kusuriya no Hitorigoto", "english": "The Apothecary Diaries" }, "format": "TV", "episodes": 24, "seasonYear": 2023, "averageScore": 88 }
+                    }
+                ]
+            }
+        }))
+        .unwrap();
+        assert_eq!(m.studios, ["MADHOUSE"]);
+        assert_eq!(m.producers, ["TOHO animation"]);
+        assert_eq!(m.start_date, "Sep 29, 2023");
+        assert_eq!(m.end_date, "Mar 22, 2024");
+        assert_eq!(m.characters.len(), 1);
+        assert_eq!(m.characters[0].name, "Frieren");
+        assert_eq!(m.characters[0].va_name, "Atsumi Tanezaki");
+        assert_eq!(m.staff.len(), 1);
+        assert_eq!(m.staff[0].role, "Director");
+        assert_eq!(m.relations.len(), 1);
+        assert_eq!(m.recommendations.len(), 1);
     }
 
     /// `cargo test live_discover -- --ignored --nocapture`
