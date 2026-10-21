@@ -103,7 +103,7 @@ class _LibraryPageState extends State<LibraryPage> {
     ]);
     if (!mounted) return;
     if (choice == 'open') _openLocal(s);
-    if (choice == 'match') chooseAnime(context, s['path'], s['name']);
+    if (choice == 'match') chooseAnime(context, 'local', s['path'], s['name']);
     if (choice == 'remove') {
       final folder = (_local['folders'] as List).firstWhere((f) => f['path'] == s['root'], orElse: () => {'path': s['root'], 'anime': 1});
       if (await _removeFolder(context, Map<String, dynamic>.from(folder))) _loadLocal();
@@ -393,17 +393,18 @@ Widget _grid(int count, Widget Function(int) item) => SliverPadding(
   sliver: SliverGrid.builder(gridDelegate: posterGrid(), itemCount: count, itemBuilder: (_, i) => item(i)),
 );
 
-Future<Map<String, dynamic>?> chooseAnime(BuildContext context, String path, String query) => showModalBottomSheet<Map<String, dynamic>>(
-  context: context,
-  showDragHandle: true,
-  isScrollControlled: true,
-  builder: (_) => _MatchSheet(path: path, query: query),
-);
+Future<Map<String, dynamic>?> chooseAnime(BuildContext context, String source, String url, String query) =>
+    showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (_) => _MatchSheet(source: source, url: url, query: query),
+    );
 
 class _MatchSheet extends StatefulWidget {
-  const _MatchSheet({required this.path, required this.query});
+  const _MatchSheet({required this.source, required this.url, required this.query});
 
-  final String path, query;
+  final String source, url, query;
 
   @override
   State<_MatchSheet> createState() => _MatchSheetState();
@@ -456,7 +457,7 @@ class _MatchSheetState extends State<_MatchSheet> {
 
   Future<void> _pick(Map<String, dynamic> m) async {
     try {
-      final meta = await Api.call('linkLocal', {'path': widget.path, 'anilistId': m['anilist_id']}) as Map<String, dynamic>;
+      final meta = await Api.call('linkAnime', {'source': widget.source, 'url': widget.url, 'anilistId': m['anilist_id']}) as Map<String, dynamic>;
       if (mounted) Navigator.pop(context, meta);
     } catch (e) {
       toast("Couldn't link it: ${Api.describe(e)}");
@@ -639,7 +640,7 @@ class _LibrarySeriesPageState extends State<LibrarySeriesPage> {
       case 'play':
         _play(index);
       case 'toggle':
-        Api.get('setCompleted', {'progress': _data.progressRow(ep), 'completed': !watched});
+        Api.get('setCompleted', {'progress': [_data.progressRow(ep)], 'completed': !watched});
         Api.historyRevision.value++;
       case 'delete':
         if (await confirm(context, 'Delete episode ${ep['num']}?', 'The downloaded file is removed from this phone.', 'Delete')) {

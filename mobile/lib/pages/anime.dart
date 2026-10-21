@@ -241,10 +241,19 @@ class _AnimePageState extends State<AnimePage> {
   bool get _local => widget.anime['source'] == 'local';
 
   Future<void> _chooseAnime() async {
-    final m = await chooseAnime(context, widget.anime['url'], widget.anime['name']);
+    final m = await chooseAnime(context, widget.anime['source'], widget.anime['url'], widget.anime['name']);
     if (m == null || !mounted) return;
     widget.anime['anilistId'] = m['anilist_id'];
-    _data.load(refresh: true);
+    _data.load();
+    Api.historyRevision.value++;
+  }
+
+  Future<void> _markAll(bool completed) async {
+    final title = 'Mark all episodes ${completed ? 'watched' : 'unwatched'}?';
+    final message = completed ? 'Your watchlist and trackers will be updated.' : "Your watchlist and trackers won't change.";
+    if (!await confirm(context, title, message, completed ? 'Mark watched' : 'Mark unwatched') || !mounted) return;
+    Api.get('setCompleted', {'progress': [for (final ep in _data.episodes) _data.progressRow(ep)], 'completed': completed});
+    Api.historyRevision.value++;
   }
 
   Future<void> _episodeMenu(Map<String, dynamic> ep) async {
@@ -261,7 +270,7 @@ class _AnimePageState extends State<AnimePage> {
       case 'play':
         _play(_data.episodes.indexWhere((e) => e['url'] == ep['url']));
       case 'toggle':
-        Api.get('setCompleted', {'progress': _data.progressRow(ep), 'completed': !watched});
+        Api.get('setCompleted', {'progress': [_data.progressRow(ep)], 'completed': !watched});
         Api.historyRevision.value++;
       case 'download':
         showDownloadSheet(context, _data, single: ep);
@@ -479,6 +488,7 @@ class _AnimePageState extends State<AnimePage> {
                 tooltip: 'Watchlist',
                 onPressed: d.metaLoaded ? _watchMenu : null,
               ),
+              if (!_local) IconButton(icon: const Icon(Icons.edit_rounded), tooltip: 'Choose anime', onPressed: _chooseAnime),
               IconButton(icon: const Icon(Icons.refresh_rounded), onPressed: () => d.load(refresh: true)),
             ],
             flexibleSpace: FlexibleSpaceBar(
@@ -721,21 +731,28 @@ class _AnimePageState extends State<AnimePage> {
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      if (d.episodes.isNotEmpty)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(color: c.surfaceContainerHighest, borderRadius: BorderRadius.circular(999)),
-                          child: Text(
-                            watched > 0 ? '$watched / ${d.episodes.length} watched' : '${d.episodes.length} episodes',
-                            style: TextStyle(
-                              fontFamily: 'GoogleSansFlex',
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: c.onSurfaceVariant,
-                            ),
-                          ),
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: d.episodes.isEmpty
+                              ? null
+                              : Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(color: c.surfaceContainerHighest, borderRadius: BorderRadius.circular(999)),
+                                  child: Text(
+                                    watched > 0 ? '$watched / ${d.episodes.length} watched' : '${d.episodes.length} episodes',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontFamily: 'GoogleSansFlex',
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: c.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ),
                         ),
-                      const Spacer(),
+                      ),
                       SizedBox(
                         width: 125,
                         height: 38,
@@ -766,6 +783,12 @@ class _AnimePageState extends State<AnimePage> {
                         ),
                       ),
                       const SizedBox(width: 6),
+                      if (d.episodes.isNotEmpty)
+                        IconButton(
+                          icon: Icon(watched == d.episodes.length ? Icons.remove_done_rounded : Icons.done_all_rounded, size: 20),
+                          tooltip: watched == d.episodes.length ? 'Mark all unwatched' : 'Mark all watched',
+                          onPressed: d.metaLoaded ? () => _markAll(watched < d.episodes.length) : null,
+                        ),
                       IconButton(
                         icon: Icon(_descending ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded, size: 20),
                         onPressed: () => setState(() => _descending = !_descending),
