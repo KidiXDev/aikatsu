@@ -85,8 +85,16 @@ ApplicationWindow {
         requestActivate();
     }
 
+    property bool quitting: false
+
+    // Qt.quit() first closes every window, hidden ones too, so close-to-tray would veto it.
+    function quit(): void {
+        quitting = true;
+        Qt.quit();
+    }
+
     onClosing: close => {
-        if (closeAction !== "tray" || !tray.available)
+        if (quitting || closeAction !== "tray" || !tray.available)
             return;
         close.accepted = false;
         if (playing)
@@ -190,7 +198,7 @@ ApplicationWindow {
                     appUpdateDialog.progress = 0;
                     Api.call("installAppUpdate", {}, r => {
                         if (r.quit)
-                            Qt.quit();
+                            win.quit();
                     }, e => {
                         appUpdateDialog.progress = -1;
                         win.toast(`Couldn't update: ${e}`);
@@ -257,7 +265,7 @@ ApplicationWindow {
         }
         onTriggered: (win.playing ? playerLoader.item : shell).grabToImage(r => {
             r.saveToFile(args[at + 1]);
-            Qt.quit();
+            win.quit();
         })
     }
 
@@ -469,7 +477,7 @@ ApplicationWindow {
             }
             Platform.MenuItem {
                 text: "Quit"
-                onTriggered: Qt.quit()
+                onTriggered: win.quit()
             }
         }
     }
