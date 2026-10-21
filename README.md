@@ -1,29 +1,24 @@
-# Aikatsu 🌸
+# Aikatsu
 
 Watch anime with Indonesian subtitles on Linux, Windows, and Android, without ads or a browser.
 
-## What you can do
+## Features
 
-- Search several sources at once and see results as they arrive.
-- Resume episodes from your saved position on Home.
-- Sign in to sync history and settings between your phone and computer. Use Aikatsu's server or [run your own](https://kidixdev.github.io/aikatsu/guide/self-hosting) with Docker.
-- Choose a video quality or let the player pick. Aikatsu remembers your choice.
-- Skip openings and endings with a button or automatically when timing data is available.
-- Play the next episode after a short countdown.
-- Change playback speed and switch audio or subtitle tracks when available.
-- Sharpen video with optional Anime4K presets on desktop and Android. Performance depends on your GPU or phone.
-- Download an episode, a range, or a whole series with file names Plex and Jellyfin recognize.
-- View cover art, descriptions, scores, genres, episode titles, and filler or recap markers when available.
-- Show what you're watching on Discord from desktop, or turn it off in Settings.
-- Choose a dark or light theme.
+Search multiple sources at once, with results appearing as each source responds. Show pages include covers, descriptions, scores, genres, episode titles, and filler or recap markers when available.
 
-Sources come from [Kyoko](https://github.com/KidiXDev/kyoko) and other plugin repos you add in Settings. Startup checks show available updates. Download them from Plugins when you're ready, or turn off automatic checks in Settings.
+The player remembers your position and quality preference. You can let it choose a quality, adjust playback speed, switch available audio and subtitle tracks, and continue to the next episode after a countdown. Skip openings and endings manually or automatically when timing data is available.
+
+Optional Anime4K presets sharpen video on desktop and Android. Performance depends on your GPU or phone. You can also download an episode, a range, or a whole series with file names Plex and Jellyfin recognize.
+
+Sign in to sync history and settings between your phone and computer using Aikatsu's server, or [run your own](https://kidixdev.github.io/aikatsu/guide/self-hosting) with Docker. Both apps have light and dark themes. Desktop can share your watching activity on Discord, with an option to turn it off in Settings.
+
+Install sources from [Kyoko](https://github.com/KidiXDev/kyoko) or another plugin repo in Settings. Aikatsu checks for plugin updates at startup, but you choose when to download them from Plugins. You can disable startup checks in Settings.
 
 ## Documentation
 
-Use the [documentation site](https://kidixdev.github.io/aikatsu/) for app guides, plugin management, and source plugin tutorials.
+The [documentation site](https://kidixdev.github.io/aikatsu/) covers using the app, managing sources, and writing plugins.
 
-To edit the docs, open [`docs/`](./docs/index.md) and run `cd docs`, `npm ci`, then `npm run dev`. Changes on `main` deploy to GitHub Pages. See [editing the docs](./docs/developers/docs-site.md) for builds and hosting.
+To edit the site locally, open [`docs/`](./docs/index.md) and run `cd docs`, `npm ci`, then `npm run dev`. Changes on `main` deploy to GitHub Pages. See [editing the docs](./docs/developers/docs-site.md) for build and hosting details.
 
 ## Keyboard shortcuts (desktop)
 
@@ -115,9 +110,7 @@ After changing `mobile/rust/src/api/mod.rs`, regenerate the Dart bindings. Pass 
 cd mobile && RUSTFLAGS='--cfg reqwest_unstable' flutter_rust_bridge_codegen generate
 ```
 
-## For developers
-
-To publish a release, bump `version` in the root `Cargo.toml`, which also sets the version shown in About. Push a tag such as `v0.2.0` to build and publish Windows, Linux, and Android releases through GitHub Actions. Tags containing a `-`, such as `v0.2.0-beta.1`, create prereleases.
+## Development
 
 Android releases need these repository secrets:
 
@@ -128,8 +121,6 @@ Android releases need these repository secrets:
 Tag builds fail without them. Updates must use the same signing key as the installed APK.
 
 Set the `AIKATSU_SYNC_SERVER` secret to include a default sync server in the apps. Without it, users must enter a server address.
-
-Each run saves Dart debug symbols in the `symbols-android` artifact for 90 days. They are not published with the release. Use them with `flutter symbolize` to read obfuscated crash traces.
 
 ```sh
 cargo test --workspace                                    # offline tests

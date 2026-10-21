@@ -1,6 +1,6 @@
 # Sync between your phone and computer
 
-Sign in on each device to resume episodes where you stopped on your phone or computer.
+Sign in to the same account on each device to share watch progress and supported settings.
 
 ## Sign in
 
@@ -26,7 +26,7 @@ You don't need an email address. There's no automatic password reset, so keep th
 | TMDB API key | New episode alerts (Android) |
 | | When closed (desktop) |
 
-Your plugin repos appear on every device. Open **Plugins** on each one to download the scripts. They do not install automatically.
+The plugin repo list syncs, but scripts must be downloaded on each device. Open **Plugins** to install them.
 
 ## When it syncs
 
@@ -37,9 +37,9 @@ Your plugin repos appear on every device. Open **Plugins** on each one to downlo
 
 **Sync now** in Settings syncs immediately.
 
-Without a connection, Aikatsu keeps working and syncs the next time it can.
+Offline changes are saved on the device and synced when the server is reachable again.
 
-If the same thing changes on two devices, **the newest change wins**. That goes for each episode's progress, each setting, and a series you removed from history. "Newest" goes by each device's clock, so keep automatic time on.
+If two devices change the same episode progress or setting, Aikatsu keeps the newest change. This also applies to removing a series from history. Changes are dated using each device's clock, so keep automatic time enabled.
 
 ## Sign out or delete your account
 
@@ -57,7 +57,7 @@ An account belongs to the server it was created on. To switch servers, sign out 
 
 An `http://` address sends your password unencrypted. Use HTTPS to protect it, especially outside your home network.
 
-## If sync stops
+## Sync errors
 
 - **"Couldn't reach the sync server":** check your connection, or whether your own server is running. Your changes wait on the device until it's reachable again.
 - **"Session expired":** your password was changed on another device, or the device went unused for about six months. Sign in again. Nothing on the device is lost.

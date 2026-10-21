@@ -1,22 +1,20 @@
-# How sources and plugins work
+# Sources and plugins
 
-Install source plugins to search anime sites and watch their videos in Aikatsu.
+Source plugins let Aikatsu search anime sites and play their videos. Each plugin is a small Rhai script that runs on desktop and Android.
 
-Plugins are small Rhai scripts that work on desktop and Android.
-
-## Plugin, source, repo: what's the difference?
+## Terms
 
 - A **source** is a site you can search and watch from.
 - A **plugin** is the script that supports that source.
 - A **repo** groups scripts with an `index.json` that describes them and records their checksums.
 
-In everyday use, a source and its plugin are almost the same thing. You add a repo, then switch its individual sources on or off.
+Add a repo to install its plugins, then enable the sources you want to use.
 
 ## Kyoko
 
 [Kyoko](https://github.com/KidiXDev/kyoko) is the official plugin repo. It's listed by default, and you can remove it or add it again from the Plugins page.
 
-A repo can contain several sources. You're free to leave only the ones you use enabled.
+A repo can contain several sources. Enable only the ones you use.
 
 ## Check and install updates
 
@@ -32,6 +30,6 @@ Plugins can make network requests, parse HTML and JSON, process strings, and kee
 
 They can still send searches and playback requests to websites and choose the video URLs the app opens. Add third-party repos only if you trust their authors. Checksums confirm that downloads match the repo index. They do not prove a script is safe.
 
-## Make a plugin
+## Write a plugin
 
-You don't need to rebuild the whole app for each source change. Start with [your first plugin](../developers/first-plugin.md), test it with the CLI, and publish a repo people can add in Settings.
+Source plugins can be updated without rebuilding the app. Start with [your first plugin](../developers/first-plugin.md), test it with the CLI, and publish a repo people can add in Settings.

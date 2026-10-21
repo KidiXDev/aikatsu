@@ -1,22 +1,22 @@
-# Download episodes for offline viewing
+# Downloads and offline viewing
 
-Save one episode, a range, or a whole series to watch offline.
+You can download a single episode, a range of episodes, or a whole series.
 
 ## Start a download
 
 Open a show's episode list and use its download action. Choose the episodes and a quality, then confirm. The Downloads screen shows each job's state and progress.
 
-Aikatsu runs up to four episode downloads at once. Others wait in the queue. A job can move through resolving, downloading, and remuxing before it's done.
+Up to four episodes download at once. The rest wait in the queue. Each job may pass through resolving, downloading, and remuxing before it finishes.
 
 On Android, download notifications show progress and completed episodes. Tapping a download notification opens Downloads in the app.
 
 You can cancel queued or running downloads. If one fails, check the error and restart it from the episode list. Unfinished downloads may need to be started again after you close the app.
 
-## Where the files go
+## Download folders
 
-**Desktop:** **Settings > Library** shows the download folder and lets you change it. Finished files are named and organized for media servers such as Plex and Jellyfin. Some longer shows can use metadata-based season folders.
+On desktop, view or change the download folder in **Settings > Library**. Finished files are named and organized for media servers such as Plex and Jellyfin. Some longer shows can use metadata-based season folders.
 
-**Android:** downloads use the app's external storage folder, `Android/data/io.github.kidixdev.aikatsu/files/Anime`. Android can remove app-specific files when you uninstall the app, so copy anything you want to keep before uninstalling.
+On Android, downloads use the app's external storage folder, `Android/data/io.github.kidixdev.aikatsu/files/Anime`. Android can remove app-specific files when you uninstall the app, so copy anything you want to keep before uninstalling.
 
 ## Watch offline
 
@@ -28,9 +28,9 @@ The desktop Downloads screen has **Open folder**, and a finished job's folder bu
 
 If your download folder is on a drive that's disconnected, Aikatsu keeps its record of those downloads and lists them again once the drive is back.
 
-Offline files don't make Search, discovery, or new episode listings work without a connection. Use Android's Library or the saved files directly when you're offline.
+Search, discovery, and new episode listings still need an internet connection. While offline, open downloads from Android's Library or play the saved files directly.
 
-## Delete downloads or clear the list
+## Delete files and clear finished jobs
 
 Android's Library lets you delete one episode or all downloaded episodes for a series. That deletes the actual files after confirmation. If a file cannot be deleted, its library entry stays so you can retry.
 
@@ -44,4 +44,4 @@ On Windows, put `ffmpeg.exe` beside `aikatsu.exe` or somewhere on PATH. On Linux
 
 HLS playlists that require initialization segments or byte ranges use the desktop yt-dlp fallback. Android reports these as unsupported rather than saving an incomplete video.
 
-The optional TMDB API key helps organize long shows into season folders. You can watch and download without it.
+An optional TMDB API key helps organize long shows into season folders. It is not required for playback or downloads.

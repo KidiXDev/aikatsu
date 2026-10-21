@@ -1,28 +1,28 @@
 # Host API reference
 
-Use these **API 1** helpers to fetch pages, parse data, and resolve video URLs in your source plugin. Rhai's standard language features are also available.
+The API 1 host functions handle HTTP requests, parsing, URL resolution, and temporary caching. Plugins can also use Rhai's standard language features.
 
 ## Network
 
 ### `page(url)` and `page(url, referer)`
 
-GET a page through the Chrome-like HTTP client and return its body as a string. Successful, challenge-free responses are cached for 10 minutes. Cloudflare-style challenge pages cause an error.
+Send a GET request through the Chrome-like HTTP client and return the response body as a string. Successful, challenge-free responses are cached for 10 minutes. Cloudflare-style challenge pages cause an error.
 
 ```rust
 let html = page("https://example.org/anime/test", "https://example.org/");
 ```
 
-Use this for HTML that `heights` and `stream` might both need. Use `fetch` when a request needs custom options or shouldn't use that page cache.
+Use `page` for HTML shared by `heights` and `stream`. For custom request options or requests that should bypass the page cache, use `fetch`.
 
 ### `fetch(url)` and `fetch(url, opts)`
 
-Make a request and return:
+Send an HTTP request and return a map with these fields:
 
 ```rust
 #{ status: 200, headers: #{}, body: "response body", url: "https://example.org/final" }
 ```
 
-Header names are lowercase. `url` is the final URL after redirects. Status codes from 400 throw an error. A 3xx can be returned when redirect following is disabled.
+Header names are lowercase. `url` is the final URL after redirects. Status codes of 400 or higher throw an error. When redirect following is disabled, the response may have a 3xx status.
 
 | Option | What it does |
 | --- | --- |
@@ -50,7 +50,7 @@ The shared HTTP helper retries server errors and dropped connections up to twice
 
 ### `fetch_all(urls)` and `fetch_all(urls, opts)`
 
-Make the same kind of request to several URLs, with up to four requests running at once. Responses come back in the input order. If any request fails, the whole call fails.
+Send requests to several URLs using the same options, with up to four running at once. Responses are returned in input order. If any request fails, the whole call fails.
 
 ```rust
 let responses = fetch_all([
@@ -61,7 +61,7 @@ let responses = fetch_all([
 
 ### `playable(url)` and `playable(url, referer)`
 
-Ask the host for one byte. Return `true` for a 200 or 206 response, otherwise `false`. Use it to check availability. It does not test video decoding.
+Request one byte from the video host. Return `true` for a 200 or 206 response and `false` otherwise. This checks availability without testing video decoding.
 
 ## HTML and text
 
@@ -76,7 +76,7 @@ Ask the host for one byte. Return `true` for a 200 or 206 response, otherwise `f
 | `html_decode(text)` | Decode HTML entities |
 | `clean_sub_indo(title)` | Remove a trailing "Subtitle Indonesia" or "Sub Indo" label |
 
-`select` trims the result's text and attribute values. Its `html` field is the element's **inner HTML**, so it doesn't include the selected element's outer tag. Use `attr` for attributes on that selected element, or call `select(element.html, selector)` to search inside it.
+`select` trims the result's text and attribute values. Its `html` field contains the element's inner HTML, excluding the selected element's outer tag. Use `attr` for attributes on that selected element, or call `select(element.html, selector)` to search inside it.
 
 ```rust
 for link in select(html, "a.episode") {
@@ -138,8 +138,8 @@ if cached == () {
 
 Don't use the cache as permanent storage, and don't assume `heights` always runs before `stream`. A stream call should be able to fetch whatever it needs after a cache miss.
 
-## What isn't in this API
+## Access limits
 
 There are no host functions for reading watch history, changing settings, or reading arbitrary local files. Plugins also don't get a browser DOM or a JavaScript runtime for the target site.
 
-Users trust your plugin to contact websites and choose video URLs. Be clear about which sites it uses.
+Document which sites your plugin contacts and uses for video playback.

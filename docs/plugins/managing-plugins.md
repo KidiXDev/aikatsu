@@ -1,4 +1,4 @@
-# Manage your sources
+# Manage sources
 
 Open **Settings > Plugins** on Android. On desktop, choose **Manage** next to Plugins in Settings.
 
@@ -12,7 +12,7 @@ https://github.com/your-name/your-plugin-repo
 
 Aikatsu checks the repo's index before adding it. For third-party repos, you'll see a trust prompt with the repo and its sources. Accept only if you trust the author. Kyoko skips this prompt because it is the official repo.
 
-The app installs the scripts and refreshes the list when it's done. You don't need to run another check or reopen the page. If only some scripts fail, the repo stays listed with an error so you can see what happened.
+After you add a repo, Aikatsu installs its scripts and refreshes the source list automatically. If some scripts fail, the repo stays listed with an error message.
 
 GitHub links use the repo's default branch. Pasting a `/tree/some-branch` link doesn't pin that branch. Developers can also use a direct HTTPS link ending in `index.json`.
 
@@ -24,9 +24,9 @@ Repo IDs must be unique. If your local Kyoko copy uses the `kyoko` ID, remove th
 
 After editing a script, regenerate its index checksum with `aikatsu-plugin index <repo folder>`, then check for updates and download them in Aikatsu. Local installs and updates require Developer Mode. Installed sources keep working after you turn it off.
 
-## Check, then download
+## Check and install updates
 
-The refresh icon is **Check for updates**. It fetches repo metadata and leaves installed scripts alone.
+Use the refresh icon (**Check for updates**) to fetch repo metadata. Checking does not change installed scripts.
 
 When updates are available, a **download icon** appears beside it, and each repo shows its update count. That button installs available changes across the repos you've added. It disappears once no changes remain.
 
@@ -36,7 +36,7 @@ The message under each repo shows whether an update is available, installed, or 
 
 In Settings, switch off **Check for plugin updates on startup**. You can still open Plugins and use the manual check button whenever you want.
 
-Turning that setting off doesn't disable installed sources. It only stops the automatic check when the app starts.
+Installed sources remain enabled when startup checks are off.
 
 ## Disable one source
 
@@ -50,6 +50,6 @@ Choose **Remove** beside the repo and confirm. Its installed sources disappear f
 
 Removing a repo doesn't erase your watch history or downloaded video files. History entries that use that source may need the repo installed again for online playback.
 
-## When you're offline
+## Offline use
 
-Already installed scripts stay available if checking a repo fails. Streaming still needs access to the source and video host. For offline watching, use downloaded episodes instead.
+Installed plugins remain available when a repo check fails. Streaming requires a connection to the source and video host. Use downloaded episodes to watch offline.

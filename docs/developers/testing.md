@@ -1,6 +1,6 @@
-# Test and debug your plugin
+# Plugin testing and debugging
 
-Test parsing with saved HTML or JSON so you can find bugs even when the site is down. Keep network requests in the four entry points and call parser helpers with fixtures.
+Test parsers with saved HTML or JSON. This lets you reproduce parsing errors without depending on the site. Keep network requests in the four entry points and pass fixtures directly to parser helpers.
 
 ## Build the CLI
 
@@ -21,9 +21,9 @@ aikatsu-plugin test /path/to/my-plugins
 aikatsu-plugin test /path/to/my-plugins/sources/example.rhai
 ```
 
-A repo directory means every script listed in its `index.json`. For `sources/example.rhai`, the CLI looks for `tests/example.rhai` beside the `sources` directory.
+Passing a repo directory tests every script listed in its `index.json`. For `sources/example.rhai`, the CLI looks for `tests/example.rhai` beside the `sources` directory.
 
-It merges the test file with the source script, discovers functions whose names start with `test_`, sorts them, and runs them without arguments. Each test gets a 30-second budget.
+The CLI merges each test file with its source script and runs functions whose names start with `test_`. Functions run in sorted order, without arguments, and have a 30-second limit each.
 
 Three helpers are available only in tests:
 
@@ -33,11 +33,11 @@ assert(condition, "What went wrong");
 assert_eq(got, expected);
 ```
 
-Keep fixture HTML small enough to explain the page structure. Good tests cover an ordinary result, missing optional data, an empty search, and the site's odd cases. A missing required test file is an error. Define at least one `test_` function so the file has a test to run.
+Use small fixtures that show the relevant page structure. Cover normal results, missing optional data, empty searches, and unusual cases from the site. Each required test file must exist and define at least one `test_` function.
 
 The CLI doesn't block network access during tests. They're offline only if your test functions avoid `page`, `fetch`, and other network helpers.
 
-## Call one function
+## Call a function
 
 ```sh
 aikatsu-plugin call sources/example.rhai search "one piece"
@@ -45,9 +45,7 @@ aikatsu-plugin call sources/example.rhai heights "https://example.org/watch/1"
 aikatsu-plugin call sources/example.rhai stream "https://example.org/watch/1" "720p"
 ```
 
-The result is printed as JSON. Arguments from the command line are passed as strings, and a call gets a 60-second budget.
-
-You can also call parser helpers while debugging. All CLI arguments stay strings, even if your helper expects a number or map.
+The command prints its result as JSON and has a 60-second limit. You can call parser helpers too, but all command-line arguments are passed as strings, including those intended as numbers or maps.
 
 ## Try the real site
 
@@ -58,9 +56,9 @@ aikatsu-plugin live /path/to/my-plugins "one piece"
 
 A live check searches, takes the first result, loads its episodes, asks for qualities, and resolves the last episode in the sorted list with `"best"` quality. With no query, it uses `"one piece"`.
 
-A live check resolves one episode. It does not play the video or test every mirror, resolution, or anime. If listing qualities fails, the CLI still tries to resolve the stream with an empty quality list. Read the output for errors even when the check passes.
+Live checks resolve one episode without playing it. They do not cover every mirror, resolution, or anime. If listing qualities fails, the CLI still tries to resolve the stream with an empty quality list. Read the output for errors even when the check passes.
 
-Live checks need a real, adapted plugin. The downloadable teaching starter still points to `example.org`, so use its offline parser tests until you've changed it for an actual site.
+Adapt the starter to a real site before running live checks. Its `example.org` URLs are placeholders for offline parser tests.
 
 ## Refresh checksums
 
@@ -76,7 +74,7 @@ Publish a test repo on its default branch and add it in **Settings > Plugins**. 
 
 For local development, enable **Developer Mode** in Settings to install or update a repo through a `file://` link ending in `index.json`. On desktop, the Add plugins dialog also offers **Choose folder**. Use local repos for development and publish an HTTPS repo for phone users. The CLI does not require Developer Mode and is usually simpler for local testing.
 
-## Read the error, then the log
+## Errors and logs
 
 Put the source name in thrown errors. Use `print` for short diagnostics and `debug` for more detail. In the app, enable debug logging and restart before reproducing a problem.
 

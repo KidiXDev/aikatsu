@@ -1,6 +1,6 @@
-# The four functions Aikatsu calls
+# Plugin function contract
 
-Every source script needs these functions with exactly these argument counts:
+Every source script must define these four functions with the argument counts shown:
 
 ```rust
 fn search(query) { /* one argument */ }
@@ -9,7 +9,7 @@ fn heights(episode_url) { /* one argument */ }
 fn stream(episode_url, quality) { /* two arguments */ }
 ```
 
-Aikatsu checks for these functions when it compiles the script. Use the inputs and return values below. Example URLs are placeholders.
+Aikatsu checks these signatures when compiling the script. The required inputs and return values are described below. All example URLs are placeholders.
 
 ## `search(query)`
 
@@ -27,7 +27,7 @@ Return an array of anime maps:
 
 `name` and `url` are required strings. `image` is optional and defaults to an empty string. Results with an empty name or URL are discarded. Return `[]` for a successful search with no matches.
 
-The host normalizes hyphens and underscores to spaces before calling the script. It fills in the result's `source` field itself, using the plugin's stable ID. You don't need to supply that field.
+Before calling `search`, the host replaces hyphens and underscores in the query with spaces. It adds the plugin's stable ID as the `source` field on each result.
 
 ## `episodes(anime_url)`
 
@@ -52,7 +52,7 @@ Return an array of integer heights:
 [360, 480, 720, 1080]
 ```
 
-Return numbers, not strings like `"720p"`. The host removes zeroes and duplicates, sorts highest first, and turns them into display labels.
+Heights must be integers. Strings such as `"720p"` are not accepted. The host removes zeroes and duplicates, sorts heights from highest to lowest, and formats them as display labels.
 
 If a site's options are called `"HD 720p"`, the `height_of` helper can extract `720`. This function should describe resolutions the source can actually resolve.
 
@@ -81,11 +81,11 @@ Throw a readable string when the source can't complete a request:
 throw "Example: no playable mirror for this episode";
 ```
 
-Use `[]` for an ordinary empty search. Use an error for a broken response, missing player data, or a network failure. This helps users tell an empty search from a broken source.
+Use `[]` for an ordinary empty search. Use an error for a broken response, missing player data, or a network failure. The app uses this distinction to show whether a search has no matches or the source failed.
 
 `print` writes to the app log. `debug` writes debug-level output. Don't log cookies, private tokens, or full signed URLs unless you really need them while debugging, and remove those logs before publishing.
 
-## Time and size limits
+## Execution limits
 
 Search has a 12-second per-source budget, with a 15-second limit for a whole multi-source search. Episode, quality, and stream calls get a 60-second script budget. Network requests also have their own timeouts and retries, so avoid unnecessary requests and unbounded loops.
 

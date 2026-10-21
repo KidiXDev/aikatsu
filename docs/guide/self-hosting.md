@@ -4,7 +4,7 @@ Use [aikatsu-sync](https://github.com/KidiXDev/aikatsu-sync) to keep your synced
 
 ## Start the server
 
-Pick SQLite unless you already run Postgres. SQLite keeps everything in one file and needs nothing else.
+SQLite stores data in one file and needs no separate database server. Use it unless you already run Postgres.
 
 ### With SQLite
 
@@ -25,7 +25,7 @@ docker compose -f compose.postgres.yaml up -d
 
 For the Postgres setup, add `-f compose.postgres.yaml` to every `docker compose` command on this page.
 
-Either way, the server listens on port 3000. Check it with `curl http://localhost:3000/health`.
+Both configurations listen on port 3000. Check it with `curl http://localhost:3000/health`.
 
 ## Connect the app
 
@@ -42,7 +42,7 @@ If the server is just for you, close sign-ups once your account exists:
 
 ## Reach it from outside your home
 
-Put the server behind a reverse proxy with HTTPS, so your password never travels unencrypted. With [Caddy](https://caddyserver.com) on the same machine, this is the whole Caddyfile:
+Use a reverse proxy with HTTPS to encrypt passwords in transit. For [Caddy](https://caddyserver.com) running on the same machine, use this Caddyfile:
 
 ```
 sync.example.com {
@@ -71,24 +71,26 @@ Set these under `environment:` in the compose file, then run `docker compose up 
 
 ## Maintain the server
 
-**Reset a forgotten password.** This prints a new password and signs that account out everywhere:
+### Reset a password
+
+This command prints a new password and signs the account out on every device:
 
 ```sh
 docker compose exec sync bun src/cli.ts reset-password <username>
 ```
 
-**Update:**
+### Update
 
 ```sh
 docker compose pull && docker compose up -d
 ```
 
-**Back up:**
+### Back up
 
 - **SQLite:** run `docker compose stop`, copy the `data` volume, then run `docker compose start`.
 - **Postgres:** use `pg_dump`.
 
-Your devices also keep their own copy of your history, so a lost server can be rebuilt. Start a new one and sign in again, and the history uploads from your devices.
+Each device keeps a local copy of its history. If the server is lost, start a new one and sign in again to upload the history from those devices.
 
 ## What the server stores
 
