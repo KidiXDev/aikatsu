@@ -324,3 +324,22 @@ String airingLabel(int airingAt, DateTime now) {
   final sameDay = t.year == now.year && t.month == now.month && t.day == now.day;
   return sameDay ? hhmm : 'Tomorrow $hhmm';
 }
+
+/// An AniList enum for display: "TV_SHORT" → "TV Short", "NOT_YET_RELEASED" → "Not Yet Released".
+String prettyEnum(String raw) {
+  final upper = raw.toUpperCase();
+  if (upper == 'TV' || upper == 'OVA' || upper == 'ONA') return upper;
+  if (upper == 'TV_SHORT') return 'TV Short';
+  return raw.replaceAll('_', ' ').toLowerCase().replaceAllMapped(RegExp(r'\b\w'), (m) => m[0]!.toUpperCase());
+}
+
+/// Time left until [airingAt]: "2d 3h", "3h 5m", "5m"; empty once it has aired.
+String airsIn(int airingAt, DateTime now) {
+  final s = airingAt - now.millisecondsSinceEpoch ~/ 1000;
+  if (s <= 0) return '';
+  final d = s ~/ 86400, h = s % 86400 ~/ 3600, m = s % 3600 ~/ 60;
+  return d > 0 ? '${d}d ${h}h' : h > 0 ? '${h}h ${m}m' : '${max(m, 1)}m';
+}
+
+/// 320000 → "320,000".
+String formatCount(int n) => '$n'.replaceAllMapped(RegExp(r'\B(?=(\d{3})+$)'), (_) => ',');
