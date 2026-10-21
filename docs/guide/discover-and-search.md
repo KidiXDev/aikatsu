@@ -1,10 +1,8 @@
-# Find something to watch
+# Browse and search
 
-Use Search to find a title, or browse Home for something new.
+Search finds titles on your installed sources. Home shows your watch history and anime from AniList.
 
 ## Browse Home
-
-Home combines your watch history with discovery shelves from AniList:
 
 - **Continue** shows unfinished shows and where you left off.
 - **Recent** lets you revisit what you've watched, including finished shows.
@@ -16,7 +14,7 @@ Air dates follow AniList's schedule. Your source may upload an episode later.
 
 Open a discovery card for details, then search your installed sources to watch the show.
 
-## Search several sources at once
+## Search sources
 
 Enter at least two characters and submit. Aikatsu searches all enabled sources at once and shows results as they arrive.
 
@@ -24,11 +22,11 @@ The source filters show which sites are still loading, how many results they ret
 
 Try another spelling, a shorter title, or the Japanese title if a search comes back empty. The app turns hyphens and underscores into spaces before sending a query to a source.
 
-Aikatsu may briefly skip a source that keeps failing so it stops slowing down searches.
+Sources that repeatedly fail may be skipped briefly to avoid delaying searches.
 
-## Read the anime details
+## Anime details
 
-Open a show to see its episode list and details:
+A show's page includes its episode list and:
 
 - Cover art, synopsis, score, genres, format, and season.
 - A countdown to the next episode while the show is airing.
@@ -42,7 +40,7 @@ Show details come from AniList, with Jikan as a backup and for episode informati
 
 If a show has the wrong details or none, choose **Choose anime…** (the pencil button) on its page, search AniList by any title, and pick the right one. Aikatsu remembers your choice for that show on that source, on all your synced devices, and moves its saved progress and watchlist entry to the new match.
 
-## Find an episode and track what you've watched
+## Episode lists and watch progress
 
 Use **Jump to…** to narrow a long episode list by its starting digits. For example, entering `12` can show episodes 12 and 120 through 129. Clear the field to see everything again. The sort control switches between oldest-first and newest-first order.
 
@@ -52,8 +50,8 @@ To mark every episode at once, use **Mark all watched** next to the sort control
 
 Use refresh to reload the episode list and show details, or download to save episodes for later.
 
-## Choose which sites Search uses
+## Enable or disable sources
 
 Open **Settings > Plugins** and switch individual sources on or off. On desktop, click a source in **Settings > Sources**. Turning one off keeps its repo installed, but leaves it out of searches.
 
-If a source goes missing after a repo was removed, add that repo again. Existing history can still refer to the old source, but online playback needs the plugin to be installed.
+Removing a repo removes its sources from Search. Add the repo again to restore them. Your history is kept, but online playback from that source requires its plugin.

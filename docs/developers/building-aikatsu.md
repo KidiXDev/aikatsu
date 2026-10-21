@@ -1,12 +1,12 @@
 # Build the app
 
-If you're only writing a source plugin, build [the plugin CLI](./testing.md) instead. You don't need either UI toolchain for that.
+Aikatsu has a shared Rust core, a Qt desktop app, and a Flutter Android app. The release environment uses Qt 6.11.2 and Flutter 3.47.1.
 
-Aikatsu uses a shared Rust core, Qt for desktop, and Flutter for Android. To match the release environment, use Qt **6.11.2** and Flutter **3.47.1**.
+For source plugin development, build [the plugin CLI](./testing.md). It requires neither UI toolchain.
 
 ## Source files
 
-| Path | What lives there |
+| Path | Purpose |
 | --- | --- |
 | `core/src/api.rs` | JSON methods shared by both interfaces |
 | `core/src/plugins.rs` | Plugin engine, host helpers, repo checks, and installation |
@@ -22,7 +22,7 @@ Aikatsu uses a shared Rust core, Qt for desktop, and Flutter for Android. To mat
 | `mobile/lib/api.dart` | Flutter's JSON API wrapper |
 | `mobile/lib/pages/` | Android screens and player |
 
-The core API has asynchronous `call` methods, quick synchronous `get` methods, and pushed events. A cross-platform behavior change usually starts in the core, then updates the relevant callers in both interfaces.
+Both interfaces use asynchronous `call` methods, quick synchronous `get` methods, and events from the core. Shared behavior changes usually require updating the core and the relevant callers in both interfaces.
 
 ## Linux desktop
 
@@ -41,7 +41,7 @@ To select a Qt 6 installation, set `QMAKE`:
 QMAKE=/usr/bin/qmake6 cargo build --release
 ```
 
-The exact qmake path depends on how Qt was installed.
+Adjust the path for your Qt installation.
 
 ## Windows desktop
 
@@ -118,7 +118,7 @@ cargo test -p aikatsu-core live_ -- --ignored --nocapture
 
 ### Desktop renderer regression
 
-The stats test opens a small window and plays a generated video through the real Qt threaded OpenGL renderer. It checks that playback continues while stats are shown, toggled, and disabled, and times out if the GUI freezes. Run it in a desktop session, not with the offscreen or software Qt backend.
+The stats test plays a generated video in a small window using Qt's threaded OpenGL renderer. It verifies that playback continues as statistics are shown, toggled, and disabled. A GUI freeze causes a timeout. Run it in a desktop session, not with the offscreen or software Qt backend.
 
 With Qt and libmpv runtime libraries on your library path (`PATH` on Windows), and `MPV_DIR` set for Windows builds:
 
@@ -130,7 +130,7 @@ ctest --test-dir target/mpv-stats-test -C Release --output-on-failure
 
 ## Releases and versions
 
-The root `Cargo.toml` supplies the desktop, core, and mobile Rust package version. Keep `mobile/pubspec.yaml` and the workspace entries in `Cargo.lock` in step.
+The root `Cargo.toml` supplies the desktop, core, and mobile Rust package version. Keep `mobile/pubspec.yaml` and the workspace entries in `Cargo.lock` at the same version.
 
 The default sync server is compiled in from the `AIKATSU_SYNC_SERVER` environment variable, which the release workflow sets from a repository secret. Builds without it have no default: users enter a server in Settings before signing in. Set it locally to test against your own server, for example `AIKATSU_SYNC_SERVER=http://localhost:3000 cargo run`.
 

@@ -4,9 +4,9 @@ import { withBase } from 'vitepress'
 
 # Your first plugin
 
-Copy the starter repo to build your first source plugin. It uses a made-up site at `example.org` and has offline parser tests. Replace its URL and selectors to support a real site.
+The starter repo contains a source script and offline parser tests for a fictional site at `example.org`. Copy it, run the tests, then replace the URL and selectors with those for your site.
 
-## Get the CLI ready
+## Build the CLI
 
 From an Aikatsu checkout:
 
@@ -14,7 +14,7 @@ From an Aikatsu checkout:
 cargo build -p aikatsu-core --bin aikatsu-plugin
 ```
 
-The binary is `target/debug/aikatsu-plugin`, or `target/debug/aikatsu-plugin.exe` on Windows. This builds the core CLI without the Qt or Flutter interfaces. You still need Rust and the native build tools its dependencies use.
+The binary is `target/debug/aikatsu-plugin`, or `target/debug/aikatsu-plugin.exe` on Windows. Building it requires Rust and native build tools, but no Qt or Flutter installation.
 
 Run the starter tests:
 
@@ -22,7 +22,7 @@ Run the starter tests:
 cargo run -p aikatsu-core --bin aikatsu-plugin -- test docs/public/examples/hello-source
 ```
 
-All five tests should pass without making a network request.
+The five included tests run without network requests and should all pass.
 
 ## Copy the starter
 
@@ -43,9 +43,9 @@ hello-source/
     └── example.rhai
 ```
 
-## Read the source script
+## Source script
 
-The app calls `search`, `episodes`, `heights`, and `stream`. This starter keeps parsing in separate functions so tests can give them HTML directly.
+The app calls four entry points: `search`, `episodes`, `heights`, and `stream`. Separate parser functions accept HTML directly so they can be tested with saved pages.
 
 <<< @/public/examples/hello-source/sources/example.rhai{rust}
 
@@ -62,15 +62,13 @@ The example expects search cards with `.anime-card`, episode links with `a.episo
 
 `page` and `fetch` make HTTP requests. They don't run a site's JavaScript like a browser. If JavaScript builds the video URL, reproduce the requests or parsing needed to get it.
 
-## Keep parser tests close
-
-The starter includes these parser tests:
+## Parser tests
 
 <<< @/public/examples/hello-source/tests/example.rhai{rust}
 
 The tests call `parse_search`, `parse_episodes`, and `parse_sources` with saved HTML, so you can test parser changes offline.
 
-The app sorts episodes by number after reading the result, so a parser doesn't have to return them in order. Still, each number should refer to the right episode.
+The app sorts returned episodes by number. Your parser can return them in any order, but each number must identify the correct episode.
 
 ## Refresh the index
 
@@ -80,6 +78,6 @@ After editing a script, run the CLI's `index` command against your repo folder. 
 cargo run -p aikatsu-core --bin aikatsu-plugin -- index docs/public/examples/hello-source
 ```
 
-For your own repo, replace that last path. The command compiles each listed script and recalculates its SHA-256. It doesn't bump your plugin version automatically.
+Replace the final path with your repo's folder. The command compiles every listed script and recalculates its SHA-256. Update the plugin version separately.
 
 Once your offline tests pass, try a [live check](./testing.md#try-the-real-site), then [publish the repo](./publishing.md).

@@ -1,6 +1,6 @@
 # Edit the docs
 
-Edit the site in `docs/`. It uses VitePress's default theme, local search, and sakura colors. You can work on it without building the app.
+The documentation site lives in `docs/` and uses VitePress with the default theme, local search, and sakura colors. It builds independently of the app.
 
 ## Run it locally
 
@@ -12,9 +12,9 @@ npm ci
 npm run dev
 ```
 
-VitePress prints the local URL, usually `http://localhost:5173/aikatsu/`. Changes to Markdown show up while you write.
+VitePress prints the local URL, usually `http://localhost:5173/aikatsu/`. Markdown changes appear automatically in the browser.
 
-The site pins VitePress `2.0.0-alpha.20`, a prerelease. Keep the lockfile and run the build when updating it.
+VitePress is pinned to the prerelease `2.0.0-alpha.20`. Keep the lockfile and verify the site build after dependency updates.
 
 ## Build and preview
 
@@ -23,7 +23,7 @@ npm run build
 npm run preview
 ```
 
-The static site is written to `docs/.vitepress/dist/`. The build checks internal page links. Deploy that directory to a static web host. It needs no Rust core or server-side app.
+The build checks internal page links and writes the static site to `docs/.vitepress/dist/`. Deploy that directory to a static host. No Rust core or application server is required.
 
 The site uses `/aikatsu/` as its base path for GitHub Pages. If you move it to a custom domain or another subdirectory, change the `base` constant in `.vitepress/config.ts` and rebuild. A site at the host's root needs `const base = '/'`.
 
@@ -41,7 +41,7 @@ gh workflow run docs.yml --ref main
 
 Pages uses **GitHub Actions** as its publishing source. The workflow uses the `github-pages` environment and GitHub's built-in token, so no personal token needs to be saved as a repository secret.
 
-## Where to edit
+## Site files
 
 - `guide/` explains the app for people using it.
 - `plugins/` covers source management and update behavior.
@@ -58,8 +58,8 @@ cargo run -p aikatsu-core --bin aikatsu-plugin -- test docs/public/examples/hell
 cargo run -p aikatsu-core --bin aikatsu-plugin -- index docs/public/examples/hello-source
 ```
 
-## Keep the writing easy to follow
+## Writing guidelines
 
-Write like you're helping someone use the app beside you. Use the control names they can see, explain platform differences, and say when a feature depends on a source or metadata service.
+Use direct instructions and the control names shown in the app. Keep headings descriptive and paragraphs focused on one task. Explain differences between desktop and Android, and mention dependencies on sources or metadata services where they affect the feature.
 
-Mark made-up URLs as examples and test working code samples. Avoid em dashes and semicolons in prose. Describe what the app supports, including when users need to sign in or download plugins themselves.
+Test code samples and mark placeholder URLs as examples. Use periods or commas instead of em dashes and semicolons in prose. State when sign-in or a manual plugin download is required.

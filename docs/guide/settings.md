@@ -1,12 +1,12 @@
-# Adjust your settings
+# Settings
 
-Settings are stored on each device. Desktop and Android share most options. Sign in to [sync](./sync.md), and your history and most settings follow you between them.
+Most settings are available on both desktop and Android. Each device stores its own settings. Sign in to [sync](./sync.md) to share history and supported settings between devices.
 
 Desktop Settings has five sections: **General**, **Watch**, **Library**, **Sources**, and **Account**. Each shows a summary, such as your preferred quality or last sync time.
 
 ## Sync
 
-**Sync** signs you in to keep watch history and settings the same on your phone and computer. It's under **Account** on desktop and at the top of Settings on Android. See [sync between devices](./sync.md) for what follows you and what stays per device.
+Use **Sync** to sign in and share watch history and settings between devices. It's under **Account** on desktop and at the top of Settings on Android. See [sync between devices](./sync.md) for the list of synced settings.
 
 ## Trackers
 
@@ -38,7 +38,7 @@ See [managing plugins](../plugins/managing-plugins.md) for adding repos, trust p
 
 **Check for Aikatsu updates on startup** is on by default. When a newer release is out, Aikatsu shows its version and asks before downloading anything. **What's new** opens the release notes. To check by hand, use **Check for updates** in **General** on desktop, or **Check now** under **Updates** on Android.
 
-**Update** downloads the new version, checks that it arrived intact, and installs it:
+**Update** downloads the new version, verifies the download, and installs it:
 
 - **Windows, installed with `setup.exe`:** Aikatsu closes, installs the update, and opens again.
 - **Linux AppImage:** the AppImage file is replaced with the new one, then Aikatsu restarts. The folder holding it must be writable.
@@ -50,25 +50,25 @@ The Windows ZIP and builds from source can't replace themselves, so the dialog o
 
 Home has Continue and Recent views. Aikatsu saves episode progress on this device. Use a series card's menu to remove it from history.
 
-Signed in to [sync](./sync.md), removing a series removes it on your other devices too. Your AniList or MyAnimeList list updates only after you [connect them](./trackers.md).
+When you are signed in to [sync](./sync.md), removing a series from history removes it on your other devices too. Your AniList or MyAnimeList list updates only after you [connect them](./trackers.md).
 
 ## Downloads
 
 Desktop's **Library** section shows the download folder and how much you've downloaded there, and lets you choose another folder. It also shows whether ffmpeg and yt-dlp are available. Android uses its app-specific folder.
 
-The optional **TMDB API key** helps organize season folders for long shows. Leave it empty if you don't need that.
+The optional **TMDB API key** helps organize long shows into season folders. You can leave it empty.
 
 ## Closing the desktop window
 
-**When closed** in **General** chooses what the close button does. **Quit** exits Aikatsu. **To tray** hides it in the system tray, so downloads and [folder sharing](./local-library.md#watch-your-desktop-folders-on-your-phone) keep running, and pauses a playing episode. Click the tray icon, or open Aikatsu again, to bring the window back. Choose **Quit** in the tray icon's menu to exit.
+Set **When closed** in **General** to choose what happens when you close the desktop window. **Quit** exits the app. **To tray** hides the window and pauses playback while downloads and [folder sharing](./local-library.md#watch-your-desktop-folders-on-your-phone) continue. Click the tray icon, or open Aikatsu again, to bring the window back. Choose **Quit** in the tray icon's menu to exit.
 
-**To tray** needs a system tray. On GNOME, that takes an AppIndicator extension. Without one, the option is off.
+**To tray** requires a system tray and is disabled when none is available. On GNOME, install an AppIndicator extension to enable it.
 
 ## Discord activity on desktop
 
 **Discord status** shares what you're watching through Discord's desktop activity integration. It's enabled by default in the desktop settings. Turn it off to keep your activity private.
 
-This option isn't part of the Android settings.
+Discord activity is available only on desktop.
 
 ## Logs and cache
 

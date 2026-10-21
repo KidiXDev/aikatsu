@@ -1,12 +1,12 @@
 # Watchlist, AniList and MyAnimeList
 
-Keep a watchlist of what you're watching and what's next. Connect AniList or MyAnimeList, and Aikatsu updates your list there as you watch. On Android, it also tells you when a new episode airs.
+Use the watchlist to track shows by status. Connect AniList or MyAnimeList to update your lists there as you watch. Android can also notify you when new episodes air.
 
 ## Your watchlist
 
 On a show's page, choose **Add to list** (the bookmark button on Android) and pick a status: **Watching**, **Plan to watch**, **Completed**, **On hold** or **Dropped**. Choose the same button again to change it, or **Remove from list**.
 
-The watchlist is in **Library**, with one tab per status. Signed in to [sync](./sync.md), it's the same on all your devices.
+Open **Library** to see the watchlist, with one tab for each status. Sign in to [sync](./sync.md) to share it across devices.
 
 ## Connect AniList or MyAnimeList
 
@@ -14,22 +14,22 @@ The watchlist is in **Library**, with one tab per status. Signed in to [sync](./
 2. Choose **Connect** next to AniList or MyAnimeList. Your browser opens their sign-in page.
 3. Allow Aikatsu. When the page says **Connected**, close it and go back to Aikatsu.
 
-Finish within five minutes of choosing **Connect**. Connect each device separately, because connections don't sync. **Disconnect** removes one.
+Complete sign-in within five minutes of choosing **Connect**. Tracker connections do not sync, so connect each device separately. Use **Disconnect** to remove a connection.
 
-## What updates on its own
+## Automatic list updates
 
 When you finish an episode (watch 90% of it, or choose **Mark as watched** or **Mark all watched**):
 
 - The show goes on your watchlist as **Watching**, or **Completed** after its last episode. A rewatch of a completed show stays **Completed**.
-- Connected trackers get your progress and the same status. Progress there never goes down: if AniList already shows more episodes watched, it keeps them.
+- Connected trackers get your progress and the same status. Tracker progress never decreases. If AniList already records more watched episodes, that count stays.
 
-Changing a status on a show's page changes it on your trackers too. **Remove from list** only takes the show off your Aikatsu watchlist; it stays on AniList and MyAnimeList.
+Changing a status on a show's page changes it on your trackers too. **Remove from list** removes the show from your Aikatsu watchlist. It stays on AniList and MyAnimeList.
 
 A show needs an AniList match to update AniList, and a MyAnimeList ID to update MyAnimeList. Use the refresh button on a show's page if its details didn't load.
 
 Aikatsu doesn't import your existing AniList or MyAnimeList lists. Changes you make on their websites don't come back to Aikatsu.
 
-If an update fails, for example while you're offline, the error shows next to the tracker in Settings. The next episode you finish sends your latest progress.
+Failed updates appear next to the tracker in Settings. Finishing another episode sends your latest progress, including any earlier progress that failed to update.
 
 ## New episode notifications (Android)
 

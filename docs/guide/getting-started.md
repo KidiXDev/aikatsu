@@ -1,6 +1,6 @@
 # Get started
 
-Install Aikatsu and a source plugin to start watching. No account is needed.
+Aikatsu needs at least one source plugin to stream anime. Install the app, download a source, then search for a show. You can watch without an account.
 
 ## Install Aikatsu
 
@@ -29,7 +29,7 @@ You can also build the app yourself. The [build guide](../developers/building-ai
 
 Download the `android-arm64-v8a.apk` for most current phones. Older 32-bit devices need the `armeabi-v7a.apk` instead. Open the APK and allow installation from your browser or file manager if Android asks.
 
-## Install your first sources
+## Install sources
 
 1. Open **Settings > Plugins**. On desktop, open **Sources** and choose **Manage**.
 2. Kyoko, the official source repo, is listed by default.
@@ -38,17 +38,13 @@ Download the `android-arm64-v8a.apk` for most current phones. Older 32-bit devic
 
 If Kyoko has been removed, choose **Add Kyoko** to add it again. You can also [add another plugin repo](../plugins/managing-plugins.md).
 
-::: tip Checks don't install anything
-At startup, Aikatsu can tell you how many plugin updates are available. Choose **View updates** to open Plugins, then use the download icon when you're ready. You can turn startup checks off in Settings.
-:::
+Startup checks report available plugin updates. To install them, choose **View updates**, then use the download icon in Plugins. You can disable startup checks in Settings.
 
 ## Play an episode
 
-Open **Search**, enter at least two characters, and submit your search. Results arrive source by source. Pick a show, choose an episode, and press play.
+Open **Search**, enter at least two characters, and submit. Results appear as each source responds. Select a show, choose an episode, and press play. If a source fails, try another source. Each uses a separate site.
 
-If a source fails, try another. Each source uses a separate site.
-
-## Choose your settings
+## Playback and sync settings
 
 - **Preferred quality** sets your starting preference. Auto lets the app pick.
 - **Autoplay next episode** controls the end-of-episode countdown.
@@ -56,4 +52,4 @@ If a source fails, try another. Each source uses a separate site.
 - **Theme** follows your system or stays light or dark.
 - **Sync** keeps your history the same on your phone and computer. See [sync between devices](./sync.md).
 
-You can change these anytime in [Settings](./settings.md).
+See [Settings](./settings.md) for all options.
