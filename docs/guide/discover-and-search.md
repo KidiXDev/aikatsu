@@ -30,10 +30,13 @@ Aikatsu may briefly skip a source that keeps failing so it stops slowing down se
 
 Open a show to see its episode list and details:
 
-- Cover art, synopsis, score, and genres.
+- Cover art, synopsis, score, genres, format, and season.
+- A countdown to the next episode while the show is airing.
 - Episode titles and available episode information.
 - Filler and recap markers when that data exists.
 - Your saved episode progress.
+
+The cast section lists the characters with their voice actors, and the main staff. The details section lists air dates, studios, source material, popularity, tags, related titles, and recommendations, with links to AniList and MyAnimeList. Select a related anime or a recommendation to search your sources for it. A related manga opens on AniList.
 
 Show details come from AniList, with Jikan as a backup and for episode information. Titles and episode counts may differ from the source. You can still watch when some details are missing.
 
