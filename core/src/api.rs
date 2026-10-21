@@ -182,7 +182,7 @@ pub async fn call(method: &str, args: Value) -> Result<Value> {
 }
 
 pub(crate) async fn enrich(id: i64, name: &str, url: &str, refresh: bool) -> Result<meta::Meta> {
-    let key = if id > 0 { format!("meta:anilist:{id}") } else { format!("meta:{}", meta::clean_title(name).to_lowercase()) };
+    let key = if id > 0 { format!("meta:v2:anilist:{id}") } else { format!("meta:v2:{}", meta::clean_title(name).to_lowercase()) };
     db::cached(&key, DAY * 3, refresh, async {
         let mut m = if id > 0 { meta::by_anilist_id(id).await? } else { meta::enrich(name, url).await? };
         let tmdb = setting("tmdbKey");

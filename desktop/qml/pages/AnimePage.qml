@@ -23,8 +23,16 @@ Item {
     property bool descending: false
     property string jump: ""
     property string epFilter: "all" // all | unwatched | watched
+    property string section: "episodes" // episodes | cast | details
+    property string roleFilter: "all" // all | MAIN | SUPPORTING
     readonly property bool local: anime.source === "local"
     readonly property int watchedCount: episodes.filter(e => progress[e.num]?.completed).length
+    readonly property var characters: meta?.characters ?? []
+    readonly property var shownCharacters: roleFilter === "all" ? characters : characters.filter(c => c.role === roleFilter)
+    readonly property var staffList: meta?.staff ?? []
+    readonly property var relationsList: meta?.relations ?? []
+    readonly property var recommendationsList: meta?.recommendations ?? []
+    readonly property var tagsList: meta?.tags ?? []
 
     readonly property string seriesKey: Api.get("keys", {
         anilistId: meta?.anilist_id ?? 0,
@@ -55,6 +63,42 @@ Item {
             return latest;
         const firstUnwatched = episodes.findIndex(e => !progress[e.num]?.completed);
         return firstUnwatched >= 0 ? firstUnwatched : 0;
+    }
+
+    function prettyEnum(raw: string): string {
+        if (!raw)
+            return "";
+        const upper = raw.toUpperCase();
+        if (upper === "TV" || upper === "OVA" || upper === "ONA")
+            return upper;
+        if (upper === "TV_SHORT")
+            return "TV Short";
+        return raw.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+    }
+
+    function seasonLabel(): string {
+        const s = prettyEnum(meta?.season ?? "");
+        const y = (meta?.season_year ?? 0) || (meta?.year ?? 0);
+        if (s && y > 0)
+            return `${s} ${y}`;
+        return y > 0 ? String(y) : s;
+    }
+
+    function airingText(): string {
+        const next = meta?.next_airing;
+        if (!next || !next.airing_at)
+            return "";
+        const diffSec = Math.floor(next.airing_at - Date.now() / 1000);
+        if (diffSec <= 0)
+            return `Episode ${next.episode} airing now`;
+        const days = Math.floor(diffSec / 86400);
+        const hours = Math.floor((diffSec % 86400) / 3600);
+        const mins = Math.floor((diffSec % 3600) / 60);
+        if (days > 0)
+            return `Episode ${next.episode} airs in ${days}d ${hours}h`;
+        if (hours > 0)
+            return `Episode ${next.episode} airs in ${hours}h ${mins}m`;
+        return `Episode ${next.episode} airs in ${Math.max(1, mins)}m`;
     }
 
     function listEntry(): var {
@@ -185,11 +229,108 @@ Item {
         }
     }
 
+    component SectionHeader: RowLayout {
+        id: secHdr
+
+        property string icon: "info"
+        property string title
+        property string badge: ""
+
+        Layout.fillWidth: true
+        spacing: Theme.spacing.medium
+
+        StyledRect {
+            implicitWidth: 34
+            implicitHeight: 34
+            radius: Theme.rounding.medium
+            color: Theme.palette.secondaryContainer
+
+            MaterialIcon {
+                anchors.centerIn: parent
+                text: secHdr.icon
+                fill: 1
+                size: 16
+                color: Theme.palette.onSecondaryContainer
+            }
+        }
+        StyledText {
+            text: secHdr.title
+            font: Theme.font.headline.small
+        }
+        StyledRect {
+            visible: secHdr.badge !== ""
+            implicitWidth: Math.max(24, secBadgeText.implicitWidth + 12)
+            implicitHeight: 24
+            radius: Theme.rounding.full
+            color: Theme.palette.surfaceContainerHigh
+
+            StyledText {
+                id: secBadgeText
+
+                anchors.centerIn: parent
+                text: secHdr.badge
+                font: Theme.font.label.medium
+                color: Theme.palette.onSurfaceVariant
+            }
+        }
+        Item {
+            Layout.fillWidth: true
+        }
+    }
+
+    component FactTile: StyledRect {
+        id: factTile
+
+        property string label
+        property string value
+        property string icon: ""
+
+        Layout.fillWidth: true
+        visible: value !== ""
+        implicitHeight: factCol.implicitHeight + Theme.padding.medium * 2
+        radius: Theme.rounding.medium
+        color: Theme.palette.surfaceContainerHigh
+
+        ColumnLayout {
+            id: factCol
+
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.margins: Theme.padding.medium
+            spacing: 2
+
+            RowLayout {
+                spacing: 4
+
+                MaterialIcon {
+                    visible: factTile.icon !== ""
+                    text: factTile.icon
+                    size: 12
+                    color: Theme.palette.onSurfaceVariant
+                }
+                StyledText {
+                    text: factTile.label
+                    font: Theme.font.label.medium
+                    color: Theme.palette.onSurfaceVariant
+                }
+            }
+            StyledText {
+                Layout.fillWidth: true
+                text: factTile.value
+                font: Theme.font.title.small
+                wrapMode: Text.Wrap
+                maximumLineCount: 2
+                elide: Text.ElideRight
+            }
+        }
+    }
+
     StyledFlickable {
         id: flick
 
         anchors.fill: parent
-        contentHeight: col.implicitHeight + Theme.padding.extraLarge
+        contentHeight: col.implicitHeight + Theme.padding.extraLarge * 2
         clip: true
         ScrollBar.vertical: StyledScrollBar {}
 
@@ -336,18 +477,36 @@ Item {
                             onTint: Theme.palette.onTertiaryContainer
                         }
                         Chip {
-                            visible: (root.meta?.year ?? 0) > 0
-                            text: String(root.meta?.year ?? "")
+                            visible: (root.meta?.studios?.length ?? 0) > 0
+                            text: root.meta?.studios?.[0] ?? ""
+                            icon: "movie"
+                            selected: true
+                        }
+                        Chip {
+                            visible: !!root.meta?.format
+                            text: root.prettyEnum(root.meta?.format ?? "")
+                            icon: "tv"
+                        }
+                        Chip {
+                            visible: root.seasonLabel() !== ""
+                            text: root.seasonLabel()
                             icon: "calendar_month"
                         }
                         Chip {
-                            visible: root.episodes.length > 0
-                            text: `${root.episodes.length} episodes` + ((root.meta?.episodes ?? 0) > root.episodes.length ? ` of ${root.meta.episodes}` : "")
+                            visible: root.episodes.length > 0 || (root.meta?.episodes ?? 0) > 0
+                            text: {
+                                const avail = root.episodes.length;
+                                const total = root.meta?.episodes ?? 0;
+                                const dur = (root.meta?.duration ?? 0) > 0 ? ` · ${root.meta.duration}m` : "";
+                                if (avail > 0)
+                                    return `${avail} episodes` + (total > avail ? ` of ${total}` : "") + dur;
+                                return `${total} episodes${dur}`;
+                            }
                             icon: "video_library"
                         }
                         Chip {
                             visible: !!root.meta?.status
-                            text: (root.meta?.status ?? "").replace(/_/g, " ").toLowerCase()
+                            text: root.prettyEnum(root.meta?.status ?? "")
                             icon: "radio_button_checked"
                         }
                         Repeater {
@@ -357,6 +516,33 @@ Item {
                                 required property string modelData
 
                                 text: modelData
+                            }
+                        }
+                    }
+
+                    StyledRect {
+                        visible: root.airingText() !== ""
+                        Layout.topMargin: Theme.spacing.extraSmall
+                        implicitWidth: airingRow.implicitWidth + Theme.padding.medium * 2
+                        implicitHeight: 30
+                        radius: Theme.rounding.full
+                        color: Qt.alpha(Theme.palette.primaryContainer, Theme.dark ? 0.55 : 0.7)
+
+                        RowLayout {
+                            id: airingRow
+
+                            anchors.centerIn: parent
+                            spacing: Theme.spacing.extraSmall
+
+                            MaterialIcon {
+                                text: "schedule"
+                                size: 14
+                                color: Theme.palette.primary
+                            }
+                            StyledText {
+                                text: root.airingText()
+                                font: Theme.font.label.large
+                                color: Theme.palette.onPrimaryContainer
                             }
                         }
                     }
@@ -420,6 +606,14 @@ Item {
                             }
                         }
                         IconButton {
+                            visible: (root.meta?.anilist_id ?? 0) > 0
+                            type: IconButton.Text
+                            icon: "open_in_new"
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Open on AniList"
+                            onClicked: Qt.openUrlExternally(`https://anilist.co/anime/${root.meta.anilist_id}`)
+                        }
+                        IconButton {
                             type: IconButton.Text
                             icon: "refresh"
                             ToolTip.visible: hovered
@@ -470,35 +664,43 @@ Item {
                 }
             }
 
+            // Top-level section navigation + contextual toolbar
             RowLayout {
                 Layout.fillWidth: true
                 Layout.leftMargin: Theme.padding.extraLarge
                 Layout.rightMargin: Theme.padding.extraLarge
-                Layout.topMargin: Theme.spacing.medium
+                Layout.topMargin: Theme.spacing.small
                 spacing: Theme.spacing.medium
 
-                StyledRect {
-                    implicitWidth: 34
-                    implicitHeight: 34
-                    radius: Theme.rounding.medium
-                    color: Theme.palette.secondaryContainer
+                SegmentedControl {
+                    options: [
+                        {
+                            value: "episodes",
+                            label: "Episodes",
+                            icon: "video_library",
+                            count: root.episodes.length
+                        },
+                        {
+                            value: "cast",
+                            label: "Cast & Staff",
+                            icon: "groups",
+                            count: root.characters.length + root.staffList.length
+                        },
+                        {
+                            value: "details",
+                            label: "Details & Relations",
+                            icon: "info",
+                            count: root.relationsList.length + root.recommendationsList.length
+                        }
+                    ]
+                    value: root.section
+                    onPicked: v => root.section = v
+                }
 
-                    MaterialIcon {
-                        anchors.centerIn: parent
-                        text: "video_library"
-                        fill: 1
-                        size: 16
-                        color: Theme.palette.onSecondaryContainer
-                    }
-                }
-                StyledText {
-                    text: "Episodes"
-                    font: Theme.font.headline.small
-                }
                 StyledRect {
-                    visible: root.episodes.length > 0
+                    visible: root.section === "episodes" && root.watchedCount > 0
                     implicitWidth: Math.max(24, epBadge.implicitWidth + 12)
-                    implicitHeight: 24
+                    implicitHeight: 26
                     radius: Theme.rounding.full
                     color: Theme.palette.surfaceContainerHigh
 
@@ -506,7 +708,7 @@ Item {
                         id: epBadge
 
                         anchors.centerIn: parent
-                        text: root.watchedCount > 0 ? `${root.watchedCount} / ${root.episodes.length} watched` : String(root.episodes.length)
+                        text: `${root.watchedCount} / ${root.episodes.length} watched`
                         font: Theme.font.label.medium
                         color: Theme.palette.onSurfaceVariant
                     }
@@ -516,18 +718,53 @@ Item {
                     Layout.fillWidth: true
                 }
 
+                // Cast role filter
                 SegmentedControl {
-                    visible: root.watchedCount > 0 && root.watchedCount < root.episodes.length
+                    visible: root.section === "cast" && root.characters.some(c => c.role === "MAIN") && root.characters.some(c => c.role === "SUPPORTING")
                     options: [
-                        ["all", "All"],
-                        ["unwatched", "Unwatched"],
-                        ["watched", "Watched"]
+                        {
+                            value: "all",
+                            label: "All",
+                            count: root.characters.length
+                        },
+                        {
+                            value: "MAIN",
+                            label: "Main",
+                            count: root.characters.filter(c => c.role === "MAIN").length
+                        },
+                        {
+                            value: "SUPPORTING",
+                            label: "Supporting",
+                            count: root.characters.filter(c => c.role === "SUPPORTING").length
+                        }
+                    ]
+                    value: root.roleFilter
+                    onPicked: v => root.roleFilter = v
+                }
+
+                // Episode filters & jump
+                SegmentedControl {
+                    visible: root.section === "episodes" && root.watchedCount > 0 && root.watchedCount < root.episodes.length
+                    options: [
+                        {
+                            value: "all",
+                            label: "All"
+                        },
+                        {
+                            value: "unwatched",
+                            label: "Unwatched"
+                        },
+                        {
+                            value: "watched",
+                            label: "Watched"
+                        }
                     ]
                     value: root.epFilter
                     onPicked: v => root.epFilter = v
                 }
 
                 StyledRect {
+                    visible: root.section === "episodes"
                     implicitWidth: 164
                     implicitHeight: 36
                     radius: Theme.rounding.full
@@ -576,6 +813,7 @@ Item {
                     }
                 }
                 IconButton {
+                    visible: root.section === "episodes"
                     type: IconButton.Tonal
                     icon: root.descending ? "arrow_upward" : "arrow_downward"
                     ToolTip.visible: hovered
@@ -584,7 +822,11 @@ Item {
                 }
             }
 
+            // =========================================================================
+            // TAB 1: EPISODES
+            // =========================================================================
             GridLayout {
+                visible: root.section === "episodes" && (root.loading || root.shownEpisodes.length > 0)
                 Layout.fillWidth: true
                 Layout.leftMargin: Theme.padding.extraLarge
                 Layout.rightMargin: Theme.padding.extraLarge
@@ -651,7 +893,7 @@ Item {
             EmptyState {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.topMargin: Theme.spacing.extraLarge
-                visible: !root.loading && root.episodes.length === 0
+                visible: root.section === "episodes" && !root.loading && root.episodes.length === 0
                 face: "(×﹏×)"
                 title: root.error ? `Couldn't load episodes from ${Api.sourceName(root.anime.source)}` : "No episodes yet"
                 message: root.error ? Api.describe(root.error) : ""
@@ -665,6 +907,715 @@ Item {
                     icon: "refresh"
                     text: "Try again"
                     onClicked: root.load(true)
+                }
+            }
+
+            // =========================================================================
+            // TAB 2: CAST & STAFF (AniList / MyAnimeList style)
+            // =========================================================================
+            ColumnLayout {
+                visible: root.section === "cast"
+                Layout.fillWidth: true
+                Layout.leftMargin: Theme.padding.extraLarge
+                Layout.rightMargin: Theme.padding.extraLarge
+                spacing: Theme.spacing.extraLarge
+
+                // Characters & Japanese Voice Actors
+                ColumnLayout {
+                    visible: root.shownCharacters.length > 0
+                    Layout.fillWidth: true
+                    spacing: Theme.spacing.medium
+
+                    SectionHeader {
+                        icon: "groups"
+                        title: "Characters & Voice Actors"
+                        badge: String(root.shownCharacters.length)
+                    }
+
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: Math.max(1, Math.floor((width + columnSpacing) / (380 + columnSpacing)))
+                        columnSpacing: Theme.spacing.medium
+                        rowSpacing: Theme.spacing.medium
+
+                        Repeater {
+                            model: root.shownCharacters
+
+                            StyledRect {
+                                id: charCard
+
+                                required property var modelData
+
+                                Layout.fillWidth: true
+                                implicitHeight: 88
+                                radius: Theme.rounding.large
+                                color: Theme.palette.surfaceContainer
+                                border.width: 1
+                                border.color: Qt.alpha(Theme.palette.outlineVariant, 0.35)
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: Theme.padding.small
+                                    spacing: Theme.spacing.medium
+
+                                    // Character portrait
+                                    StyledRect {
+                                        Layout.preferredWidth: 56
+                                        Layout.preferredHeight: 72
+                                        radius: Theme.rounding.medium
+                                        color: Theme.palette.surfaceContainerHigh
+
+                                        MaterialIcon {
+                                            anchors.centerIn: parent
+                                            visible: !charImg.visible || charImg.status !== Image.Ready
+                                            text: "person"
+                                            size: 20
+                                            color: Theme.palette.onSurfaceVariant
+                                        }
+                                        ClippedImage {
+                                            id: charImg
+
+                                            anchors.fill: parent
+                                            radius: parent.radius
+                                            visible: source !== ""
+                                            source: charCard.modelData.image ?? ""
+                                        }
+                                    }
+
+                                    // Character name + role
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        Layout.alignment: Qt.AlignVCenter
+                                        spacing: 3
+
+                                        StyledText {
+                                            Layout.fillWidth: true
+                                            text: charCard.modelData.name
+                                            font: Theme.font.title.small
+                                            elide: Text.ElideRight
+                                        }
+                                        StyledText {
+                                            Layout.fillWidth: true
+                                            visible: text !== ""
+                                            text: charCard.modelData.native_name ?? ""
+                                            font: Theme.font.body.small
+                                            color: Theme.palette.onSurfaceVariant
+                                            elide: Text.ElideRight
+                                        }
+                                        StyledRect {
+                                            visible: !!charCard.modelData.role
+                                            implicitWidth: roleLabel.implicitWidth + 10
+                                            implicitHeight: 18
+                                            radius: Theme.rounding.extraSmall
+                                            color: charCard.modelData.role === "MAIN" ? Theme.palette.secondaryContainer : Theme.palette.surfaceContainerHigh
+
+                                            StyledText {
+                                                id: roleLabel
+
+                                                anchors.centerIn: parent
+                                                text: root.prettyEnum(charCard.modelData.role ?? "")
+                                                font: Theme.font.label.small
+                                                color: charCard.modelData.role === "MAIN" ? Theme.palette.onSecondaryContainer : Theme.palette.onSurfaceVariant
+                                            }
+                                        }
+                                    }
+
+                                    // Subtle center divider when VA exists
+                                    Rectangle {
+                                        visible: (charCard.modelData.va_name ?? "") !== ""
+                                        Layout.preferredWidth: 1
+                                        Layout.fillHeight: true
+                                        Layout.topMargin: Theme.padding.small
+                                        Layout.bottomMargin: Theme.padding.small
+                                        color: Qt.alpha(Theme.palette.outlineVariant, 0.35)
+                                    }
+
+                                    // Voice Actor (Seiyuu) name + language
+                                    ColumnLayout {
+                                        visible: (charCard.modelData.va_name ?? "") !== ""
+                                        Layout.fillWidth: true
+                                        Layout.alignment: Qt.AlignVCenter
+                                        spacing: 3
+
+                                        StyledText {
+                                            Layout.fillWidth: true
+                                            horizontalAlignment: Text.AlignRight
+                                            text: charCard.modelData.va_name ?? ""
+                                            font: Theme.font.title.small
+                                            elide: Text.ElideRight
+                                        }
+                                        StyledText {
+                                            Layout.fillWidth: true
+                                            visible: text !== ""
+                                            horizontalAlignment: Text.AlignRight
+                                            text: charCard.modelData.va_native_name ?? ""
+                                            font: Theme.font.body.small
+                                            color: Theme.palette.onSurfaceVariant
+                                            elide: Text.ElideRight
+                                        }
+                                        StyledText {
+                                            Layout.fillWidth: true
+                                            horizontalAlignment: Text.AlignRight
+                                            text: charCard.modelData.va_language || "Japanese"
+                                            font: Theme.font.label.small
+                                            color: Theme.palette.primary
+                                        }
+                                    }
+
+                                    // Voice Actor portrait
+                                    StyledRect {
+                                        visible: (charCard.modelData.va_name ?? "") !== ""
+                                        Layout.preferredWidth: 56
+                                        Layout.preferredHeight: 72
+                                        radius: Theme.rounding.medium
+                                        color: Theme.palette.surfaceContainerHigh
+
+                                        MaterialIcon {
+                                            anchors.centerIn: parent
+                                            visible: !vaImg.visible || vaImg.status !== Image.Ready
+                                            text: "mic"
+                                            size: 18
+                                            color: Theme.palette.onSurfaceVariant
+                                        }
+                                        ClippedImage {
+                                            id: vaImg
+
+                                            anchors.fill: parent
+                                            radius: parent.radius
+                                            visible: source !== ""
+                                            source: charCard.modelData.va_image ?? ""
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Key Production Staff
+                ColumnLayout {
+                    visible: root.staffList.length > 0
+                    Layout.fillWidth: true
+                    spacing: Theme.spacing.medium
+
+                    SectionHeader {
+                        icon: "movie"
+                        title: "Staff & Production"
+                        badge: String(root.staffList.length)
+                    }
+
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: Math.max(1, Math.floor((width + columnSpacing) / (260 + columnSpacing)))
+                        columnSpacing: Theme.spacing.medium
+                        rowSpacing: Theme.spacing.medium
+
+                        Repeater {
+                            model: root.staffList
+
+                            StyledRect {
+                                id: staffCard
+
+                                required property var modelData
+
+                                Layout.fillWidth: true
+                                implicitHeight: 80
+                                radius: Theme.rounding.large
+                                color: Theme.palette.surfaceContainer
+                                border.width: 1
+                                border.color: Qt.alpha(Theme.palette.outlineVariant, 0.35)
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: Theme.padding.small
+                                    spacing: Theme.spacing.medium
+
+                                    StyledRect {
+                                        Layout.preferredWidth: 50
+                                        Layout.preferredHeight: 64
+                                        radius: Theme.rounding.medium
+                                        color: Theme.palette.surfaceContainerHigh
+
+                                        MaterialIcon {
+                                            anchors.centerIn: parent
+                                            visible: !staffImg.visible || staffImg.status !== Image.Ready
+                                            text: "person"
+                                            size: 18
+                                            color: Theme.palette.onSurfaceVariant
+                                        }
+                                        ClippedImage {
+                                            id: staffImg
+
+                                            anchors.fill: parent
+                                            radius: parent.radius
+                                            visible: source !== ""
+                                            source: staffCard.modelData.image ?? ""
+                                        }
+                                    }
+
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        Layout.alignment: Qt.AlignVCenter
+                                        spacing: 2
+
+                                        StyledText {
+                                            Layout.fillWidth: true
+                                            text: staffCard.modelData.name
+                                            font: Theme.font.title.small
+                                            elide: Text.ElideRight
+                                        }
+                                        StyledText {
+                                            Layout.fillWidth: true
+                                            visible: text !== ""
+                                            text: staffCard.modelData.native_name ?? ""
+                                            font: Theme.font.body.small
+                                            color: Theme.palette.onSurfaceVariant
+                                            elide: Text.ElideRight
+                                        }
+                                        StyledText {
+                                            Layout.fillWidth: true
+                                            text: staffCard.modelData.role ?? ""
+                                            font: Theme.font.label.medium
+                                            color: Theme.palette.primary
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                EmptyState {
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.topMargin: Theme.spacing.extraLarge
+                    visible: root.characters.length === 0 && root.staffList.length === 0
+                    face: root.metaLoaded ? "(・・ )?" : "(◕‿◕✿)"
+                    title: root.metaLoaded ? "No cast or staff metadata available" : "Loading cast & staff…"
+                    message: root.metaLoaded ? "Try refreshing metadata or linking this anime to AniList." : ""
+                }
+            }
+
+            // =========================================================================
+            // TAB 3: DETAILS, TAGS, RELATIONS & RECOMMENDATIONS
+            // =========================================================================
+            ColumnLayout {
+                visible: root.section === "details"
+                Layout.fillWidth: true
+                Layout.leftMargin: Theme.padding.extraLarge
+                Layout.rightMargin: Theme.padding.extraLarge
+                spacing: Theme.spacing.extraLarge
+
+                // Anime Information Grid (AniList / MAL sidebar info)
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.spacing.medium
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.spacing.medium
+
+                        SectionHeader {
+                            icon: "info"
+                            title: "Anime Information"
+                        }
+
+                        IconTextButton {
+                            visible: (root.meta?.anilist_id ?? 0) > 0
+                            type: TextButton.Tonal
+                            icon: "open_in_new"
+                            text: "AniList"
+                            onClicked: Qt.openUrlExternally(`https://anilist.co/anime/${root.meta.anilist_id}`)
+                        }
+                        IconTextButton {
+                            visible: (root.meta?.mal_id ?? 0) > 0
+                            type: TextButton.Tonal
+                            icon: "open_in_new"
+                            text: "MyAnimeList"
+                            onClicked: Qt.openUrlExternally(`https://myanimelist.net/anime/${root.meta.mal_id}`)
+                        }
+                    }
+
+                    StyledRect {
+                        Layout.fillWidth: true
+                        implicitHeight: infoGridCol.implicitHeight + Theme.padding.large * 2
+                        radius: Theme.rounding.largeIncreased
+                        color: Theme.palette.surfaceContainer
+                        border.width: 1
+                        border.color: Qt.alpha(Theme.palette.outlineVariant, 0.35)
+
+                        ColumnLayout {
+                            id: infoGridCol
+
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: Theme.padding.large
+                            spacing: Theme.spacing.medium
+
+                            GridLayout {
+                                Layout.fillWidth: true
+                                columns: Math.max(2, Math.floor((width + columnSpacing) / (210 + columnSpacing)))
+                                columnSpacing: Theme.spacing.medium
+                                rowSpacing: Theme.spacing.medium
+
+                                FactTile {
+                                    label: "Format"
+                                    icon: "tv"
+                                    value: root.prettyEnum(root.meta?.format ?? "")
+                                }
+                                FactTile {
+                                    label: "Episodes"
+                                    icon: "video_library"
+                                    value: (root.meta?.episodes ?? 0) > 0 ? String(root.meta.episodes) : root.episodes.length > 0 ? String(root.episodes.length) : ""
+                                }
+                                FactTile {
+                                    label: "Episode Duration"
+                                    icon: "schedule"
+                                    value: (root.meta?.duration ?? 0) > 0 ? `${root.meta.duration} mins` : ""
+                                }
+                                FactTile {
+                                    label: "Status"
+                                    icon: "radio_button_checked"
+                                    value: root.prettyEnum(root.meta?.status ?? "")
+                                }
+                                FactTile {
+                                    label: "Season"
+                                    icon: "calendar_month"
+                                    value: root.seasonLabel()
+                                }
+                                FactTile {
+                                    label: "Aired"
+                                    icon: "event"
+                                    value: {
+                                        const start = root.meta?.start_date ?? "";
+                                        const end = root.meta?.end_date ?? "";
+                                        if (start && end && start !== end)
+                                            return `${start}  →  ${end}`;
+                                        return start || end;
+                                    }
+                                }
+                                FactTile {
+                                    label: "Source Material"
+                                    icon: "menu_book"
+                                    value: root.prettyEnum(root.meta?.source ?? "")
+                                }
+                                FactTile {
+                                    label: "Main Studio"
+                                    icon: "movie"
+                                    value: (root.meta?.studios ?? []).join(", ")
+                                }
+                                FactTile {
+                                    label: "Producers"
+                                    icon: "business"
+                                    value: (root.meta?.producers ?? []).slice(0, 4).join(", ")
+                                }
+                                FactTile {
+                                    label: "Score"
+                                    icon: "star"
+                                    value: {
+                                        const avg = root.meta?.score ?? 0;
+                                        const mean = root.meta?.mean_score ?? 0;
+                                        if (avg > 0 && mean > 0 && avg !== mean)
+                                            return `${(avg / 10).toFixed(1)} / 10  (Mean ${mean}%)`;
+                                        return avg > 0 ? `${(avg / 10).toFixed(1)} / 10  (${avg}%)` : "";
+                                    }
+                                }
+                                FactTile {
+                                    label: "Popularity"
+                                    icon: "trending_up"
+                                    value: (root.meta?.popularity ?? 0) > 0 ? `${Number(root.meta.popularity).toLocaleString()} members` : ""
+                                }
+                                FactTile {
+                                    label: "Favorites"
+                                    icon: "favorite"
+                                    value: (root.meta?.favourites ?? 0) > 0 ? `${Number(root.meta.favourites).toLocaleString()} favorites` : ""
+                                }
+                            }
+
+                            // Titles & Synonyms sub-row
+                            Rectangle {
+                                visible: (root.meta?.title_romaji ?? "") !== "" || (root.meta?.title_native ?? "") !== "" || (root.meta?.synonyms?.length ?? 0) > 0
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 1
+                                color: Qt.alpha(Theme.palette.outlineVariant, 0.35)
+                            }
+
+                            GridLayout {
+                                visible: (root.meta?.title_romaji ?? "") !== "" || (root.meta?.title_native ?? "") !== "" || (root.meta?.synonyms?.length ?? 0) > 0
+                                Layout.fillWidth: true
+                                columns: Math.max(1, Math.floor((width + columnSpacing) / (280 + columnSpacing)))
+                                columnSpacing: Theme.spacing.medium
+                                rowSpacing: Theme.spacing.small
+
+                                ColumnLayout {
+                                    visible: (root.meta?.title_romaji ?? "") !== ""
+                                    Layout.fillWidth: true
+                                    spacing: 2
+
+                                    StyledText {
+                                        text: "Romaji Title"
+                                        font: Theme.font.label.medium
+                                        color: Theme.palette.onSurfaceVariant
+                                    }
+                                    StyledText {
+                                        Layout.fillWidth: true
+                                        text: root.meta?.title_romaji ?? ""
+                                        font: Theme.font.body.medium
+                                        wrapMode: Text.Wrap
+                                    }
+                                }
+                                ColumnLayout {
+                                    visible: (root.meta?.title_english ?? "") !== ""
+                                    Layout.fillWidth: true
+                                    spacing: 2
+
+                                    StyledText {
+                                        text: "English Title"
+                                        font: Theme.font.label.medium
+                                        color: Theme.palette.onSurfaceVariant
+                                    }
+                                    StyledText {
+                                        Layout.fillWidth: true
+                                        text: root.meta?.title_english ?? ""
+                                        font: Theme.font.body.medium
+                                        wrapMode: Text.Wrap
+                                    }
+                                }
+                                ColumnLayout {
+                                    visible: (root.meta?.title_native ?? "") !== ""
+                                    Layout.fillWidth: true
+                                    spacing: 2
+
+                                    StyledText {
+                                        text: "Native Title"
+                                        font: Theme.font.label.medium
+                                        color: Theme.palette.onSurfaceVariant
+                                    }
+                                    StyledText {
+                                        Layout.fillWidth: true
+                                        text: root.meta?.title_native ?? ""
+                                        font: Theme.font.body.medium
+                                        wrapMode: Text.Wrap
+                                    }
+                                }
+                                ColumnLayout {
+                                    visible: (root.meta?.synonyms?.length ?? 0) > 0
+                                    Layout.fillWidth: true
+                                    spacing: 2
+
+                                    StyledText {
+                                        text: "Synonyms"
+                                        font: Theme.font.label.medium
+                                        color: Theme.palette.onSurfaceVariant
+                                    }
+                                    StyledText {
+                                        Layout.fillWidth: true
+                                        text: (root.meta?.synonyms ?? []).slice(0, 5).join("  ·  ")
+                                        font: Theme.font.body.medium
+                                        color: Theme.palette.onSurfaceVariant
+                                        wrapMode: Text.Wrap
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Theme Tags
+                ColumnLayout {
+                    visible: root.tagsList.length > 0
+                    Layout.fillWidth: true
+                    spacing: Theme.spacing.medium
+
+                    SectionHeader {
+                        icon: "tag"
+                        title: "Themes & Tags"
+                        badge: String(root.tagsList.length)
+                    }
+
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: Theme.spacing.small
+
+                        Repeater {
+                            model: root.tagsList
+
+                            Chip {
+                                required property var modelData
+
+                                text: (modelData.rank ?? 0) > 0 ? `${modelData.name}  ·  ${modelData.rank}%` : modelData.name
+                            }
+                        }
+                    }
+                }
+
+                // Relations (Prequel, Sequel, Side Story, Adaptation, etc.)
+                ColumnLayout {
+                    visible: root.relationsList.length > 0
+                    Layout.fillWidth: true
+                    spacing: Theme.spacing.medium
+
+                    SectionHeader {
+                        icon: "link"
+                        title: "Related Media"
+                        badge: String(root.relationsList.length)
+                    }
+
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: Math.max(1, Math.floor((width + columnSpacing) / (340 + columnSpacing)))
+                        columnSpacing: Theme.spacing.medium
+                        rowSpacing: Theme.spacing.medium
+
+                        Repeater {
+                            model: root.relationsList
+
+                            StyledRect {
+                                id: relCard
+
+                                required property var modelData
+                                readonly property string displayTitle: modelData.title_english || modelData.title_romaji
+
+                                Layout.fillWidth: true
+                                implicitHeight: 104
+                                radius: Theme.rounding.large
+                                color: Theme.palette.surfaceContainer
+                                border.width: 1
+                                border.color: Qt.alpha(Theme.palette.outlineVariant, 0.35)
+
+                                StateLayer {
+                                    color: Theme.palette.onSurface
+                                    onClicked: {
+                                        if (relCard.modelData.media_type === "MANGA" && relCard.modelData.anilist_id > 0)
+                                            Qt.openUrlExternally(`https://anilist.co/manga/${relCard.modelData.anilist_id}`);
+                                        else
+                                            ApplicationWindow.window.searchFor(relCard.displayTitle);
+                                    }
+                                }
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: Theme.padding.small
+                                    spacing: Theme.spacing.medium
+
+                                    ClippedImage {
+                                        Layout.preferredWidth: 64
+                                        Layout.preferredHeight: 88
+                                        radius: Theme.rounding.medium
+                                        source: relCard.modelData.cover ?? ""
+                                    }
+
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        Layout.alignment: Qt.AlignVCenter
+                                        spacing: 4
+
+                                        RowLayout {
+                                            spacing: Theme.spacing.extraSmall
+
+                                            StyledRect {
+                                                implicitWidth: relBadge.implicitWidth + 10
+                                                implicitHeight: 20
+                                                radius: Theme.rounding.extraSmall
+                                                color: Theme.palette.secondaryContainer
+
+                                                StyledText {
+                                                    id: relBadge
+
+                                                    anchors.centerIn: parent
+                                                    text: root.prettyEnum(relCard.modelData.relation ?? "")
+                                                    font: Theme.font.label.small
+                                                    color: Theme.palette.onSecondaryContainer
+                                                }
+                                            }
+                                            StyledText {
+                                                visible: (relCard.modelData.score ?? 0) > 0
+                                                text: `★ ${(relCard.modelData.score / 10).toFixed(1)}`
+                                                font: Theme.font.label.medium
+                                                color: Theme.palette.tertiary
+                                            }
+                                        }
+
+                                        StyledText {
+                                            Layout.fillWidth: true
+                                            text: relCard.displayTitle
+                                            font: Theme.font.title.small
+                                            maximumLineCount: 2
+                                            wrapMode: Text.Wrap
+                                            elide: Text.ElideRight
+                                        }
+
+                                        StyledText {
+                                            Layout.fillWidth: true
+                                            text: [
+                                                root.prettyEnum(relCard.modelData.format ?? ""),
+                                                (relCard.modelData.episodes ?? 0) > 0 ? `${relCard.modelData.episodes} ep` : "",
+                                                (relCard.modelData.year ?? 0) > 0 ? String(relCard.modelData.year) : "",
+                                                root.prettyEnum(relCard.modelData.status ?? "")
+                                            ].filter(Boolean).join("  ·  ")
+                                            font: Theme.font.body.small
+                                            color: Theme.palette.onSurfaceVariant
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+
+                                    MaterialIcon {
+                                        Layout.rightMargin: Theme.padding.small
+                                        text: relCard.modelData.media_type === "MANGA" ? "open_in_new" : "search"
+                                        size: 16
+                                        color: Theme.palette.onSurfaceVariant
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Recommendations (Similar Anime)
+                ColumnLayout {
+                    visible: root.recommendationsList.length > 0
+                    Layout.fillWidth: true
+                    spacing: Theme.spacing.medium
+
+                    SectionHeader {
+                        icon: "auto_awesome"
+                        title: "Recommendations"
+                        badge: String(root.recommendationsList.length)
+                    }
+
+                    Flow {
+                        id: recGrid
+
+                        readonly property int columns: Math.max(2, Math.floor((width + spacing) / (168 + spacing)))
+                        readonly property real cardWidth: (width - spacing * (columns - 1)) / columns
+
+                        Layout.fillWidth: true
+                        spacing: Theme.spacing.large
+
+                        Repeater {
+                            model: root.recommendationsList
+
+                            PosterCard {
+                                id: recCard
+
+                                required property var modelData
+                                readonly property string displayTitle: modelData.title_english || modelData.title_romaji
+
+                                width: recGrid.cardWidth
+                                height: implicitHeight + Theme.spacing.large
+                                title: displayTitle
+                                image: modelData.cover ?? ""
+                                badge: (modelData.score ?? 0) > 0 ? `★ ${(modelData.score / 10).toFixed(1)}` : ""
+                                subtitle: [
+                                    root.prettyEnum(modelData.format ?? ""),
+                                    (modelData.episodes ?? 0) > 0 ? `${modelData.episodes} ep` : "",
+                                    (modelData.year ?? 0) > 0 ? String(modelData.year) : ""
+                                ].filter(Boolean).join(" · ")
+                                onClicked: ApplicationWindow.window.searchFor(recCard.displayTitle)
+                            }
+                        }
+                    }
                 }
             }
         }

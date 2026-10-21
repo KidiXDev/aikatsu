@@ -31,6 +31,31 @@ void main() {
     expect(airingLabel(at(DateTime(2026, 10, 16, 8, 5)), now), 'Tomorrow 08:05');
   });
 
+  test('prettyEnum', () {
+    expect(prettyEnum('TV'), 'TV');
+    expect(prettyEnum('TV_SHORT'), 'TV Short');
+    expect(prettyEnum('NOT_YET_RELEASED'), 'Not Yet Released');
+    expect(prettyEnum('Finished Airing'), 'Finished Airing');
+    expect(prettyEnum(''), '');
+  });
+
+  test('airsIn', () {
+    final now = DateTime(2026, 10, 15, 20, 0);
+    int at(Duration d) => now.add(d).millisecondsSinceEpoch ~/ 1000;
+    expect(airsIn(at(const Duration(days: 2, hours: 3, minutes: 9)), now), '2d 3h');
+    expect(airsIn(at(const Duration(hours: 3, minutes: 5)), now), '3h 5m');
+    expect(airsIn(at(const Duration(seconds: 20)), now), '1m');
+    expect(airsIn(at(const Duration(minutes: -1)), now), '');
+  });
+
+  test('formatCount', () {
+    expect(formatCount(0), '0');
+    expect(formatCount(999), '999');
+    expect(formatCount(1000), '1,000');
+    expect(formatCount(320000), '320,000');
+    expect(formatCount(1234567), '1,234,567');
+  });
+
   test('text picks the first non-empty string', () {
     expect(text([null, '', 'b', 'c']), 'b');
     expect(text([null, 3]), '');

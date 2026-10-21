@@ -8,6 +8,7 @@ import '../theme.dart';
 import '../widgets.dart';
 import 'library.dart';
 import 'player.dart';
+import 'search.dart';
 
 void openAnime(BuildContext context, Map<String, dynamic> anime, {int autoplayEpisode = 0}) {
   Navigator.push(
@@ -195,6 +196,8 @@ class _AnimePageState extends State<AnimePage> {
   bool _descending = false;
   bool _synopsisOpen = false;
   String _jump = '';
+  String _section = 'episodes'; // episodes | cast | details
+  String _role = 'all'; // all | MAIN | SUPPORTING
   late final StreamSubscription<(String, dynamic)> _downloads;
 
   @override
@@ -281,6 +284,157 @@ class _AnimePageState extends State<AnimePage> {
     Api.historyRevision.value++;
   }
 
+  static const _spinner = SliverToBoxAdapter(
+    child: Padding(
+      padding: EdgeInsets.all(48),
+      child: Center(child: CircularProgressIndicator()),
+    ),
+  );
+
+  void _openUrl(String url) => const MethodChannel('io.github.kidixdev.aikatsu/update').invokeMethod('open', {'url': url}).ignore();
+
+  /// A manga opens on AniList; an anime is looked up on the sources, which mostly use romaji names.
+  void _openRelated(Map<String, dynamic> m) {
+    if (m['media_type'] == 'MANGA' && toInt(m['anilist_id']) > 0) return _openUrl('https://anilist.co/manga/${m['anilist_id']}');
+    SearchPage.requested.value = text([m['title_romaji'], m['title_english']]);
+  }
+
+  List<Widget> _castSlivers(BuildContext context, List<dynamic> characters) {
+    final staff = (_data.meta?['staff'] as List?) ?? const [];
+    if (!_data.metaLoaded) return [_spinner];
+    if (characters.isEmpty && staff.isEmpty) return [const SliverToBoxAdapter(child: EmptyState(face: '(・・ )?', title: 'No cast or staff'))];
+    return [
+      if (characters.isNotEmpty) ...[
+        sectionHeader(context, 'Characters', Icons.groups_rounded, subtitle: '${characters.length}'),
+        _tiles(characters.length, 480, 92, (i) => _CharacterTile(characters[i])),
+      ],
+      if (staff.isNotEmpty) ...[
+        sectionHeader(context, 'Staff', Icons.movie_rounded, subtitle: '${staff.length}'),
+        _tiles(staff.length, 360, 92, (i) => _StaffTile(staff[i])),
+      ],
+    ];
+  }
+
+  List<Widget> _detailSlivers(BuildContext context) {
+    final t = Theme.of(context);
+    final c = t.colorScheme;
+    final m = _data.meta ?? const {};
+    if (!_data.metaLoaded) return [_spinner];
+    if (m.isEmpty) return [const SliverToBoxAdapter(child: EmptyState(face: '(・・ )?', title: 'No details'))];
+    final year = toInt(m['season_year']) > 0 ? toInt(m['season_year']) : toInt(m['year']);
+    final start = text([m['start_date']]), end = text([m['end_date']]);
+    final score = toInt(m['score']), mean = toInt(m['mean_score']);
+    List<String> list(Object? v) => [for (final x in (v as List?) ?? const []) '$x'];
+    final facts = [
+      ('Format', prettyEnum(text([m['format']]))),
+      ('Episodes', toInt(m['episodes']) > 0 ? '${m['episodes']}' : (_data.episodes.isNotEmpty ? '${_data.episodes.length}' : '')),
+      ('Duration', toInt(m['duration']) > 0 ? '${m['duration']} mins' : ''),
+      ('Status', prettyEnum(text([m['status']]))),
+      ('Season', [prettyEnum(text([m['season']])), if (year > 0) '$year'].where((s) => s.isNotEmpty).join(' ')),
+      ('Aired', start.isNotEmpty && end.isNotEmpty && start != end ? '$start → $end' : text([start, end])),
+      ('Source', prettyEnum(text([m['source']]))),
+      ('Studio', list(m['studios']).join(', ')),
+      ('Producers', list(m['producers']).take(4).join(', ')),
+      ('Score', score <= 0 ? '' : '${(score / 10).toStringAsFixed(1)} / 10  (${mean > 0 && mean != score ? 'Mean $mean' : score}%)'),
+      ('Popularity', toInt(m['popularity']) > 0 ? '${formatCount(toInt(m['popularity']))} members' : ''),
+      ('Favorites', toInt(m['favourites']) > 0 ? formatCount(toInt(m['favourites'])) : ''),
+      ('Romaji', text([m['title_romaji']])),
+      ('English', text([m['title_english']])),
+      ('Native', text([m['title_native']])),
+      ('Synonyms', list(m['synonyms']).take(5).join('  ·  ')),
+    ].where((f) => f.$2.isNotEmpty).toList();
+    final tags = (m['tags'] as List?) ?? const [];
+    final relations = (m['relations'] as List?) ?? const [];
+    final recommendations = (m['recommendations'] as List?) ?? const [];
+
+    return [
+      sectionHeader(
+        context,
+        'Information',
+        Icons.info_rounded,
+        action: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (toInt(m['anilist_id']) > 0)
+              TextButton(onPressed: () => _openUrl('https://anilist.co/anime/${m['anilist_id']}'), child: const Text('AniList')),
+            if (toInt(m['mal_id']) > 0)
+              TextButton(onPressed: () => _openUrl('https://myanimelist.net/anime/${m['mal_id']}'), child: const Text('MAL')),
+          ],
+        ),
+      ),
+      SliverPadding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        sliver: SliverToBoxAdapter(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            decoration: _card(c),
+            child: Column(
+              children: [
+                for (final (i, (label, value)) in facts.indexed) ...[
+                  if (i > 0) Divider(height: 1, color: c.outlineVariant.withValues(alpha: 0.35)),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(
+                          width: 92,
+                          child: Text(label, style: t.textTheme.bodySmall?.copyWith(color: c.onSurfaceVariant)),
+                        ),
+                        Expanded(
+                          child: Text(value, style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+      if (tags.isNotEmpty) ...[
+        sectionHeader(context, 'Tags', Icons.sell_rounded, subtitle: '${tags.length}'),
+        SliverPadding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          sliver: SliverToBoxAdapter(
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final tag in tags) PillBadge(label: toInt(tag['rank']) > 0 ? '${tag['name']}  ·  ${tag['rank']}%' : '${tag['name']}'),
+              ],
+            ),
+          ),
+        ),
+      ],
+      if (relations.isNotEmpty) ...[
+        sectionHeader(context, 'Related', Icons.link_rounded, subtitle: '${relations.length}'),
+        _tiles(relations.length, 480, 108, (i) => _RelationTile(relations[i], onTap: () => _openRelated(relations[i]))),
+      ],
+      if (recommendations.isNotEmpty) ...[
+        sectionHeader(context, 'Recommendations', Icons.auto_awesome_rounded, subtitle: '${recommendations.length}'),
+        SliverPadding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          sliver: SliverGrid.builder(
+            gridDelegate: posterGrid(),
+            itemCount: recommendations.length,
+            itemBuilder: (_, i) {
+              final r = recommendations[i];
+              return PosterCard(
+                title: text([r['title_english'], r['title_romaji']]),
+                image: text([r['cover']]),
+                badge: toInt(r['score']) > 0 ? '★ ${(toInt(r['score']) / 10).toStringAsFixed(1)}' : '',
+                subtitle: _mediaLine(r),
+                onTap: () => _openRelated(r),
+              );
+            },
+          ),
+        ),
+      ],
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
@@ -296,6 +450,16 @@ class _AnimePageState extends State<AnimePage> {
       meta?['title_romaji'],
       meta?['title_native'],
     ].where((s) => text([s]).isNotEmpty && s != text([meta?['title_english']]));
+    final year = toInt(meta?['season_year']) > 0 ? toInt(meta?['season_year']) : toInt(meta?['year']);
+    final season = [prettyEnum(text([meta?['season']])), if (year > 0) '$year'].where((s) => s.isNotEmpty).join(' ');
+    final total = toInt(meta?['episodes']), duration = toInt(meta?['duration']);
+    final next = meta?['next_airing'];
+    final airsAfter = next == null ? '' : airsIn(toInt(next['airing_at']), DateTime.now());
+    final watched = d.episodes.where((e) => d.progress[e['num']]?['completed'] == true).length;
+    final characters = (meta?['characters'] as List?) ?? const [];
+    final roles = {for (final ch in characters) ch['role']};
+    final splitRoles = roles.contains('MAIN') && roles.contains('SUPPORTING');
+    final role = splitRoles ? _role : 'all';
 
     return Scaffold(
       body: CustomScrollView(
@@ -367,21 +531,30 @@ class _AnimePageState extends State<AnimePage> {
                               PillBadge(label: Api.sourceName(widget.anime['source']), icon: _local ? Icons.folder_rounded : Icons.public_rounded),
                               if (toInt(meta?['score']) > 0)
                                 PillBadge(label: '★ ${(toInt(meta?['score']) / 10).toStringAsFixed(1)}', color: const Color(0xffffb84d)),
-                              if (toInt(meta?['year']) > 0) PillBadge(label: '${meta?['year']}', icon: Icons.calendar_month_rounded),
-                              if (d.episodes.isNotEmpty)
+                              if (text([meta?['format']]).isNotEmpty) PillBadge(label: prettyEnum(meta?['format']), icon: Icons.tv_rounded),
+                              if (season.isNotEmpty) PillBadge(label: season, icon: Icons.calendar_month_rounded),
+                              if (d.episodes.isNotEmpty || total > 0)
                                 PillBadge(
-                                  label:
-                                      '${d.episodes.length} eps${toInt(meta?['episodes']) > d.episodes.length ? ' / ${meta?['episodes']}' : ''}',
+                                  label: [
+                                    d.episodes.isEmpty ? '$total eps' : '${d.episodes.length} eps${total > d.episodes.length ? ' / $total' : ''}',
+                                    if (duration > 0) '${duration}m',
+                                  ].join(' · '),
                                   icon: Icons.video_library_rounded,
                                 ),
                               if (text([meta?['status']]).isNotEmpty)
-                                PillBadge(
-                                  label: '${meta?['status']}'.replaceAll('_', ' ').toLowerCase(),
-                                  icon: Icons.radio_button_checked_rounded,
-                                ),
+                                PillBadge(label: prettyEnum(meta?['status']), icon: Icons.radio_button_checked_rounded),
                               for (final g in (meta?['genres'] as List?) ?? []) PillBadge(label: '$g'),
                             ],
                           ),
+                          if (next != null) ...[
+                            const SizedBox(height: 8),
+                            PillBadge(
+                              label: airsAfter.isEmpty ? 'Ep ${next['episode']} airing now' : 'Ep ${next['episode']} airs in $airsAfter',
+                              icon: Icons.schedule_rounded,
+                              color: c.onPrimaryContainer,
+                              backgroundColor: c.primaryContainer,
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -412,17 +585,21 @@ class _AnimePageState extends State<AnimePage> {
                                 size: 20,
                               ),
                               const SizedBox(width: 8),
-                              Text(
-                                d.episodes.isEmpty
-                                    ? (d.loading ? 'Loading episodes…' : 'Play')
-                                    : d.progress.isNotEmpty
-                                    ? 'Continue  ·  Ep ${d.episodes[d.continueIndex]['num']}'
-                                    : 'Play  ·  Ep ${d.episodes.first['num']}',
-                                style: TextStyle(
-                                  fontFamily: 'GoogleSansFlex',
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 14,
-                                  color: d.episodes.isEmpty ? c.onSurfaceVariant : c.onPrimary,
+                              Flexible(
+                                child: Text(
+                                  d.episodes.isEmpty
+                                      ? (d.loading ? 'Loading episodes…' : 'Play')
+                                      : d.progress.isNotEmpty
+                                      ? 'Continue  ·  Ep ${d.episodes[d.continueIndex]['num']}'
+                                      : 'Play  ·  Ep ${d.episodes.first['num']}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontFamily: 'GoogleSansFlex',
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 14,
+                                    color: d.episodes.isEmpty ? c.onSurfaceVariant : c.onPrimary,
+                                  ),
                                 ),
                               ),
                             ],
@@ -511,68 +688,99 @@ class _AnimePageState extends State<AnimePage> {
                   ),
                 ],
                 const SizedBox(height: 22),
-
-                // Episodes Section Header
-                Row(
-                  children: [
-                    Text('Episodes', style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700, fontSize: 18)),
-                    if (d.episodes.isNotEmpty) ...[
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(color: c.surfaceContainerHighest, borderRadius: BorderRadius.circular(999)),
-                        child: Text(
-                          '${d.episodes.length}',
-                          style: TextStyle(
-                            fontFamily: 'GoogleSansFlex',
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: c.onSurfaceVariant,
+                SegmentedButton<String>(
+                  expandedInsets: EdgeInsets.zero,
+                  showSelectedIcon: false,
+                  segments: const [
+                    ButtonSegment(value: 'episodes', icon: Icon(Icons.video_library_rounded), label: Text('Episodes')),
+                    ButtonSegment(value: 'cast', icon: Icon(Icons.groups_rounded), label: Text('Cast')),
+                    ButtonSegment(value: 'details', icon: Icon(Icons.info_outline_rounded), label: Text('Details')),
+                  ],
+                  selected: {_section},
+                  onSelectionChanged: (v) => setState(() {
+                    _section = v.first;
+                    _jump = '';
+                  }),
+                ),
+                if (_section == 'cast' && splitRoles) ...[
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      for (final (value, label) in [('all', 'All'), ('MAIN', 'Main'), ('SUPPORTING', 'Supporting')])
+                        ChoiceChip(
+                          label: Text('$label  ${value == 'all' ? characters.length : characters.where((ch) => ch['role'] == value).length}'),
+                          selected: value == role,
+                          showCheckmark: false,
+                          onSelected: (_) => setState(() => _role = value),
+                        ),
+                    ],
+                  ),
+                ],
+                if (_section == 'episodes') ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      if (d.episodes.isNotEmpty)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(color: c.surfaceContainerHighest, borderRadius: BorderRadius.circular(999)),
+                          child: Text(
+                            watched > 0 ? '$watched / ${d.episodes.length} watched' : '${d.episodes.length} episodes',
+                            style: TextStyle(
+                              fontFamily: 'GoogleSansFlex',
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: c.onSurfaceVariant,
+                            ),
                           ),
                         ),
+                      const Spacer(),
+                      SizedBox(
+                        width: 125,
+                        height: 38,
+                        child: TextField(
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                          style: const TextStyle(fontSize: 13),
+                          decoration: InputDecoration(
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            prefixIcon: const Icon(Icons.tag_rounded, size: 16),
+                            hintText: 'Jump to…',
+                            hintStyle: TextStyle(fontSize: 12, color: c.onSurfaceVariant.withValues(alpha: 0.6)),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(999),
+                              borderSide: BorderSide(color: c.outlineVariant.withValues(alpha: 0.5)),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(999),
+                              borderSide: BorderSide(color: c.outlineVariant.withValues(alpha: 0.5)),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(999),
+                              borderSide: BorderSide(color: c.primary, width: 1.2),
+                            ),
+                          ),
+                          onChanged: (v) => setState(() => _jump = v),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      IconButton(
+                        icon: Icon(_descending ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded, size: 20),
+                        onPressed: () => setState(() => _descending = !_descending),
                       ),
                     ],
-                    const Spacer(),
-                    SizedBox(
-                      width: 125,
-                      height: 38,
-                      child: TextField(
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                        style: const TextStyle(fontSize: 13),
-                        decoration: InputDecoration(
-                          isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                          prefixIcon: const Icon(Icons.tag_rounded, size: 16),
-                          hintText: 'Jump to…',
-                          hintStyle: TextStyle(fontSize: 12, color: c.onSurfaceVariant.withValues(alpha: 0.6)),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(999),
-                            borderSide: BorderSide(color: c.outlineVariant.withValues(alpha: 0.5)),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(999),
-                            borderSide: BorderSide(color: c.outlineVariant.withValues(alpha: 0.5)),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(999),
-                            borderSide: BorderSide(color: c.primary, width: 1.2),
-                          ),
-                        ),
-                        onChanged: (v) => setState(() => _jump = v),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    IconButton(
-                      icon: Icon(_descending ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded, size: 20),
-                      onPressed: () => setState(() => _descending = !_descending),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ],
             ),
           ),
-          if (d.loading && d.episodes.isEmpty)
+          if (_section == 'cast') ..._castSlivers(context, role == 'all' ? characters : characters.where((ch) => ch['role'] == role).toList()),
+          if (_section == 'details') ..._detailSlivers(context),
+          if (_section != 'episodes')
+            const SliverToBoxAdapter(child: SizedBox(height: 40))
+          else if (d.loading && d.episodes.isEmpty)
             const SliverToBoxAdapter(
               child: Padding(
                 padding: EdgeInsets.all(48),
@@ -622,6 +830,210 @@ class _AnimePageState extends State<AnimePage> {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+BoxDecoration _card(ColorScheme c) => BoxDecoration(
+  color: c.surfaceContainerLow,
+  borderRadius: BorderRadius.circular(16),
+  border: Border.all(color: c.outlineVariant.withValues(alpha: 0.45)),
+);
+
+Widget _tiles(int count, double maxWidth, double height, Widget Function(int) item) => SliverPadding(
+  padding: const EdgeInsets.symmetric(horizontal: 16),
+  sliver: SliverGrid.builder(
+    gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+      maxCrossAxisExtent: maxWidth,
+      mainAxisExtent: height,
+      crossAxisSpacing: 10,
+      mainAxisSpacing: 10,
+    ),
+    itemCount: count,
+    itemBuilder: (_, i) => item(i),
+  ),
+);
+
+/// "TV · 24 ep · 2023", from a related or recommended entry.
+String _mediaLine(Map<String, dynamic> m) => [
+  prettyEnum(text([m['format']])),
+  if (toInt(m['episodes']) > 0) '${m['episodes']} ep',
+  if (toInt(m['year']) > 0) '${m['year']}',
+].where((s) => s.isNotEmpty).join(' · ');
+
+/// A name over its native spelling, then [below].
+Widget _names(BuildContext context, Object? name, Object? native, Widget below, {bool end = false}) {
+  final t = Theme.of(context);
+  return Column(
+    mainAxisAlignment: MainAxisAlignment.center,
+    crossAxisAlignment: end ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+    spacing: 2,
+    children: [
+      Text(
+        text([name]),
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        textAlign: end ? TextAlign.end : TextAlign.start,
+        style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600, fontSize: 13, height: 1.25),
+      ),
+      if (text([native]).isNotEmpty)
+        Text(
+          text([native]),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant, fontSize: 11.5),
+        ),
+      const SizedBox(height: 2),
+      below,
+    ],
+  );
+}
+
+/// A character beside their voice actor.
+class _CharacterTile extends StatelessWidget {
+  const _CharacterTile(this.ch);
+
+  final Map<String, dynamic> ch;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final c = t.colorScheme;
+    final label = t.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600);
+    final va = text([ch['va_name']]).isNotEmpty;
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: _card(c),
+      child: Row(
+        spacing: 10,
+        children: [
+          SizedBox(width: 48, height: 70, child: Cover(text([ch['image']]), radius: 12, showBorder: false)),
+          Expanded(
+            child: _names(
+              context,
+              ch['name'],
+              ch['native_name'],
+              Text(
+                prettyEnum(text([ch['role']])),
+                style: label?.copyWith(color: ch['role'] == 'MAIN' ? c.secondary : c.onSurfaceVariant),
+              ),
+            ),
+          ),
+          if (va) ...[
+            Expanded(
+              child: _names(
+                context,
+                ch['va_name'],
+                ch['va_native_name'],
+                Text(text([ch['va_language'], 'Japanese']), style: label?.copyWith(color: c.primary)),
+                end: true,
+              ),
+            ),
+            SizedBox(width: 48, height: 70, child: Cover(text([ch['va_image']]), radius: 12, showBorder: false)),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _StaffTile extends StatelessWidget {
+  const _StaffTile(this.person);
+
+  final Map<String, dynamic> person;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: _card(t.colorScheme),
+      child: Row(
+        spacing: 12,
+        children: [
+          SizedBox(width: 48, height: 70, child: Cover(text([person['image']]), radius: 12, showBorder: false)),
+          Expanded(
+            child: _names(
+              context,
+              person['name'],
+              person['native_name'],
+              Text(
+                text([person['role']]),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: t.textTheme.labelMedium?.copyWith(color: t.colorScheme.primary, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A prequel, sequel, adaptation…: a manga opens on AniList, an anime searches the sources.
+class _RelationTile extends StatelessWidget {
+  const _RelationTile(this.m, {required this.onTap});
+
+  final Map<String, dynamic> m;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final c = t.colorScheme;
+    final line = [_mediaLine(m), prettyEnum(text([m['status']]))].where((s) => s.isNotEmpty).join(' · ');
+    return BouncyTap(
+      borderRadius: BorderRadius.circular(16),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: _card(c),
+        child: Row(
+          spacing: 12,
+          children: [
+            SizedBox(width: 60, height: 84, child: Cover(text([m['cover']]), radius: 12, showBorder: false)),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                spacing: 4,
+                children: [
+                  Row(
+                    spacing: 8,
+                    children: [
+                      PillBadge(
+                        label: prettyEnum(text([m['relation']])),
+                        color: c.onSecondaryContainer,
+                        backgroundColor: c.secondaryContainer,
+                      ),
+                      if (toInt(m['score']) > 0)
+                        Text(
+                          '★ ${(toInt(m['score']) / 10).toStringAsFixed(1)}',
+                          style: t.textTheme.labelMedium?.copyWith(color: c.tertiary, fontWeight: FontWeight.w600),
+                        ),
+                    ],
+                  ),
+                  Text(
+                    text([m['title_english'], m['title_romaji']]),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600, height: 1.25),
+                  ),
+                  if (line.isNotEmpty)
+                    Text(
+                      line,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: t.textTheme.bodySmall?.copyWith(color: c.onSurfaceVariant),
+                    ),
+                ],
+              ),
+            ),
+            Icon(m['media_type'] == 'MANGA' ? Icons.open_in_new_rounded : Icons.search_rounded, size: 18, color: c.onSurfaceVariant),
+          ],
+        ),
       ),
     );
   }

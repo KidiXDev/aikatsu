@@ -242,6 +242,18 @@ ApplicationWindow {
                 win.openPlugins();
             if (args.includes("--folders"))
                 win.openFolders();
+            if (args.includes("--anime")) {
+                win.openAnime({
+                    name: "Sousou no Frieren",
+                    url: "local:frieren",
+                    image: "",
+                    source: "local",
+                    anilistId: 154587
+                }, 0);
+                const s = args.indexOf("--section");
+                if (s > 0 && stack.currentItem)
+                    stack.currentItem.section = args[s + 1];
+            }
         }
         onTriggered: (win.playing ? playerLoader.item : shell).grabToImage(r => {
             r.saveToFile(args[at + 1]);

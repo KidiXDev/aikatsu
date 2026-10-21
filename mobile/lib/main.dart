@@ -110,6 +110,7 @@ class _ShellState extends State<Shell> {
     super.initState();
     DownloadNotifications.tapped.addListener(_showDownloads);
     EpisodeNotifications.opened.addListener(_openNotified);
+    SearchPage.requested.addListener(_searchRequested);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       checkUpdatesOnOpen(context);
@@ -121,6 +122,7 @@ class _ShellState extends State<Shell> {
   void dispose() {
     DownloadNotifications.tapped.removeListener(_showDownloads);
     EpisodeNotifications.opened.removeListener(_openNotified);
+    SearchPage.requested.removeListener(_searchRequested);
     _lifecycle.dispose();
     super.dispose();
   }
@@ -146,6 +148,15 @@ class _ShellState extends State<Shell> {
     if (w == null) return;
     Navigator.popUntil(context, (route) => route.isFirst);
     openAnime(context, watchedAnime(w));
+  }
+
+  void _searchRequested() {
+    final q = SearchPage.requested.value;
+    if (q == null) return;
+    SearchPage.requested.value = null;
+    Navigator.popUntil(context, (route) => route.isFirst);
+    _go(1);
+    _searchKey.currentState?.search(q);
   }
 
   @override

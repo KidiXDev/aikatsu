@@ -10,6 +10,9 @@ import 'anime.dart';
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
 
+  /// A search asked for from a page pushed over the tabs; the shell runs it on the Search tab.
+  static final requested = ValueNotifier<String?>(null);
+
   @override
   State<SearchPage> createState() => SearchPageState();
 }

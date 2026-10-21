@@ -44,16 +44,22 @@ StyledDialog {
             color: Theme.palette.onSurfaceVariant
         }
         SegmentedControl {
-            options: root.single !== null
-                ? [
-                    ["single", `Ep ${root.single.num}`],
-                    ["range", "Range"],
-                    ["all", `All (${root.episodes.length})`]
-                ]
-                : [
-                    ["range", "Range"],
-                    ["all", `All (${root.episodes.length})`]
-                ]
+            options: (root.single !== null ? [
+                    {
+                        value: "single",
+                        label: `Ep ${root.single.num}`
+                    }
+                ] : []).concat([
+                {
+                    value: "range",
+                    label: "Range"
+                },
+                {
+                    value: "all",
+                    label: "All",
+                    count: root.episodes.length
+                }
+            ])
             value: root.mode
             onPicked: v => root.mode = v
         }
@@ -98,11 +104,26 @@ StyledDialog {
         }
         SegmentedControl {
             options: [
-                ["best", "Auto"],
-                ["1080p", "1080p"],
-                ["720p", "720p"],
-                ["480p", "480p"],
-                ["360p", "360p"]
+                {
+                    value: "best",
+                    label: "Auto"
+                },
+                {
+                    value: "1080p",
+                    label: "1080p"
+                },
+                {
+                    value: "720p",
+                    label: "720p"
+                },
+                {
+                    value: "480p",
+                    label: "480p"
+                },
+                {
+                    value: "360p",
+                    label: "360p"
+                }
             ]
             value: root.quality
             onPicked: v => root.quality = v

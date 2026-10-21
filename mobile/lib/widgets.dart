@@ -461,6 +461,34 @@ SliverGridDelegate posterGrid() => const SliverGridDelegateWithMaxCrossAxisExten
   mainAxisSpacing: 14,
 );
 
+/// A titled row above a sliver section.
+Widget sectionHeader(BuildContext context, String title, IconData icon, {String subtitle = '', Widget? action}) {
+  final t = Theme.of(context);
+  return SliverPadding(
+    padding: const EdgeInsets.fromLTRB(20, 18, 16, 10),
+    sliver: SliverToBoxAdapter(
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: t.colorScheme.primary),
+          const SizedBox(width: 8),
+          Text(title, style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+          if (subtitle.isNotEmpty) ...[
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                subtitle,
+                overflow: TextOverflow.ellipsis,
+                style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+              ),
+            ),
+          ],
+          if (action != null) ...[if (subtitle.isEmpty) const Spacer(), action],
+        ],
+      ),
+    ),
+  );
+}
+
 /// Solid, tactile episode card with warm Japanese anime styling.
 class EpisodeTile extends StatelessWidget {
   const EpisodeTile({

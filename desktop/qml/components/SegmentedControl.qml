@@ -16,19 +16,23 @@ StyledRect {
     property real horizontalPadding: Theme.padding.medium
 
     function valOf(o: var): string {
-        return Array.isArray(o) ? String(o[0]) : String(o?.value ?? "");
+        return o?.value !== undefined ? String(o.value) : o?.[0] !== undefined ? String(o[0]) : "";
     }
 
     function labelOf(o: var): string {
-        return Array.isArray(o) ? String(o[1]) : String(o?.label ?? "");
+        return o?.label !== undefined ? String(o.label) : o?.[1] !== undefined ? String(o[1]) : "";
     }
 
     function iconOf(o: var): string {
-        return Array.isArray(o) ? "" : String(o?.icon ?? "");
+        return o?.icon !== undefined ? String(o.icon) : o?.[2] !== undefined ? String(o[2]) : "";
     }
 
     function countOf(o: var): int {
-        return Array.isArray(o) || o?.count === undefined ? -1 : Number(o.count);
+        if (o?.count !== undefined)
+            return Number(o.count);
+        if (o?.[3] !== undefined)
+            return Number(o[3]);
+        return -1;
     }
 
     readonly property int current: options.findIndex(o => root.valOf(o) === root.value)
