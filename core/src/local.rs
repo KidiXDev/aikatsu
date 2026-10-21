@@ -286,8 +286,8 @@ mod tests {
     #[test]
     fn episode_numbers_from_file_names() {
         let cases = [
-            ("[Kusonime] Otonari no Tenshi-sama S2 - 01", Some(1)),
-            ("[Kusonime] Otonari no Tenshi-sama S2 - 12 END", Some(12)),
+            ("[Group] Example Show S2 - 01", Some(1)),
+            ("[Group] Example Show S2 - 12 END", Some(12)),
             ("Show.S02E05.1080p.WEB-DL.DDP5.1.H.264", Some(5)),
             ("[Group] Show - 07v2 [ABCD1234]", Some(7)),
             ("Show Episode 3 [1080p]", Some(3)),
@@ -353,8 +353,8 @@ mod tests {
         );
         let tags: Vec<i64> = lib.series.iter().filter(|s| s.name.starts_with("Frieren")).map(|s| tagged_id(&s.path)).collect();
         assert_eq!(tags, [154587, 0], "a later season of a downloaded show isn't the tagged first season");
-        assert_eq!(clean_name("[Kusonime] Fantasi di Bawah Sinar Rembulan S2 01-12 1080p"), "Fantasi di Bawah Sinar Rembulan S2");
-        assert_eq!(clean_name("[Kusonime] Di Manjakan Bidadari BD 1080p"), "Di Manjakan Bidadari");
+        assert_eq!(clean_name("[Group] Example Show S2 01-12 1080p"), "Example Show S2");
+        assert_eq!(clean_name("[Group] Another Show BD 1080p"), "Another Show");
 
         let otonari = root.join("Otonari S2").display().to_string();
         let eps = episodes(&otonari).unwrap();
