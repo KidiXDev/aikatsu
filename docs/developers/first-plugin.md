@@ -6,6 +6,23 @@ import { withBase } from 'vitepress'
 
 The starter repo contains a source script and offline parser tests for a fictional site at `example.org`. Copy it, run the tests, then replace the URL and selectors with those for your site.
 
+If Rhai is new to you, read [what it is and why Aikatsu uses it](./index.md#what-is-rhai) first.
+
+## Before you start
+
+Install these tools before building the CLI:
+
+- A current stable [Rust toolchain through rustup](https://www.rust-lang.org/tools/install), including `rustc` and `cargo`.
+- On Linux, a C/C++ compiler and linker, CMake, pkg-config, and Clang with its libclang development library. These build the core's native dependencies even though the CLI has no graphical interface.
+- On Windows, the MSVC Rust toolchain, Visual Studio Build Tools with the C++ workload and Windows SDK, CMake, NASM, and LLVM with libclang. Build from a Visual Studio developer command prompt so the compiler and linker are on PATH.
+- Git to clone the [Aikatsu repository](https://github.com/KidiXDev/aikatsu), or download and extract its source archive.
+
+Keep the full checkout, including `Cargo.lock` and `.cargo/config.toml`, and run the commands below from its root. Cargo downloads the Rust dependencies, including Rhai, on the first build. That build needs internet access, even though the starter tests run offline afterward.
+
+The HTTP client's native TLS dependency uses libclang to generate Rust bindings. If the build reports that it can't find libclang, set `LIBCLANG_PATH` to the folder containing `libclang.so` on Linux or `libclang.dll` on Windows.
+
+You don't need Qt, Flutter, Node.js, a separate Rhai installation, or an app signing key for this tutorial. The files you'll edit are `index.json`, the source script, and its test script, all included in the starter below.
+
 ## Build the CLI
 
 From an Aikatsu checkout:
@@ -14,7 +31,7 @@ From an Aikatsu checkout:
 cargo build -p aikatsu-core --bin aikatsu-plugin
 ```
 
-The binary is `target/debug/aikatsu-plugin`, or `target/debug/aikatsu-plugin.exe` on Windows. Building it requires Rust and native build tools, but no Qt or Flutter installation.
+The binary is `target/debug/aikatsu-plugin`, or `target/debug/aikatsu-plugin.exe` on Windows. This builds the core CLI without the Qt or Flutter interfaces. After building it once, you can run that binary directly while editing your scripts. Script changes don't require rebuilding the CLI.
 
 Run the starter tests:
 

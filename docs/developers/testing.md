@@ -4,6 +4,8 @@ Test parsers with saved HTML or JSON. This lets you reproduce parsing errors wit
 
 ## Build the CLI
 
+Complete [the CLI prerequisites](./first-plugin.md#before-you-start) first. You don't need to build either app interface to run these checks.
+
 From the Aikatsu checkout:
 
 ```sh
