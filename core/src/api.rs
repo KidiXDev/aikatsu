@@ -94,7 +94,11 @@ pub async fn call(method: &str, args: Value) -> Result<Value> {
             let updated = plugins::sync_all().await;
             Ok(json!({ "repos": plugins::repos(), "updated": updated }))
         }
-        "enrich" => Ok(serde_json::to_value(enrich(i(&args, "anilistId"), s(&args, "name"), s(&args, "url"), refresh(&args)).await?)?),
+        "enrich" => {
+            let url = s(&args, "url");
+            let id = db::setting(&format!("{LINK}{url}")).and_then(|v| v.parse().ok()).unwrap_or(i(&args, "anilistId"));
+            Ok(serde_json::to_value(enrich(id, s(&args, "name"), url, refresh(&args)).await?)?)
+        }
         "episodes" => {
             if refresh(&args) {
                 crate::http::clear_pages();
@@ -175,10 +179,27 @@ pub async fn call(method: &str, args: Value) -> Result<Value> {
             Ok(lib)
         }
         "matchLocal" => Ok(json!(local::match_all().await?)),
-        "linkLocal" => Ok(serde_json::to_value(local::link(s(&args, "path"), i(&args, "anilistId")).await?)?),
+        "linkAnime" => Ok(serde_json::to_value(link(s(&args, "source"), s(&args, "url"), i(&args, "anilistId")).await?)?),
         "searchAnime" => Ok(serde_json::to_value(meta::search(s(&args, "query")).await?)?),
         _ => bail!("unknown method {method}"),
     }
+}
+
+/// Settings key prefix + a streaming series' URL → the AniList id the user chose for it.
+pub const LINK: &str = "anilistLink:";
+
+/// Local folders keep their own link, with details for the offline library.
+async fn link(source: &str, url: &str, id: i64) -> Result<meta::Meta> {
+    let m = if source == local::SOURCE {
+        local::link(url, id).await?
+    } else {
+        let m = enrich(id, "", "", false).await?;
+        anyhow::ensure!(m.anilist_id > 0, "No AniList entry {id}");
+        db::set_setting(&format!("{LINK}{url}"), &id.to_string())?;
+        m
+    };
+    db::relink(source, url, &m)?;
+    Ok(m)
 }
 
 pub(crate) async fn enrich(id: i64, name: &str, url: &str, refresh: bool) -> Result<meta::Meta> {
@@ -224,10 +245,13 @@ pub fn get(method: &str, args: Value) -> Result<Value> {
             }
             Ok(Value::Null)
         }
+        // `progress`: a list of rows, all from one series.
         "setCompleted" => {
-            let p = serde_json::from_value(args["progress"].clone())?;
-            if db::set_completed(&p, args["completed"].as_bool().unwrap_or(true))? {
-                tracker::watched(&p, i(&args["progress"], "meta_episodes"))?;
+            let list: Vec<db::Progress> = serde_json::from_value(args["progress"].clone())?;
+            if db::set_completed(&list, args["completed"].as_bool().unwrap_or(true))?
+                && let Some(last) = list.last()
+            {
+                tracker::watched(last, i(&args["progress"][0], "meta_episodes"))?;
             }
             Ok(Value::Null)
         }

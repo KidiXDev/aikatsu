@@ -292,18 +292,80 @@ fn upsert_on(c: &Connection, p: &Progress) -> Result<()> {
     Ok(())
 }
 
-/// Marks an episode (not) completed, creating the row if it was never played.
-/// True when it has just been completed.
-pub fn set_completed(p: &Progress, completed: bool) -> Result<bool> {
-    let c = database().lock().unwrap();
-    let existing = get_on(&c, &p.episode_key)?;
-    let was = existing.as_ref().is_some_and(|r| r.completed);
-    let mut row = existing.unwrap_or_else(|| p.clone());
-    row.completed = completed;
-    row.last_updated = 0;
-    upsert_on(&c, &row)?;
-    queue_change(&c, "progress", &row.episode_key)?;
-    Ok(completed && !was)
+/// Marks episodes (not) completed, creating rows for ones never played.
+/// True when any has just been completed.
+pub fn set_completed(list: &[Progress], completed: bool) -> Result<bool> {
+    set_completed_on(&database().lock().unwrap(), list, completed)
+}
+
+fn set_completed_on(c: &Connection, list: &[Progress], completed: bool) -> Result<bool> {
+    let tx = c.unchecked_transaction()?;
+    let mut changed = false;
+    for p in list {
+        let existing = get_on(&tx, &p.episode_key)?;
+        if existing.as_ref().is_some_and(|r| r.completed) == completed {
+            continue;
+        }
+        let row = Progress { completed, last_updated: 0, ..existing.unwrap_or_else(|| p.clone()) };
+        upsert_on(&tx, &row)?;
+        queue_change(&tx, "progress", &row.episode_key)?;
+        changed = true;
+    }
+    tx.commit()?;
+    Ok(completed && changed)
+}
+
+/// After the user picks a series' AniList entry: its saved episodes and
+/// watchlist entry move to the new key (the old keys sync as deletions), and
+/// its downloads take the new details.
+pub fn relink(source: &str, series_url: &str, m: &Meta) -> Result<()> {
+    relink_on(&database().lock().unwrap(), source, series_url, m)
+}
+
+fn relink_on(c: &Connection, source: &str, series_url: &str, m: &Meta) -> Result<()> {
+    let key = series_key(m.anilist_id, source, series_url);
+    let tx = c.unchecked_transaction()?;
+    let rows: Vec<Progress> = tx
+        .prepare(&format!("SELECT {COLUMNS} FROM media_progress WHERE series_url = ?1 AND series_key != ?2"))?
+        .query_map([series_url, &key], row)?
+        .collect::<rusqlite::Result<_>>()?;
+    for p in rows {
+        tx.execute("INSERT OR REPLACE INTO sync_dirty (kind, key, at) VALUES ('progress', ?1, ?2)", params![p.episode_key, now().max(p.last_updated + 1)])?;
+        tx.execute("DELETE FROM media_progress WHERE episode_key = ?1", [&p.episode_key])?;
+        let moved = Progress {
+            episode_key: episode_key(&key, p.episode_number),
+            series_key: key.clone(),
+            anilist_id: m.anilist_id,
+            mal_id: m.mal_id,
+            series_title: m.title().to_owned(),
+            cover: if m.cover.is_empty() { p.cover.clone() } else { m.cover.clone() },
+            total_episodes: if m.episodes > 0 { m.episodes } else { p.total_episodes },
+            ..p.clone()
+        };
+        if get_on(&tx, &moved.episode_key)?.is_none_or(|r| r.last_updated < p.last_updated) {
+            upsert_on(&tx, &moved)?;
+            queue_change(&tx, "progress", &moved.episode_key)?;
+        }
+    }
+    let entries: Vec<WatchEntry> = tx
+        .prepare(&format!("SELECT {WATCH_COLUMNS} FROM watchlist WHERE series_url = ?1 AND series_key != ?2"))?
+        .query_map([series_url, &key], watch_row)?
+        .collect::<rusqlite::Result<_>>()?;
+    for w in entries {
+        tx.execute("INSERT OR REPLACE INTO sync_dirty (kind, key, at) VALUES ('watchlist', ?1, ?2)", params![w.series_key, now().max(w.updated + 1)])?;
+        tx.execute("DELETE FROM watchlist WHERE series_key = ?1", [&w.series_key])?;
+        if watch_get_on(&tx, &key)?.is_none() {
+            let cover = if m.cover.is_empty() { w.cover.clone() } else { m.cover.clone() };
+            set_watch_on(
+                &tx,
+                &WatchEntry { series_key: key.clone(), anilist_id: m.anilist_id, mal_id: m.mal_id, title: m.title().to_owned(), cover, total_episodes: m.episodes, ..w },
+            )?;
+            queue_change(&tx, "watchlist", &key)?;
+        }
+    }
+    tx.execute("UPDATE downloads SET meta = ?1 WHERE series_url = ?2", params![serde_json::to_string(m)?, series_url])?;
+    tx.commit()?;
+    Ok(())
 }
 
 fn row(r: &rusqlite::Row) -> rusqlite::Result<Progress> {
@@ -974,6 +1036,42 @@ mod tests {
         assert_eq!(group_series(&rows)[0].continue_episode, 2);
         rows.push(Progress { total_episodes: 3, ..ep(2, 1400, true, 30) });
         assert!(group_series(&rows)[0].finished);
+    }
+
+    #[test]
+    fn mark_all_and_relink() {
+        let c = Connection::open_in_memory().unwrap();
+        init(&c).unwrap();
+        upsert_on(&c, &ep(1, 1400, true, 10)).unwrap();
+        upsert_on(&c, &ep(2, 300, false, 20)).unwrap();
+        sync_ack_on(&c, i64::MAX).unwrap();
+        let eps = [ep(1, 0, false, 0), ep(2, 0, false, 0), ep(3, 0, false, 0)];
+        assert!(set_completed_on(&c, &eps, true).unwrap());
+        assert_eq!(sync_pending_on(&c, 10).unwrap().0.len(), 2, "episode 1 was already watched");
+        assert!(all_on(&c).unwrap().iter().all(|p| p.completed));
+        assert_eq!(get_on(&c, &eps[1].episode_key).unwrap().unwrap().playback_time, 300, "keeps the saved position");
+        assert!(!set_completed_on(&c, &eps, true).unwrap(), "nothing new");
+        set_watch_on(&c, &WatchEntry { series_key: eps[0].series_key.clone(), status: "watching".into(), series_url: "https://o/anime/x/".into(), ..Default::default() })
+            .unwrap();
+        sync_ack_on(&c, i64::MAX).unwrap();
+
+        let before = get_on(&c, &eps[1].episode_key).unwrap().unwrap().last_updated;
+        let m = Meta { anilist_id: 7, mal_id: 9, title_romaji: "Right".into(), episodes: 12, ..Default::default() };
+        relink_on(&c, "otakudesu", "https://o/anime/x/", &m).unwrap();
+        let rows = all_on(&c).unwrap();
+        assert_eq!(rows.len(), 3);
+        assert!(rows.iter().all(|p| p.series_key == "anilist:7" && p.anilist_id == 7 && p.series_title == "Right" && p.total_episodes == 12 && p.completed));
+        assert_eq!(rows.iter().find(|p| p.episode_number == 2).unwrap().last_updated, before, "keeps history order");
+        let w = watch_get_on(&c, "anilist:7").unwrap().unwrap();
+        assert_eq!((w.status.as_str(), w.mal_id), ("watching", 9));
+        let pending = sync_pending_on(&c, 20).unwrap().0;
+        assert_eq!(pending.iter().filter(|p| p.deleted).count(), 4, "old keys sync as deletions");
+        assert_eq!(pending.len(), 8);
+        sync_ack_on(&c, i64::MAX).unwrap();
+        relink_on(&c, "otakudesu", "https://o/anime/x/", &m).unwrap();
+        assert!(sync_pending_on(&c, 10).unwrap().0.is_empty(), "same entry again changes nothing");
+        assert!(!set_completed_on(&c, &[ep(4, 0, false, 0)], false).unwrap());
+        assert!(get_on(&c, &ep(4, 0, false, 0).episode_key).unwrap().is_none(), "unmarking an unplayed episode adds no row");
     }
 
     #[test]
