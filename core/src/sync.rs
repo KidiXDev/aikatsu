@@ -17,7 +17,7 @@ pub const SYNCED_SETTINGS: [&str; 7] =
 /// Also each device's shared-library address, so phones on the account find it,
 /// and when they couldn't.
 pub fn synced(key: &str) -> bool {
-    SYNCED_SETTINGS.contains(&key) || key.starts_with(crate::lan::RECORD) || key.starts_with(crate::lan::MISS)
+    SYNCED_SETTINGS.contains(&key) || key.starts_with(crate::lan::RECORD) || key.starts_with(crate::lan::MISS) || key.starts_with(crate::api::LINK)
 }
 
 // Outside SETTING_DEFAULTS, so the UIs never see the token.

@@ -7,7 +7,8 @@ import Aikatsu
 StyledDialog {
     id: root
 
-    property string path
+    property string source
+    property string url
     property var results: []
     property bool searching
     property string error
@@ -15,8 +16,9 @@ StyledDialog {
 
     signal linked(var meta)
 
-    function openFor(folder: string, query: string): void {
-        path = folder;
+    function openFor(source: string, url: string, query: string): void {
+        root.source = source;
+        root.url = url;
         field.text = query;
         results = [];
         open();
@@ -39,8 +41,9 @@ StyledDialog {
     }
 
     function pick(m: var): void {
-        Api.call("linkLocal", {
-            path: root.path,
+        Api.call("linkAnime", {
+            source: root.source,
+            url: root.url,
             anilistId: m.anilist_id
         }, meta => {
             root.linked(meta);

@@ -18,7 +18,7 @@ Finish within five minutes of choosing **Connect**. Connect each device separate
 
 ## What updates on its own
 
-When you finish an episode (watch 90% of it, or choose **Mark as watched**):
+When you finish an episode (watch 90% of it, or choose **Mark as watched** or **Mark all watched**):
 
 - The show goes on your watchlist as **Watching**, or **Completed** after its last episode. A rewatch of a completed show stays **Completed**.
 - Connected trackers get your progress and the same status. Progress there never goes down: if AniList already shows more episodes watched, it keeps them.

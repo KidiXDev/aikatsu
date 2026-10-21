@@ -376,7 +376,7 @@ Item {
             if (item.value === "open")
                 root.open(target);
             else if (item.value === "match")
-                matchDialog.openFor(target.path, target.name);
+                matchDialog.openFor("local", target.path, target.name);
             else if (item.value === "show")
                 Qt.openUrlExternally(Api.get("fileUrl", {
                     path: target.path

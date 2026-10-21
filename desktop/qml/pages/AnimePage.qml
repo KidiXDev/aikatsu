@@ -121,6 +121,14 @@ Item {
         ApplicationWindow.window.historyRevision++;
     }
 
+    function markAll(completed: bool): void {
+        Api.get("setCompleted", {
+            progress: episodes.map(e => progressRow(e)),
+            completed: completed
+        });
+        ApplicationWindow.window.historyRevision++;
+    }
+
     function refreshProgress(): void {
         watchEntry = metaLoaded ? Api.get("watchEntry", listEntry()) : null;
         const map = {};
@@ -576,7 +584,7 @@ Item {
                             text: "Choose anime…"
                             verticalPadding: Theme.padding.medium
                             horizontalPadding: Theme.padding.large
-                            onClicked: matchDialog.openFor(root.anime.url, root.anime.name)
+                            onClicked: matchDialog.openFor(root.anime.source, root.anime.url, root.anime.name)
                         }
                         IconTextButton {
                             readonly property var current: Api.watchStatuses.find(s => s.value === root.watchEntry?.status)
@@ -604,6 +612,14 @@ Item {
                                     ] : [])
                                 onTriggered: item => root.setWatchStatus(item.value)
                             }
+                        }
+                        IconButton {
+                            visible: !root.local
+                            type: IconButton.Text
+                            icon: "edit"
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Choose anime…"
+                            onClicked: matchDialog.openFor(root.anime.source, root.anime.url, root.anime.name)
                         }
                         IconButton {
                             visible: (root.meta?.anilist_id ?? 0) > 0
@@ -810,6 +826,20 @@ Item {
                                 jumpField.forceActiveFocus();
                             }
                         }
+                    }
+                }
+                IconButton {
+                    readonly property bool allWatched: root.watchedCount === root.episodes.length
+
+                    visible: root.section === "episodes" && root.episodes.length > 0
+                    disabled: !root.metaLoaded
+                    type: IconButton.Tonal
+                    icon: allWatched ? "remove_done" : "done_all"
+                    ToolTip.visible: hovered
+                    ToolTip.text: allWatched ? "Mark all unwatched" : "Mark all watched"
+                    onClicked: {
+                        markDialog.completed = !allWatched;
+                        markDialog.open();
                     }
                 }
                 IconButton {
@@ -1650,7 +1680,7 @@ Item {
             else if (item.value === "toggle") {
                 const done = !(root.progress[ep.num]?.completed ?? false);
                 Api.get("setCompleted", {
-                    progress: root.progressRow(ep),
+                    progress: [root.progressRow(ep)],
                     completed: done
                 });
                 root.refreshProgress();
@@ -1667,6 +1697,31 @@ Item {
         episodes: root.episodes
     }
 
+    StyledDialog {
+        id: markDialog
+
+        property bool completed
+
+        icon: completed ? "done_all" : "remove_done"
+        title: `Mark all episodes ${completed ? "watched" : "unwatched"}?`
+        text: completed ? "Your watchlist and trackers will be updated." : "Your watchlist and trackers won't change."
+        actions: [
+            TextButton {
+                type: TextButton.Text
+                text: "Cancel"
+                onClicked: markDialog.close()
+            },
+            TextButton {
+                type: TextButton.Tonal
+                text: markDialog.completed ? "Mark watched" : "Mark unwatched"
+                onClicked: {
+                    root.markAll(markDialog.completed);
+                    markDialog.close();
+                }
+            }
+        ]
+    }
+
     MatchDialog {
         id: matchDialog
 
@@ -1674,7 +1729,8 @@ Item {
             root.anime = Object.assign({}, root.anime, {
                 anilistId: m.anilist_id
             });
-            root.load(true);
+            root.load(false);
+            ApplicationWindow.window.historyRevision++;
         }
     }
 }
