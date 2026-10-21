@@ -40,11 +40,15 @@ The cast section lists the characters with their voice actors, and the main staf
 
 Show details come from AniList, with Jikan as a backup and for episode information. Titles and episode counts may differ from the source. You can still watch when some details are missing.
 
+If a show has the wrong details or none, choose **Choose anime…** (the pencil button) on its page, search AniList by any title, and pick the right one. Aikatsu remembers your choice for that show on that source, on all your synced devices, and moves its saved progress and watchlist entry to the new match.
+
 ## Find an episode and track what you've watched
 
 Use **Jump to…** to narrow a long episode list by its starting digits. For example, entering `12` can show episodes 12 and 120 through 129. Clear the field to see everything again. The sort control switches between oldest-first and newest-first order.
 
 To mark an episode watched or unwatched, long-press it on Android or open its context menu on desktop. This updates your progress and the Continue shelf on Home.
+
+To mark every episode at once, use **Mark all watched** next to the sort control. Once they're all watched, the same button says **Mark all unwatched**.
 
 Use refresh to reload the episode list and show details, or download to save episodes for later.
 
