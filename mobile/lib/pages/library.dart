@@ -161,7 +161,7 @@ class _LibraryPageState extends State<LibraryPage> {
           ),
         ),
         if (_history.isNotEmpty) ...[
-          _section(context, 'Continue watching', Icons.history_rounded),
+          sectionHeader(context, 'Continue watching', Icons.history_rounded),
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             sliver: SliverToBoxAdapter(
@@ -182,7 +182,7 @@ class _LibraryPageState extends State<LibraryPage> {
             _grid(shown.length, (i) => HistoryCard(shown[i] as Map<String, dynamic>)),
         ],
         if (_watchlist.isNotEmpty) ...[
-          _section(context, 'Watchlist', Icons.bookmark_rounded),
+          sectionHeader(context, 'Watchlist', Icons.bookmark_rounded),
           SliverToBoxAdapter(
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -214,7 +214,7 @@ class _LibraryPageState extends State<LibraryPage> {
             );
           }),
         ],
-        _section(
+        sectionHeader(
           context,
           'Your folders',
           Icons.folder_rounded,
@@ -258,7 +258,7 @@ class _LibraryPageState extends State<LibraryPage> {
             );
           }),
         if (_series.isNotEmpty) ...[
-          _section(context, 'Downloaded', Icons.download_done_rounded, subtitle: '${_series.length} anime  ·  ${formatBytes(total)}'),
+          sectionHeader(context, 'Downloaded', Icons.download_done_rounded, subtitle: '${_series.length} anime  ·  ${formatBytes(total)}'),
           _grid(_series.length, (i) {
             final s = _series[i] as Map<String, dynamic>;
             final count = (s['episodes'] as List).length;
@@ -277,33 +277,6 @@ class _LibraryPageState extends State<LibraryPage> {
     ),
     );
   }
-}
-
-Widget _section(BuildContext context, String title, IconData icon, {String subtitle = '', Widget? action}) {
-  final t = Theme.of(context);
-  return SliverPadding(
-    padding: const EdgeInsets.fromLTRB(20, 18, 16, 10),
-    sliver: SliverToBoxAdapter(
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: t.colorScheme.primary),
-          const SizedBox(width: 8),
-          Text(title, style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-          if (subtitle.isNotEmpty) ...[
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                subtitle,
-                overflow: TextOverflow.ellipsis,
-                style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
-              ),
-            ),
-          ],
-          if (action != null) ...[if (subtitle.isEmpty) const Spacer(), action],
-        ],
-      ),
-    ),
-  );
 }
 
 /// True once a folder was added.
