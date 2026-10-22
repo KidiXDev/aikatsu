@@ -75,10 +75,30 @@ jobs:
             -d desktop/packaging/aikatsu.desktop -i aikatsu.svg --plugin qt --output appimage
           mv Aikatsu*-x86_64.AppImage "Aikatsu-${{ github.ref_name }}-x86_64.AppImage"
 
+      # The same AppDir as the AppImage, so all three ship the same Qt and libraries.
+      - name: .deb and .tar.gz
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "aikatsu") | .version')
+          desktop/packaging/deb.sh AppDir "$version" "Aikatsu-${{ github.ref_name }}-linux-amd64.deb"
+          mv AppDir aikatsu
+          tar -czf "Aikatsu-${{ github.ref_name }}-linux-x86_64.tar.gz" aikatsu
+
+      # Only what the .deb depends on is installed, so a missing dependency fails here instead of on users' machines.
+      - name: Start the .deb on a clean system
+        run: |
+          docker run --rm -v "$PWD:/w" -w /w ubuntu:24.04 bash -euc '
+            apt-get update -qq
+            apt-get install -y -qq ./Aikatsu-*.deb xvfb xauth >/dev/null
+            timeout 120 xvfb-run -a aikatsu --screenshot /w/started.png --delay 3000
+            test -s /w/started.png'
+
       - uses: actions/upload-artifact@v4
         with:
           name: release-linux
-          path: Aikatsu-*.AppImage
+          path: |
+            Aikatsu-*.AppImage
+            Aikatsu-*.deb
+            Aikatsu-*.tar.gz
           if-no-files-found: error
 
   windows:
