@@ -10,7 +10,7 @@ Use **Sync** to sign in and share watch history and settings between devices. It
 
 ## Trackers
 
-**Trackers** (under **Account** on desktop) and **Tracking** (on Android) connect AniList and MyAnimeList. On Android, **Tracking** also turns **New episode alerts** on or off. See [watchlist, AniList and MyAnimeList](./trackers.md).
+**Trackers** (under **Account** on desktop) and **Tracking** (on Android) connect AniList and MyAnimeList. Both also turn **New episode alerts** on or off. See [watchlist, AniList and MyAnimeList](./trackers.md).
 
 ## Appearance and playback
 
@@ -61,6 +61,8 @@ The optional **TMDB API key** helps organize long shows into season folders. You
 ## Closing the desktop window
 
 Set **When closed** in **General** to choose what happens when you close the desktop window. **Quit** exits the app. **To tray** hides the window and pauses playback while downloads and [folder sharing](./local-library.md#watch-your-desktop-folders-on-your-phone) continue. Click the tray icon, or open Aikatsu again, to bring the window back. Choose **Quit** in the tray icon's menu to exit.
+
+The tray icon also appears while [new episode alerts](./trackers.md#new-episode-notifications) are on, even with **Quit** selected.
 
 **To tray** requires a system tray and is disabled when none is available. On GNOME, install an AppIndicator extension to enable it.
 

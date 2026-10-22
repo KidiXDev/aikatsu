@@ -1664,6 +1664,16 @@ Item {
                             }
                         }
                     }
+
+                    SettingRow {
+                        label: "New episode alerts"
+                        hint: "While Aikatsu is running."
+
+                        StyledSwitch {
+                            checked: root.s.airingAlerts === "true"
+                            onToggled: root.set("airingAlerts", checked)
+                        }
+                    }
                 }
             }
         }

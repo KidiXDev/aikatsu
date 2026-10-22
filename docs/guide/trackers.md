@@ -1,6 +1,6 @@
 # Watchlist, AniList and MyAnimeList
 
-Use the watchlist to track shows by status. Connect AniList or MyAnimeList to update your lists there as you watch. Android can also notify you when new episodes air.
+Use the watchlist to track shows by status. Connect AniList or MyAnimeList to update your lists there as you watch. Aikatsu can also notify you when new episodes air.
 
 ## Your watchlist
 
@@ -31,11 +31,13 @@ Aikatsu doesn't import your existing AniList or MyAnimeList lists. Changes you m
 
 Failed updates appear next to the tracker in Settings. Finishing another episode sends your latest progress, including any earlier progress that failed to update.
 
-## New episode notifications (Android)
+## New episode notifications
 
-For shows you're **Watching** or **Plan to watch**, Android shows a notification when a new episode airs, even with Aikatsu closed. Tap it to open the show.
+For shows you're **Watching** or **Plan to watch**, Aikatsu shows a notification when a new episode airs. Tap or click it to open the show.
 
 - Times come from AniList's airing schedule. Your sources may get the episode a few hours later.
-- Aikatsu plans notifications two weeks ahead each time you open it, so open it at least that often.
-- Android asks for permission the first time. Turn notifications off with **New episode alerts** under **Tracking** in Settings.
 - Shows without an AniList match get no notifications.
+
+On Android, notifications arrive even with Aikatsu closed. Aikatsu schedules them two weeks ahead each time you open it, so open it at least that often. Android asks for permission the first time. Turn notifications off with **New episode alerts** under **Tracking** in Settings.
+
+On desktop, notifications only arrive while Aikatsu is running, either open or in the tray. Aikatsu shows its tray icon while alerts are on, and the notifications come from that icon. Turn them off with **New episode alerts** under **Account > Trackers** in Settings. Without a system tray, an alert appears inside the Aikatsu window instead.
