@@ -763,6 +763,52 @@ class PillBadge extends StatelessWidget {
   }
 }
 
+/// The home banner's pill button, full width; greyed out without [onTap].
+class PillButton extends StatelessWidget {
+  const PillButton({super.key, required this.icon, required this.label, required this.onTap, this.filled = false});
+
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+  final bool filled;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = Theme.of(context).colorScheme;
+    final on = onTap != null;
+    final ink = !on ? c.onSurface.withValues(alpha: 0.38) : (filled ? c.onPrimary : c.onSurface);
+    return BouncyTap(
+      borderRadius: BorderRadius.circular(999),
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 15),
+        decoration: BoxDecoration(
+          color: !on ? c.onSurface.withValues(alpha: 0.12) : (filled ? c.primary : c.surfaceContainerHighest),
+          borderRadius: BorderRadius.circular(999),
+          border: filled ? null : Border.all(color: c.outlineVariant.withValues(alpha: 0.5)),
+          boxShadow: filled && on ? context.aikatsu.softShadow : null,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 18, color: ink),
+            const SizedBox(width: 8),
+            Text(label, style: TextStyle(fontFamily: 'GoogleSansFlex', fontWeight: FontWeight.w700, fontSize: 14, color: ink)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Shows or hides a password field's text.
+Widget revealButton(bool shown, VoidCallback toggle) => IconButton(
+  tooltip: shown ? 'Hide' : 'Show',
+  icon: Icon(shown ? Icons.visibility_off_rounded : Icons.visibility_rounded),
+  onPressed: toggle,
+);
+
 /// Solid bottom sheet listing choices with a warm sakura check on the active choice.
 Future<T?> pickFrom<T>(BuildContext context, String header, List<(String label, T value, bool checked)> items) {
   final c = Theme.of(context).colorScheme;

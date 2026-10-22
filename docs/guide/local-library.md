@@ -71,6 +71,8 @@ The status under **Share your folders** explains whether the desktop is ready:
 
 On the phone, **Your folders** shows **Can't reach** and the desktop's name when it doesn't answer. Check that both are on the same Wi-Fi, that the desktop is awake, and its firewall.
 
+**Settings > Sync > Devices** on the phone lists each computer whose folders have loaded there. It shows **Online** and the number of shared shows while the computer answers, or **Offline** and when it was last seen. A computer stays in the list while it's off or sharing is turned off. Choose **Forget** in its menu to remove it; it comes back the next time its folders load. Signing out clears the list.
+
 Video and library requests are encrypted over your network. Your devices use the sharing certificate and key delivered through account sync to verify the desktop, so only Aikatsu signed in to your account can read your folders. The desktop also refuses connections from outside your local network. Use HTTPS for a self-hosted sync server too, because it carries those credentials.
 
 Update both devices for encrypted sharing. Older versions cannot connect. Turning sharing off or signing out closes active transfers, and turning it back on creates a new certificate and key. Give the other device a moment to sync the new connection details.
