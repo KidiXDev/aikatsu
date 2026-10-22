@@ -6,3 +6,5 @@
 /.cache
 # design-tool notes and review screenshots, local only
 /.impeccable
+
+.vscode
