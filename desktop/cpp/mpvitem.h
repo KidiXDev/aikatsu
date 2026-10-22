@@ -90,7 +90,7 @@ private:
     double m_position = 0, m_duration = 0, m_cacheTime = 0, m_volume = 100, m_speed = 1;
     bool m_paused = false, m_buffering = false, m_idle = true, m_ready = false, m_keepAwake = false;
     QString m_trackList;
-    std::optional<uint> m_inhibitCookie; // org.freedesktop.ScreenSaver, Linux only
+    std::optional<uint> m_inhibitCookie; // org.freedesktop.ScreenSaver on Linux, an IOPMAssertionID on macOS
 };
 
 // Must run after QGuiApplication exists and before any window is created.

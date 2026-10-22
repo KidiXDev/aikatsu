@@ -14,6 +14,14 @@ Aikatsu offers [updates](./settings.md#app-updates) in the app. To uninstall, op
 
 To run Aikatsu without installing it, download the Windows ZIP instead, unpack it, and run `aikatsu.exe` from the extracted folder. Keep the other files beside it. The app needs those libraries to start.
 
+### macOS
+
+Aikatsu runs on Macs with Apple silicon and macOS 14 or later. Download `macos-arm64.dmg`, open it, and drag Aikatsu to Applications.
+
+Aikatsu isn't notarized by Apple, so macOS blocks it the first time. Open it once, then go to **System Settings > Privacy & Security** and choose **Open Anyway**. When macOS asks whether Aikatsu may find devices on your local network, allow it if you [share folders](./local-library.md#watch-your-desktop-folders-on-your-phone) with your phone.
+
+To update, download the new `.dmg` and replace the app in Applications. Your history and settings stay.
+
 ### Linux
 
 Download the AppImage, give it permission to run, and open it:
@@ -22,6 +30,14 @@ Download the AppImage, give it permission to run, and open it:
 chmod +x Aikatsu-*.AppImage
 ./Aikatsu-*.AppImage
 ```
+
+The AppImage updates itself. On Debian, Ubuntu and their derivatives, you can install the `.deb` instead; it adds Aikatsu to your app menu:
+
+```sh
+sudo apt install ./Aikatsu-*-linux-amd64.deb
+```
+
+The `.tar.gz` runs without installing: unpack it and run `aikatsu/AppRun`. Both need a current distribution, such as Ubuntu 24.04 or Debian 13, and update by installing the newer file.
 
 You can also build the app yourself. The [build guide](../developers/building-aikatsu.md) covers the dependencies.
 

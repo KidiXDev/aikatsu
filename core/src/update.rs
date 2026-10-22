@@ -21,7 +21,7 @@ enum Install {
     /// The AppImage runtime puts the file's own path in `$APPIMAGE`.
     AppImage(PathBuf),
     Android,
-    /// The Windows ZIP or a build from source: updated by hand from the release page.
+    /// The Windows ZIP, macOS, the Linux .deb or .tar.gz, or a build from source: updated by hand from the release page.
     Manual,
 }
 

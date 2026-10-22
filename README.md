@@ -1,6 +1,6 @@
 # Aikatsu
 
-Watch anime with Indonesian subtitles on Linux, Windows, and Android, without ads or a browser.
+Watch anime with Indonesian subtitles on Linux, Windows, macOS, and Android, without ads or a browser.
 
 ## Features
 
@@ -41,7 +41,8 @@ On Android, tap the video for the controls, double-tap its left or right side to
 Download the latest version from [Releases](../../releases):
 
 - **Windows:** download the `-setup.exe`, accept the license agreement, and choose an installation folder. The default folder needs no admin rights. Or download the `.zip`, unpack it anywhere, and run `aikatsu.exe`.
-- **Linux:** download the `.AppImage`, make it executable (`chmod +x Aikatsu-*.AppImage`), and run it.
+- **macOS** (Apple silicon, macOS 14+): open the `.dmg` and drag Aikatsu to Applications. It isn't notarized, so the first time, allow it under System Settings > Privacy & Security > **Open Anyway**.
+- **Linux:** download the `.AppImage`, make it executable (`chmod +x Aikatsu-*.AppImage`), and run it. On Debian or Ubuntu you can `sudo apt install ./Aikatsu-*.deb` instead, or unpack the `.tar.gz` and run `aikatsu/AppRun`.
 - **Android:** download the `-android-arm64-v8a.apk` on your phone and open it (allow installing from your browser when asked). Older 32-bit phones need the `-armeabi-v7a.apk` instead.
 
 Install [ffmpeg](https://ffmpeg.org/download.html) to help save HLS downloads as MP4 files.
@@ -66,6 +67,18 @@ install -Dm644 desktop/assets/icon.svg ~/.local/share/icons/hicolor/scalable/app
 ```
 
 If more than one Qt version is installed, point the build at Qt 6 with `QMAKE=/usr/bin/qmake6`.
+
+### macOS
+
+You need Rust, Xcode's command-line tools, Qt 6.11+ for macOS including Qt Image Formats (for example `aqt install-qt mac desktop 6.11.2 clang_64 --modules qtimageformats`), and Homebrew's `mpv` and `pkgconf`.
+
+```sh
+brew install mpv pkgconf
+QMAKE=~/Qt/6.11.2/macos/bin/qmake cargo build --release
+./target/release/aikatsu
+```
+
+The release workflow shows how to package it as `Aikatsu.app`.
 
 ### Windows (MSVC)
 

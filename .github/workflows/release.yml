@@ -75,10 +75,30 @@ jobs:
             -d desktop/packaging/aikatsu.desktop -i aikatsu.svg --plugin qt --output appimage
           mv Aikatsu*-x86_64.AppImage "Aikatsu-${{ github.ref_name }}-x86_64.AppImage"
 
+      # The same AppDir as the AppImage, so all three ship the same Qt and libraries.
+      - name: .deb and .tar.gz
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "aikatsu") | .version')
+          desktop/packaging/deb.sh AppDir "$version" "Aikatsu-${{ github.ref_name }}-linux-amd64.deb"
+          mv AppDir aikatsu
+          tar -czf "Aikatsu-${{ github.ref_name }}-linux-x86_64.tar.gz" aikatsu
+
+      # Only what the .deb depends on is installed, so a missing dependency fails here instead of on users' machines.
+      - name: Start the .deb on a clean system
+        run: |
+          docker run --rm -v "$PWD:/w" -w /w ubuntu:24.04 bash -euc '
+            apt-get update -qq
+            apt-get install -y -qq ./Aikatsu-*.deb xvfb xauth >/dev/null
+            timeout 120 xvfb-run -a aikatsu --screenshot /w/started.png --delay 3000
+            test -s /w/started.png'
+
       - uses: actions/upload-artifact@v4
         with:
           name: release-linux
-          path: Aikatsu-*.AppImage
+          path: |
+            Aikatsu-*.AppImage
+            Aikatsu-*.deb
+            Aikatsu-*.tar.gz
           if-no-files-found: error
 
   windows:
@@ -158,6 +178,92 @@ jobs:
             Aikatsu-*-setup.exe
           if-no-files-found: error
 
+  macos:
+    # Apple Silicon. Homebrew's libraries target this runner's macOS, hence LSMinimumSystemVersion in Info.plist.
+    runs-on: macos-14
+    timeout-minutes: 90
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "14.0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Homebrew packages
+        run: brew install mpv dylibbundler pkgconf
+
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: mac
+          arch: clang_64
+          modules: qtimageformats
+          aqtsource: ${{ env.AQT_SOURCE }}
+          cache: true
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Icon font
+        run: |
+          pip install fonttools brotli
+          python desktop/assets/fonts/subset_icons.py
+
+      - name: Build
+        run: cargo build --release --locked
+        env:
+          QMAKE: ${{ env.QT_ROOT_DIR }}/bin/qmake
+
+      - name: App bundle
+        run: |
+          app=Aikatsu.app
+          mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" "$app/Contents/Frameworks" "$app/Contents/PlugIns/imageformats"
+          cp target/release/aikatsu "$app/Contents/MacOS/"
+          cp desktop/assets/icon.icns "$app/Contents/Resources/aikatsu.icns"
+          version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "aikatsu") | .version')
+          sed "s/@VERSION@/$version/g" desktop/packaging/Info.plist > "$app/Contents/Info.plist"
+
+          # macdeployqt only brings Qt: libmpv and the Homebrew libraries under it go in first.
+          linked=$(otool -L "$app/Contents/MacOS/aikatsu" | awk '/libmpv/ { print $1 }')
+          mpv=$(basename "$linked")
+          cp "$linked" "$app/Contents/Frameworks/"
+          chmod u+w "$app/Contents/Frameworks/$mpv"
+          install_name_tool -change "$linked" "@executable_path/../Frameworks/$mpv" "$app/Contents/MacOS/aikatsu"
+          install_name_tool -id "@executable_path/../Frameworks/$mpv" "$app/Contents/Frameworks/$mpv"
+          dylibbundler -of -b -x "$app/Contents/Frameworks/$mpv" -d "$app/Contents/Frameworks" \
+            -p @executable_path/../Frameworks/ -s "$(brew --prefix)/lib" < /dev/null
+
+          # Icons are SVG, but nothing links Qt Svg directly, so macdeployqt skips its plugin.
+          cp "$QT_ROOT_DIR/plugins/imageformats/libqsvg.dylib" "$app/Contents/PlugIns/imageformats/"
+          macdeployqt "$app" -qmldir=desktop/qml -executable="$app/Contents/PlugIns/imageformats/libqsvg.dylib"
+          codesign --force --deep --sign - "$app"
+
+          # Those paths don't exist on other Macs.
+          if find "$app" -type f \( -perm -u+x -o -name '*.dylib' \) -exec otool -L {} + | grep -e "$(brew --prefix)" -e "$QT_ROOT_DIR"; then
+            echo "::error::the app still loads libraries from outside its bundle"
+            exit 1
+          fi
+
+      - name: Disk image
+        run: |
+          mkdir dmg
+          mv Aikatsu.app dmg/
+          ln -s /Applications dmg/Applications
+          # hdiutil sometimes reports the volume busy on CI runners; a retry gets past it.
+          for try in 1 2 3; do
+            hdiutil create -volname Aikatsu -srcfolder dmg -fs HFS+ -format UDZO "Aikatsu-${{ github.ref_name }}-macos-arm64.dmg" && break
+            [ "$try" = 3 ] && exit 1
+            sleep 5
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          path: Aikatsu-*.dmg
+          if-no-files-found: error
+
   android:
     runs-on: ubuntu-24.04
     steps:
@@ -223,7 +329,7 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [linux, windows, android]
+    needs: [linux, windows, macos, android]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -241,6 +347,8 @@ jobs:
           generate_release_notes: true
           body: |
             **Which file?**
-            - Windows: `…-windows-x64-setup.exe` to install, or `…-windows-x64.zip` to run without installing · Linux: `…-x86_64.AppImage`
+            - Windows: `…-windows-x64-setup.exe` to install, or `…-windows-x64.zip` to run without installing.
+            - macOS (Apple Silicon, macOS 14+): `…-macos-arm64.dmg`. The first time, open it from System Settings › Privacy & Security › Open Anyway.
+            - Linux: `…-x86_64.AppImage`, which updates itself; `…-linux-amd64.deb` for Debian and Ubuntu; or `…-linux-x86_64.tar.gz`, run `aikatsu/AppRun`.
             - Android: `…-android-arm64-v8a.apk` for almost every phone; `…-armeabi-v7a.apk` for older 32-bit phones; `…-x86_64.apk` for emulators and Chromebooks.
           prerelease: ${{ contains(github.ref_name, '-') }} # e.g. v0.2.0-beta.1

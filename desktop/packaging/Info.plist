@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Aikatsu.app's Info.plist; release.yml fills in @VERSION@. -->
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>Aikatsu</string>
+    <key>CFBundleDisplayName</key>
+    <string>Aikatsu</string>
+    <key>CFBundleIdentifier</key>
+    <string>io.github.kidixdev.aikatsu</string>
+    <key>CFBundleExecutable</key>
+    <string>aikatsu</string>
+    <key>CFBundleIconFile</key>
+    <string>aikatsu</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>@VERSION@</string>
+    <key>CFBundleVersion</key>
+    <string>@VERSION@</string>
+    <!-- The Homebrew libraries bundled with it are built for the macOS of the runner that packages it (release.yml). -->
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.entertainment</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSSupportsAutomaticGraphicsSwitching</key>
+    <true/>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Aikatsu shares your folders with your other devices and plays the ones they share.</string>
+</dict>
+</plist>
