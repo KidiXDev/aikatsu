@@ -371,7 +371,7 @@ class _PlayerPageState extends State<PlayerPage> {
       _subDelay = 0;
     });
     (_player.platform as NativePlayer).setProperty('sub-delay', '0').ignore();
-    final saved =(Api.get('seriesProgress', {'key': d.seriesKey, 'url': d.anime['url']}) as List).firstWhere(
+    final saved = (Api.get('seriesProgress', {'key': d.seriesKey, 'url': d.anime['url']}) as List).firstWhere(
       (p) => p['episode_number'] == _ep['num'],
       orElse: () => null,
     );
@@ -513,18 +513,21 @@ class _PlayerPageState extends State<PlayerPage> {
       mpv.command(['change-list', 'glsl-shaders', 'clr', '']);
       return;
     }
-    Api.call('shaders', {'mode': mode}).then((r) {
-      if (!mounted || mode != _anime4k) return;
-      mpv.command(['change-list', 'glsl-shaders', 'set', r['list']]);
-      if (_downloadingShaders) _showOsd(Icons.auto_awesome_rounded, _modeName(mode));
-      _downloadingShaders = false;
-    }, onError: (e) {
-      if (!mounted || mode != _anime4k) return;
-      _downloadingShaders = false;
-      setState(() => _anime4k = 'off');
-      mpv.command(['change-list', 'glsl-shaders', 'clr', '']);
-      toast("Couldn't turn on sharpening: ${Api.describe(e)}");
-    });
+    Api.call('shaders', {'mode': mode}).then(
+      (r) {
+        if (!mounted || mode != _anime4k) return;
+        mpv.command(['change-list', 'glsl-shaders', 'set', r['list']]);
+        if (_downloadingShaders) _showOsd(Icons.auto_awesome_rounded, _modeName(mode));
+        _downloadingShaders = false;
+      },
+      onError: (e) {
+        if (!mounted || mode != _anime4k) return;
+        _downloadingShaders = false;
+        setState(() => _anime4k = 'off');
+        mpv.command(['change-list', 'glsl-shaders', 'clr', '']);
+        toast("Couldn't turn on sharpening: ${Api.describe(e)}");
+      },
+    );
   }
 
   void _setAnime4k(String mode) {
@@ -598,13 +601,16 @@ class _PlayerPageState extends State<PlayerPage> {
   Future<void> _trackMenu() async {
     String label(String id, String? title, String? lang) =>
         text([title, lang, 'Track $id']) + (lang != null && lang.isNotEmpty && text([title]).isNotEmpty ? ' ($lang)' : '');
-    final real = RegExp(r'^\d+$'); // skips media_kit's "auto" and "no" entries
-    final tracks = _player.state.tracks, current = _player.state.track;
+    final real = RegExp(r'^\d+$');
+    final mpv = _player.platform as NativePlayer;
+    final aid = await mpv.getProperty('aid'), sid = await mpv.getProperty('sid');
+    if (!mounted) return;
+    final tracks = _player.state.tracks;
     final choice = await _menu<Object>('Audio & subtitles', [
-      for (final t in tracks.audio.where((t) => real.hasMatch(t.id))) ('♪  ${label(t.id, t.title, t.language)}', t, current.audio == t),
-      for (final t in tracks.subtitle.where((t) => real.hasMatch(t.id))) (label(t.id, t.title, t.language), t, current.subtitle == t),
-      ('Subtitles off', SubtitleTrack.no(), current.subtitle.id == 'no'),
-      if (real.hasMatch(current.subtitle.id)) ...[
+      for (final t in tracks.audio.where((t) => real.hasMatch(t.id))) ('♪  ${label(t.id, t.title, t.language)}', t, t.id == aid),
+      for (final t in tracks.subtitle.where((t) => real.hasMatch(t.id))) (label(t.id, t.title, t.language), t, t.id == sid),
+      ('Subtitles off', SubtitleTrack.no(), sid == 'no'),
+      if (real.hasMatch(sid)) ...[
         ('Subtitle size · ${_scaleName(_subScale)}', 'size', false),
         ('Subtitle timing · ${_delayName()}', 'timing', false),
       ],
@@ -717,9 +723,7 @@ class _PlayerPageState extends State<PlayerPage> {
                 left: 16,
                 bottom: _showControls ? 110 : 16,
                 child: SafeArea(
-                  child: SingleChildScrollView(
-                    child: PlaybackStats(readProperty: (_player.platform as NativePlayer).getProperty),
-                  ),
+                  child: SingleChildScrollView(child: PlaybackStats(readProperty: (_player.platform as NativePlayer).getProperty)),
                 ),
               ),
             if (_started && playing && (_inOp || _inEd))
