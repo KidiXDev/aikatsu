@@ -11,6 +11,8 @@ import Aikatsu
 FocusScope {
     id: root
 
+    readonly property Main app: ApplicationWindow.window as Main
+
     required property var page // AnimePage: anime, meta, metaLoaded, episodes, info, progress, seriesKey
     property int index
 
@@ -269,7 +271,7 @@ FocusScope {
             downloadingShaders = false;
             anime4k = "off";
             mpv.command(["change-list", "glsl-shaders", "clr", ""]);
-            ApplicationWindow.window.toast("Couldn't turn on sharpening: " + Api.describe(e));
+            root.app.toast("Couldn't turn on sharpening: " + Api.describe(e));
         });
     }
 
@@ -321,9 +323,9 @@ FocusScope {
 
     function skipSegment(): void {
         if (inOp)
-            seek(skip.op[1]);
+            root.seek(skip.op[1]);
         else if (inEd)
-            seek(skip.ed[1]);
+            root.seek(skip.ed[1]);
     }
 
     function exit(): void {
@@ -335,7 +337,7 @@ FocusScope {
         Api.get("presence", {
             clear: true
         });
-        ApplicationWindow.window.closePlayer();
+        root.app.closePlayer();
     }
 
     function poke(): void {
@@ -380,7 +382,7 @@ FocusScope {
             toggleMute();
             break;
         case Qt.Key_F:
-            ApplicationWindow.window.toggleFullScreen();
+            root.app.toggleFullScreen();
             break;
         case Qt.Key_N:
             if (hasNext)
@@ -394,14 +396,14 @@ FocusScope {
             skipSegment();
             break;
         case Qt.Key_I:
-            if (!ApplicationWindow.window.developerMode || (e.modifiers & ~Qt.ShiftModifier))
+            if (!root.app.developerMode || (e.modifiers & ~Qt.ShiftModifier))
                 return;
             controlsVisible = false;
             mpv.command(["script-binding", e.modifiers & Qt.ShiftModifier ? "stats/display-stats-toggle" : "stats/display-stats"]);
             break;
         case Qt.Key_Escape:
-            if (ApplicationWindow.window.visibility === Window.FullScreen)
-                ApplicationWindow.window.toggleFullScreen();
+            if (root.app.visibility === Window.FullScreen)
+                root.app.toggleFullScreen();
             else
                 exit();
             break;
@@ -417,11 +419,11 @@ FocusScope {
     }
 
     Connections {
-        target: ApplicationWindow.window
+        target: root.app
 
         function onDeveloperModeChanged(): void {
-            mpv.setProp("load-stats-overlay", ApplicationWindow.window.developerMode ? "yes" : "no");
-            if (!ApplicationWindow.window.developerMode)
+            mpv.setProp("load-stats-overlay", root.app.developerMode ? "yes" : "no");
+            if (!root.app.developerMode)
                 mpv.command(["show-text", "", "0"]);
         }
     }
@@ -444,7 +446,7 @@ FocusScope {
         // Through playback, buffering, the next episode's lookup and the autoplay countdown; not when paused or on the end/error card.
         keepAwake: (root.phase === "playing" || root.phase === "resolving") && !mpv.paused
         Component.onCompleted: {
-            setProp("load-stats-overlay", ApplicationWindow.window.developerMode ? "yes" : "no");
+            setProp("load-stats-overlay", root.app.developerMode ? "yes" : "no");
             setProp("cache", "yes");
             // The demuxer cache lives in RAM: a few minutes ahead and ~1 minute back is plenty.
             setProp("demuxer-max-bytes", "128MiB");
@@ -475,7 +477,7 @@ FocusScope {
                 return;
             if (reason === "eof") {
                 root.save(true);
-                ApplicationWindow.window.historyRevision++;
+                root.app.historyRevision++;
                 if (root.autoplay && root.hasNext)
                     root.countdownLeft = 5;
                 else
@@ -587,7 +589,7 @@ FocusScope {
                 osd.opacity = 0;
             } else if (root.started && root.phase === "playing")
                 root.togglePause();
-            ApplicationWindow.window.toggleFullScreen();
+            root.app.toggleFullScreen();
         }
 
         Timer {
@@ -1155,9 +1157,9 @@ FocusScope {
                 }
                 IconButton {
                     type: IconButton.Text
-                    icon: ApplicationWindow.window.visibility === Window.FullScreen ? "fullscreen_exit" : "fullscreen"
+                    icon: root.app.visibility === Window.FullScreen ? "fullscreen_exit" : "fullscreen"
                     label.color: "#ffffff"
-                    onClicked: ApplicationWindow.window.toggleFullScreen()
+                    onClicked: root.app.toggleFullScreen()
                 }
             }
         }

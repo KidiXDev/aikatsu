@@ -1,11 +1,14 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 import Aikatsu
 
 StyledDialog {
     id: root
+
+    readonly property Main app: ApplicationWindow.window as Main
 
     property var anime
     property var meta
@@ -153,7 +156,7 @@ StyledDialog {
                             }))
                 });
                 root.close();
-                ApplicationWindow.window.toast(root.selection.length > 1 ? `Downloading ${root.selection.length} episodes` : "Download started");
+                root.app.toast(root.selection.length > 1 ? `Downloading ${root.selection.length} episodes` : "Download started");
             }
         }
     ]

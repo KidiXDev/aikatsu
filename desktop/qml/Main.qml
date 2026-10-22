@@ -22,8 +22,8 @@ ApplicationWindow {
 
     onTabChanged: openedTabs |= 1 << tab
     onVisibilityChanged: {
-        if (visibility === Window.Windowed || visibility === Window.Maximized)
-            windowedVisibility = visibility;
+        if (win.visibility === Window.Windowed || win.visibility === Window.Maximized)
+            windowedVisibility = win.visibility;
     }
 
     // Bumped whenever watch history changes so pages can refresh.

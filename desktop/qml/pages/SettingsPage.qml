@@ -9,6 +9,8 @@ import Aikatsu
 Item {
     id: root
 
+    readonly property Main app: ApplicationWindow.window as Main
+
     property var s: Api.get("settings")
     property var sources: Api.get("sources")
     readonly property var disabled: (s.disabledSources || "").split(",").map(x => x.trim()).filter(x => x)
@@ -20,7 +22,7 @@ Item {
     property bool checkingApp
     property var account: Api.get("syncStatus")
     property var trackers: Api.get("trackers")
-    readonly property var lan: ApplicationWindow.window?.lan ?? ({})
+    readonly property var lan: root.app?.lan ?? ({})
     property real now: Date.now()
     property var tools: Api.get("tools")
     property var library: listOf(Api.get("library"))
@@ -100,10 +102,10 @@ Item {
         Api.call("checkPluginUpdates", {}, repos => {
             checkingPlugins = false;
             const count = repos.reduce((n, r) => n + (r.updates || 0), 0);
-            ApplicationWindow.window.toast(repos.some(r => r.error) ? "Some repos couldn't be checked" : count > 0 ? `${count} plugin update${count === 1 ? "" : "s"} available` : "Plugins are up to date");
+            root.app.toast(repos.some(r => r.error) ? "Some repos couldn't be checked" : count > 0 ? `${count} plugin update${count === 1 ? "" : "s"} available` : "Plugins are up to date");
         }, e => {
             checkingPlugins = false;
-            ApplicationWindow.window.toast(e);
+            root.app.toast(e);
         });
     }
 
@@ -112,12 +114,12 @@ Item {
         Api.call("checkAppUpdate", {}, r => {
             checkingApp = false;
             if (r.newer)
-                ApplicationWindow.window.offerAppUpdate(r);
+                root.app.offerAppUpdate(r);
             else
-                ApplicationWindow.window.toast(`Aikatsu ${r.current} is up to date`);
+                root.app.toast(`Aikatsu ${r.current} is up to date`);
         }, e => {
             checkingApp = false;
-            ApplicationWindow.window.toast(e);
+            root.app.toast(e);
         });
     }
 
@@ -563,7 +565,7 @@ Item {
                 busy = false;
                 root.account = st;
                 close();
-                ApplicationWindow.window.toast(create ? "Account created" : "Signed in");
+                root.app.toast(create ? "Account created" : "Signed in");
             }, e => {
                 busy = false;
                 error = String(e);
@@ -694,7 +696,7 @@ Item {
             }, () => {
                 busy = false;
                 close();
-                ApplicationWindow.window.toast("Password changed");
+                root.app.toast("Password changed");
             }, e => {
                 busy = false;
                 error = String(e);
@@ -793,7 +795,7 @@ Item {
                 busy = false;
                 root.account = st;
                 close();
-                ApplicationWindow.window.toast("Account deleted");
+                root.app.toast("Account deleted");
             }, e => {
                 busy = false;
                 error = String(e);
@@ -1044,12 +1046,12 @@ Item {
 
                     SettingRow {
                         label: "When closed"
-                        hint: root.ApplicationWindow.window?.trayAvailable ? "The tray keeps downloads and sharing running." : "No system tray found."
+                        hint: root.app?.trayAvailable ? "The tray keeps downloads and sharing running." : "No system tray found."
 
                         Segmented {
-                            enabled: root.ApplicationWindow.window?.trayAvailable
+                            enabled: root.app?.trayAvailable
                             options: [["quit", "Quit"], ["tray", "To tray"]]
-                            value: root.ApplicationWindow.window?.trayAvailable ? root.s.closeAction : "quit"
+                            value: root.app?.trayAvailable ? root.s.closeAction : "quit"
                             onPicked: v => root.set("closeAction", v)
                         }
                     }
@@ -1089,7 +1091,7 @@ Item {
                             onClicked: {
                                 Api.get("clearCache");
                                 root.cacheBytes = Api.get("cacheSize");
-                                ApplicationWindow.window.toast("Cache cleared");
+                                root.app.toast("Cache cleared");
                             }
                         }
                     }
@@ -1119,7 +1121,7 @@ Item {
                         TextButton {
                             type: TextButton.Tonal
                             text: "View"
-                            onClicked: ApplicationWindow.window.openLog()
+                            onClicked: root.app.openLog()
                         }
                     }
                 }
@@ -1172,7 +1174,7 @@ Item {
                                 root.shadersInstalled = true;
                             }, e => {
                                 root.installingShaders = false;
-                                ApplicationWindow.window.toast(e);
+                                root.app.toast(e);
                             });
                         }
                     }
@@ -1468,7 +1470,7 @@ Item {
                         Layout.alignment: Qt.AlignTop
                         type: TextButton.Tonal
                         text: "Manage"
-                        onClicked: ApplicationWindow.window.openPlugins()
+                        onClicked: root.app.openPlugins()
                     }
                 }
 
@@ -1657,7 +1659,7 @@ Item {
                                     else
                                         Api.call("trackerLogin", {
                                             service: trackerRow.modelData.key
-                                        }, r => Qt.openUrlExternally(r.url), e => ApplicationWindow.window.toast(e));
+                                        }, r => Qt.openUrlExternally(r.url), e => root.app.toast(e));
                                 }
                             }
                         }

@@ -8,6 +8,8 @@ import Aikatsu
 Item {
     id: root
 
+    readonly property Main app: ApplicationWindow.window as Main
+
     property int requestId: 0
     property string query
     property bool searching
@@ -67,7 +69,7 @@ Item {
     Component.onCompleted: {
         const i = devArgs.indexOf("--search");
         if (i > 0) {
-            ApplicationWindow.window.tab = 1;
+            root.app.tab = 1;
             search(devArgs[i + 1]);
         }
     }
@@ -77,12 +79,12 @@ Item {
     }
     onResultsChanged: if (results.length > 0 && devArgs.includes("--open") && !opened) {
         opened = true;
-        ApplicationWindow.window.openAnime(results[0], devArgs.includes("--play") ? -1 : 0);
+        root.app.openAnime(results[0], devArgs.includes("--play") ? -1 : 0);
     }
     property bool opened
 
     Connections {
-        target: root.ApplicationWindow.window // via root: attached to a Connections it is null
+        target: root.app
 
         function onSearchRequested(q: string): void {
             field.text = q;
@@ -149,7 +151,7 @@ Item {
                 type: root.enabledSources.length === 0 ? TextButton.Tonal : TextButton.Text
                 icon: "extension"
                 text: "Plugins"
-                onClicked: ApplicationWindow.window.openPlugins()
+                onClicked: root.app.openPlugins()
             }
         }
 
@@ -302,7 +304,7 @@ Item {
                     title: cell.modelData.name
                     image: cell.modelData.image
                     badge: root.status[cell.modelData.source]?.name ?? cell.modelData.source
-                    onClicked: ApplicationWindow.window.openAnime(cell.modelData, 0)
+                    onClicked: root.app.openAnime(cell.modelData, 0)
                 }
             }
         }
@@ -327,7 +329,7 @@ Item {
                     type: TextButton.Tonal
                     icon: "extension"
                     text: "Open plugins"
-                    onClicked: ApplicationWindow.window.openPlugins()
+                    onClicked: root.app.openPlugins()
                 }
 
                 IconTextButton {

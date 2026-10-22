@@ -9,6 +9,8 @@ import Aikatsu
 // Plugin repos and the sources each brings, opened from Settings.
 Item {
     id: root
+
+    readonly property Main app: ApplicationWindow.window as Main
     objectName: "pluginsPage"
 
     property var repos: Api.get("repos")
@@ -37,13 +39,13 @@ Item {
         Api.call(download ? "syncPlugins" : "checkPluginUpdates", {}, result => {
             syncing = false;
             repos = download ? result.repos : result;
-            ApplicationWindow.window.toast(repos.some(r => r.error)
+            root.app.toast(repos.some(r => r.error)
                 ? download ? "Some repos couldn't update" : "Some repos couldn't be checked"
                 : download && result.updated ? "Plugins updated"
                 : updates > 0 ? `${updates} plugin update${updates === 1 ? "" : "s"} available` : "Plugins are up to date");
         }, e => {
             syncing = false;
-            ApplicationWindow.window.toast(e);
+            root.app.toast(e);
         });
     }
 
@@ -80,10 +82,10 @@ Item {
         }, list => {
             syncing = false;
             repos = list;
-            ApplicationWindow.window.toast(list.some(r => r.url === url && r.error) ? `Added ${name}; some plugins could not load` : `Added ${name}`);
+            root.app.toast(list.some(r => r.url === url && r.error) ? `Added ${name}; some plugins could not load` : `Added ${name}`);
         }, e => {
             syncing = false;
-            ApplicationWindow.window.toast(e);
+            root.app.toast(e);
         });
     }
 
@@ -541,7 +543,7 @@ Item {
                         root.repos = list;
                     }, e => {
                         root.syncing = false;
-                        ApplicationWindow.window.toast(e);
+                        root.app.toast(e);
                     });
                     removeDialog.close();
                 }
