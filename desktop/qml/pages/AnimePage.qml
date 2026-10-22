@@ -1218,13 +1218,20 @@ Item {
                     }
                 }
 
-                EmptyState {
-                    Layout.alignment: Qt.AlignHCenter
+                Item {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: castEmpty.implicitHeight
                     Layout.topMargin: Theme.spacing.extraLarge
                     visible: root.characters.length === 0 && root.staffList.length === 0
-                    face: root.metaLoaded ? "(・・ )?" : "(◕‿◕✿)"
-                    title: root.metaLoaded ? "No cast or staff metadata available" : "Loading cast & staff…"
-                    message: root.metaLoaded ? "Try refreshing metadata or linking this anime to AniList." : ""
+
+                    EmptyState {
+                        id: castEmpty
+
+                        anchors.centerIn: parent
+                        face: root.metaLoaded ? "(・・ )?" : "(◕‿◕✿)"
+                        title: root.metaLoaded ? "No cast or staff metadata available" : "Loading cast & staff…"
+                        message: root.metaLoaded ? "Try refreshing metadata or linking this anime to AniList." : ""
+                    }
                 }
             }
 
