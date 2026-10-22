@@ -776,7 +776,19 @@ class _SettingsPageState extends State<SettingsPage> {
               title: const Text('Developer Mode', style: TextStyle(fontWeight: FontWeight.w600)),
               subtitle: const Text('Enables advance feature'),
               value: _s['developerMode'] == 'true',
-              onChanged: (v) => _set('developerMode', v),
+              onChanged: (v) async {
+                if (v &&
+                    !await confirm(
+                      context,
+                      'Turn on Developer Mode?',
+                      'It adds experimental features and debugging tools that can be unstable. '
+                          "Turn it on only if you know what you're doing.",
+                      'Turn on',
+                    )) {
+                  return;
+                }
+                if (mounted) _set('developerMode', v);
+              },
             ),
             SwitchListTile(
               title: const Text('Debug logging', style: TextStyle(fontWeight: FontWeight.w600)),
