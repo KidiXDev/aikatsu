@@ -4,6 +4,6 @@ members = ["core", "desktop", "mobile/rust"]
 default-members = ["desktop"]
 
 [workspace.package]
-version = "0.7.1"
+version = "0.7.2"
 edition = "2024"
 license = "GPL-3.0-only"

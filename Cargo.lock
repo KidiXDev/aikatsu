@@ -42,7 +42,7 @@ dependencies = [
 
 [[package]]
 name = "aikatsu"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "aikatsu-core",
  "anyhow",
@@ -58,7 +58,7 @@ dependencies = [
 
 [[package]]
 name = "aikatsu-core"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "anyhow",
  "axum",
@@ -93,7 +93,7 @@ dependencies = [
 
 [[package]]
 name = "aikatsu_mobile"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "aikatsu-core",
  "anyhow",
