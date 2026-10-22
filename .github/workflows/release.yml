@@ -238,10 +238,16 @@ jobs:
           # Icons are SVG, but nothing links Qt Svg directly, so macdeployqt skips its plugin.
           cp "$QT_ROOT_DIR/plugins/imageformats/libqsvg.dylib" "$app/Contents/PlugIns/imageformats/"
           macdeployqt "$app" -qmldir=desktop/qml -executable="$app/Contents/PlugIns/imageformats/libqsvg.dylib"
+          # Copying QtQuick brings QtQuick.LocalStorage, so Qt SQL and its database drivers, which link
+          # libraries other Macs don't have. Aikatsu's storage is the core's own SQLite.
+          rm -r "$app/Contents/PlugIns/sqldrivers"
           codesign --force --deep --sign - "$app"
 
-          # Those paths don't exist on other Macs.
-          if find "$app" -type f \( -perm -u+x -o -name '*.dylib' \) -exec otool -L {} + | grep -e "$(brew --prefix)" -e "$QT_ROOT_DIR"; then
+          # Only macOS's own libraries may come from outside the bundle.
+          outside=$(find "$app" -type f \( -perm -u+x -o -name '*.dylib' \) -exec otool -L {} + |
+            awk '/:$/ { file = $0 } /^\t\// && !/^\t\/(usr\/lib|System)\// { print file, $1 }')
+          if [ -n "$outside" ]; then
+            echo "$outside"
             echo "::error::the app still loads libraries from outside its bundle"
             exit 1
           fi
