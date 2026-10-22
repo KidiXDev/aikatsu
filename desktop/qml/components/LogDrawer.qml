@@ -8,6 +8,8 @@ import Aikatsu
 // Ctrl+L: the end of this run's log file.
 Drawer {
     id: root
+
+    readonly property Main app: ApplicationWindow.window as Main
     property bool exporting: false
 
     edge: Qt.BottomEdge
@@ -34,10 +36,10 @@ Drawer {
             root.exporting = true;
             Api.call("exportLog", {path: Api.get("localPath", {url: selectedFile.toString()})}, () => {
                 root.exporting = false;
-                ApplicationWindow.window.toast("Log saved. Attach the .txt file to your GitHub issue.");
+                root.app.toast("Log saved. Attach the .txt file to your GitHub issue.");
             }, error => {
                 root.exporting = false;
-                ApplicationWindow.window.toast("Couldn't export log: " + error);
+                root.app.toast("Couldn't export log: " + error);
             });
         }
     }
@@ -73,8 +75,8 @@ Drawer {
                 ToolTip.text: "Export log"
                 onClicked: {
                     // Windows may not show a native dialog over the fullscreen GL window (see aikatsu_engine_init).
-                    if (Qt.platform.os === "windows" && ApplicationWindow.window.visibility === Window.FullScreen)
-                        ApplicationWindow.window.toggleFullScreen();
+                    if (Qt.platform.os === "windows" && root.app.visibility === Window.FullScreen)
+                        root.app.toggleFullScreen();
                     exportDialog.open();
                 }
             }

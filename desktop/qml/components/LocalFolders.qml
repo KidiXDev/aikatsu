@@ -9,6 +9,8 @@ import Aikatsu
 Item {
     id: root
 
+    readonly property Main app: ApplicationWindow.window as Main
+
     signal edited
 
     function add(): void {
@@ -42,7 +44,7 @@ Item {
                 })
             });
             if (r?.error)
-                ApplicationWindow.window.toast(r.error);
+                root.app.toast(r.error);
             else
                 root.edited();
         }

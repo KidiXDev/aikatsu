@@ -9,6 +9,8 @@ import Aikatsu
 Item {
     id: root
 
+    readonly property Main app: ApplicationWindow.window as Main
+
     required property var anime // {name, url, image, source, anilistId?}
     property int autoplayEpisode: 0 // episode number to start right away; -1 = latest
 
@@ -118,7 +120,7 @@ Item {
             entry: listEntry(),
             status: status
         });
-        ApplicationWindow.window.historyRevision++;
+        root.app.historyRevision++;
     }
 
     function markAll(completed: bool): void {
@@ -126,7 +128,7 @@ Item {
             progress: episodes.map(e => progressRow(e)),
             completed: completed
         });
-        ApplicationWindow.window.historyRevision++;
+        root.app.historyRevision++;
     }
 
     function refreshProgress(): void {
@@ -148,7 +150,7 @@ Item {
     // Opens right away; the player picks up metadata when it lands.
     function play(index: int): void {
         if (index >= 0 && index < episodes.length)
-            ApplicationWindow.window.play(root, index);
+            root.app.play(root, index);
     }
 
     function progressRow(ep: var): var {
@@ -230,7 +232,7 @@ Item {
     Component.onCompleted: load(false)
 
     Connections {
-        target: root.ApplicationWindow.window
+        target: root.app
 
         function onHistoryRevisionChanged(): void {
             root.refreshProgress();
@@ -1216,13 +1218,20 @@ Item {
                     }
                 }
 
-                EmptyState {
-                    Layout.alignment: Qt.AlignHCenter
+                Item {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: castEmpty.implicitHeight
                     Layout.topMargin: Theme.spacing.extraLarge
                     visible: root.characters.length === 0 && root.staffList.length === 0
-                    face: root.metaLoaded ? "(・・ )?" : "(◕‿◕✿)"
-                    title: root.metaLoaded ? "No cast or staff metadata available" : "Loading cast & staff…"
-                    message: root.metaLoaded ? "Try refreshing metadata or linking this anime to AniList." : ""
+
+                    EmptyState {
+                        id: castEmpty
+
+                        anchors.centerIn: parent
+                        face: root.metaLoaded ? "(・・ )?" : "(◕‿◕✿)"
+                        title: root.metaLoaded ? "No cast or staff metadata available" : "Loading cast & staff…"
+                        message: root.metaLoaded ? "Try refreshing metadata or linking this anime to AniList." : ""
+                    }
                 }
             }
 
@@ -1520,7 +1529,7 @@ Item {
                                         if (relCard.modelData.media_type === "MANGA" && relCard.modelData.anilist_id > 0)
                                             Qt.openUrlExternally(`https://anilist.co/manga/${relCard.modelData.anilist_id}`);
                                         else
-                                            ApplicationWindow.window.searchFor(relCard.displayTitle);
+                                            root.app.searchFor(relCard.displayTitle);
                                     }
                                 }
 
@@ -1642,7 +1651,7 @@ Item {
                                     (modelData.episodes ?? 0) > 0 ? `${modelData.episodes} ep` : "",
                                     (modelData.year ?? 0) > 0 ? String(modelData.year) : ""
                                 ].filter(Boolean).join(" · ")
-                                onClicked: ApplicationWindow.window.searchFor(recCard.displayTitle)
+                                onClicked: root.app.searchFor(recCard.displayTitle)
                             }
                         }
                     }
@@ -1730,7 +1739,7 @@ Item {
                 anilistId: m.anilist_id
             });
             root.load(false);
-            ApplicationWindow.window.historyRevision++;
+            root.app.historyRevision++;
         }
     }
 }

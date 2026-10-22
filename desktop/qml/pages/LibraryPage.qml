@@ -8,6 +8,8 @@ import Aikatsu
 Item {
     id: root
 
+    readonly property Main app: ApplicationWindow.window as Main
+
     property var history: []
     property var watchlist: []
     property string watchTab: "watching"
@@ -42,10 +44,10 @@ Item {
 
     function open(s: var): void {
         if (!s.available) {
-            ApplicationWindow.window.toast(`Connect the drive with “${s.path}” first`);
+            root.app.toast(`Connect the drive with “${s.path}” first`);
             return;
         }
-        ApplicationWindow.window.openAnime({
+        root.app.openAnime({
             name: s.name,
             url: s.path,
             image: s.meta?.cover ?? "",
@@ -59,7 +61,7 @@ Item {
         show()
 
     Connections {
-        target: root.ApplicationWindow.window
+        target: root.app
 
         function onHistoryRevisionChanged(): void {
             root.refreshHistory();
@@ -151,7 +153,7 @@ Item {
                         visible: root.library.folders.length > 0
                         type: TextButton.Text
                         text: "Manage folders"
-                        onClicked: ApplicationWindow.window.openFolders()
+                        onClicked: root.app.openFolders()
                     }
                     IconTextButton {
                         type: TextButton.Tonal
@@ -208,7 +210,7 @@ Item {
                         subtitle: modelData.total_episodes > 0 ? `${modelData.total_episodes} episodes` : ""
                         image: modelData.cover
                         badge: Api.sourceName(modelData.source)
-                        onClicked: ApplicationWindow.window.openAnime({
+                        onClicked: root.app.openAnime({
                             name: modelData.title,
                             url: modelData.series_url,
                             image: modelData.cover,
@@ -229,7 +231,7 @@ Item {
                     visible: root.library.folders.length > 0
                     type: TextButton.Tonal
                     text: "Manage"
-                    onClicked: ApplicationWindow.window.openFolders()
+                    onClicked: root.app.openFolders()
                 }
             }
 

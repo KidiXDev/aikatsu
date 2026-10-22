@@ -9,6 +9,8 @@ import Aikatsu
 Item {
     id: root
 
+    readonly property Main app: ApplicationWindow.window as Main
+
     property var series: []
     readonly property var hero: history.continuing.length > 0 ? history.continuing[0] : null
     property var heroMeta: null
@@ -116,7 +118,7 @@ Item {
     }
 
     Connections {
-        target: root.ApplicationWindow.window
+        target: root.app
 
         function onHistoryRevisionChanged(): void {
             root.refresh();
@@ -319,11 +321,11 @@ Item {
                                 horizontalPadding: Theme.padding.large
                                 onClicked: {
                                     if (root.hero)
-                                        ApplicationWindow.window.openAnime(history.animeOf(root.hero), root.hero.continue_episode);
+                                        root.app.openAnime(history.animeOf(root.hero), root.hero.continue_episode);
                                     else if (root.spotlight)
-                                        ApplicationWindow.window.searchFor(root.spotlight.title_romaji || root.spotlight.title_english);
+                                        root.app.searchFor(root.spotlight.title_romaji || root.spotlight.title_english);
                                     else
-                                        ApplicationWindow.window.goTab(1);
+                                        root.app.goTab(1);
                                 }
                             }
                             IconTextButton {
@@ -335,7 +337,7 @@ Item {
                                 horizontalPadding: Theme.padding.large
                                 onClicked: {
                                     if (root.hero)
-                                        ApplicationWindow.window.openAnime(history.animeOf(root.hero), 0);
+                                        root.app.openAnime(history.animeOf(root.hero), 0);
                                     else if (root.spotlight) {
                                         infoDialog.item = {
                                             meta: root.spotlight,
@@ -352,7 +354,7 @@ Item {
                                 text: "Open library"
                                 verticalPadding: Theme.padding.medium
                                 horizontalPadding: Theme.padding.large
-                                onClicked: ApplicationWindow.window.goTab(2)
+                                onClicked: root.app.goTab(2)
                             }
                         }
                     }
@@ -666,7 +668,7 @@ Item {
                 onClicked: {
                     infoDialog.close();
                     // The sources mostly use romaji names.
-                    ApplicationWindow.window.searchFor(infoDialog.m.title_romaji || infoDialog.name);
+                    root.app.searchFor(infoDialog.m.title_romaji || infoDialog.name);
                 }
             }
         ]
@@ -690,7 +692,7 @@ Item {
                 onClicked: {
                     Api.get("clearHistory");
                     clearDialog.close();
-                    ApplicationWindow.window.historyRevision++;
+                    root.app.historyRevision++;
                 }
             }
         ]

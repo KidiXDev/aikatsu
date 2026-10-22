@@ -8,6 +8,8 @@ import Aikatsu
 ColumnLayout {
     id: root
 
+    readonly property Main app: ApplicationWindow.window as Main
+
     property var series: []
     property int tabIndex: 0 // 0 Continue, 1 Recent
     readonly property var continuing: series.filter(s => !s.finished)
@@ -113,7 +115,7 @@ ColumnLayout {
                 image: modelData.cover
                 badge: Api.sourceName(modelData.source)
                 progress: modelData.finished ? -1 : root.progressOf(modelData)
-                onClicked: ApplicationWindow.window.openAnime(root.animeOf(modelData), 0)
+                onClicked: root.app.openAnime(root.animeOf(modelData), 0)
                 onRightClicked: (x, y) => {
                     cardMenu.target = modelData;
                     const p = mapToItem(root, x, y);
@@ -159,9 +161,9 @@ ColumnLayout {
         ]
         onTriggered: item => {
             if (item.value === "open")
-                ApplicationWindow.window.openAnime(root.animeOf(target), 0);
+                root.app.openAnime(root.animeOf(target), 0);
             else if (item.value === "play")
-                ApplicationWindow.window.openAnime(root.animeOf(target), target.continue_episode);
+                root.app.openAnime(root.animeOf(target), target.continue_episode);
             else if (item.value === "delete") {
                 deleteDialog.target = target;
                 deleteDialog.open();
@@ -191,7 +193,7 @@ ColumnLayout {
                         key: deleteDialog.target.key
                     });
                     deleteDialog.close();
-                    ApplicationWindow.window.historyRevision++;
+                    root.app.historyRevision++;
                 }
             }
         ]

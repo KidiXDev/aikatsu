@@ -1,11 +1,14 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 import Aikatsu
 
 StyledDialog {
     id: root
+
+    readonly property Main app: ApplicationWindow.window as Main
 
     property string source
     property string url
@@ -48,7 +51,7 @@ StyledDialog {
         }, meta => {
             root.linked(meta);
             root.close();
-        }, e => ApplicationWindow.window.toast(`Couldn't link it: ${Api.describe(e)}`));
+        }, e => root.app.toast(`Couldn't link it: ${Api.describe(e)}`));
     }
 
     icon: "link"
