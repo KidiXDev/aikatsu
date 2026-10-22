@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../api.dart';
 import '../widgets.dart';
+import 'account.dart';
 import 'onboarding.dart';
 
 /// Called once the app's first frame is ready; nothing downloads without asking.
@@ -162,8 +163,7 @@ Future<bool> _form(
             final last = fields.length - 1;
             final repeat = confirm == null ? '' : values.last;
             final matches = confirm == null || repeat == values[last];
-            // Only once the repeat can no longer turn into a match, so typing it doesn't flash an error.
-            final mismatch = !matches && repeat.isNotEmpty && (repeat.length >= values[last].length || !values[last].startsWith(repeat));
+            final mismatch = confirm != null && mismatched(values[last], repeat);
             final ready = !busy && values.every((v) => v.trim().isNotEmpty) && matches;
             Future<void> submit() async {
               if (!ready) return;
@@ -208,7 +208,7 @@ Future<bool> _form(
                               ? "Passwords don't match"
                               : null,
                           errorMaxLines: 3,
-                          suffixIcon: secret ? _revealButton(shown[i], () => setDialogState(() => shown[i] = !shown[i])) : null,
+                          suffixIcon: secret ? revealButton(shown[i], () => setDialogState(() => shown[i] = !shown[i])) : null,
                         ),
                         onChanged: (v) => setDialogState(() => values[i] = v),
                         onSubmitted: (_) => submit(),
@@ -225,26 +225,6 @@ Future<bool> _form(
         ),
       ) ??
       false;
-}
-
-Widget _revealButton(bool shown, VoidCallback toggle) => IconButton(
-  tooltip: shown ? 'Hide' : 'Show',
-  icon: Icon(shown ? Icons.visibility_off_rounded : Icons.visibility_rounded),
-  onPressed: toggle,
-);
-
-/// Sync's sign-in or create-account form; true once signed in.
-Future<bool> signIn(BuildContext context, {required bool create}) async {
-  final done = await _form(
-    context,
-    create ? 'Create account' : 'Sign in',
-    create ? 'Create' : 'Sign in',
-    [('Username', false), ('Password', true)],
-    (v) => Api.call('syncSignIn', {'username': v[0].trim(), 'password': v[1], 'create': create}),
-    confirm: create ? 'Confirm password' : null,
-  );
-  if (done) toast(create ? 'Account created' : 'Signed in');
-  return done;
 }
 
 /// "just now", "5 min ago", "3 h ago", else the date.
@@ -758,7 +738,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   enableSuggestions: false,
                   decoration: InputDecoration(
                     hintText: 'Optional',
-                    suffixIcon: _revealButton(_showTmdb, () => setState(() => _showTmdb = !_showTmdb)),
+                    suffixIcon: revealButton(_showTmdb, () => setState(() => _showTmdb = !_showTmdb)),
                   ),
                   onChanged: (v) => Api.setSetting('tmdbKey', v.trim()),
                 ),

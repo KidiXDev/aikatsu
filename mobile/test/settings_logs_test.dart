@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:aikatsu/pages/account.dart';
 import 'package:aikatsu/pages/settings.dart';
 import 'package:aikatsu/src/rust/frb_generated.dart';
 import 'package:aikatsu/theme.dart';
@@ -168,9 +169,9 @@ void main() {
     await tester.pumpWidget(MaterialApp(theme: buildTheme(Brightness.light), home: const Scaffold(body: SettingsPage())));
     await tester.tap(find.text('Create account'));
     await tester.pumpAndSettle();
-    final fields = find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextField));
+    final fields = find.descendant(of: find.byType(AccountPage), matching: find.byType(TextField));
     expect(fields, findsNWidgets(3));
-    VoidCallback? create() => tester.widget<TextButton>(find.widgetWithText(TextButton, 'Create')).onPressed;
+    VoidCallback? create() => tester.widget<PillButton>(find.widgetWithText(PillButton, 'Create account')).onTap;
     bool hidden(int i) => tester.widget<TextField>(fields.at(i)).obscureText;
 
     await tester.enterText(fields.at(0), 'kidix');
@@ -193,17 +194,21 @@ void main() {
     await tester.enterText(fields.at(2), 'hunter22');
     await tester.pump();
     expect(find.text("Passwords don't match"), findsNothing);
-    await tester.tap(find.widgetWithText(TextButton, 'Create'));
+    await tester.tap(find.widgetWithText(PillButton, 'Create account'));
     expect(backend.called, 'syncSignIn');
     expect(jsonDecode(backend.calledArgs!), {'username': 'kidix', 'password': 'hunter22', 'create': true});
   });
 
-  testWidgets('signing in asks for the password once', (tester) async {
+  testWidgets('signing in asks for the password once and can switch to creating', (tester) async {
     await tester.pumpWidget(MaterialApp(theme: buildTheme(Brightness.light), home: const Scaffold(body: SettingsPage())));
     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.pumpAndSettle();
-    expect(find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextField)), findsNWidgets(2));
+    final fields = find.descendant(of: find.byType(AccountPage), matching: find.byType(TextField));
+    expect(fields, findsNWidgets(2));
     expect(find.text('Confirm password'), findsNothing);
+    await tester.tap(find.widgetWithText(TextButton, 'Create account'));
+    await tester.pumpAndSettle();
+    expect(fields, findsNWidgets(3), reason: 'switches to creating an account in place');
   });
 
   testWidgets('startup check can be disabled from Settings', (tester) async {

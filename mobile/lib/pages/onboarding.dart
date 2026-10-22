@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../api.dart';
 import '../theme.dart';
 import '../widgets.dart';
-import 'settings.dart';
+import 'account.dart';
 
 const _slides = [
   ('さがす · SEARCH', 'Every source, one search', 'Find a show once and watch it from any source.'),
@@ -113,16 +113,16 @@ class _OnboardingPageState extends State<OnboardingPage> with SingleTickerProvid
                                 key: const ValueKey('account'),
                                 spacing: 10,
                                 children: [
-                                  _PillButton(
+                                  PillButton(
                                     icon: Icons.person_add_rounded,
                                     label: 'Create account',
                                     filled: true,
                                     onTap: () => _account(create: true),
                                   ),
-                                  _PillButton(icon: Icons.login_rounded, label: 'Sign in', onTap: () => _account(create: false)),
+                                  PillButton(icon: Icons.login_rounded, label: 'Sign in', onTap: () => _account(create: false)),
                                 ],
                               )
-                            : _PillButton(
+                            : PillButton(
                                 key: const ValueKey('next'),
                                 icon: Icons.arrow_forward_rounded,
                                 label: 'Next',
@@ -136,44 +136,6 @@ class _OnboardingPageState extends State<OnboardingPage> with SingleTickerProvid
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-/// The home banner's pill buttons, full width.
-class _PillButton extends StatelessWidget {
-  const _PillButton({super.key, required this.icon, required this.label, required this.onTap, this.filled = false});
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  final bool filled;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = Theme.of(context).colorScheme;
-    final ink = filled ? c.onPrimary : c.onSurface;
-    return BouncyTap(
-      borderRadius: BorderRadius.circular(999),
-      onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 15),
-        decoration: BoxDecoration(
-          color: filled ? c.primary : c.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(999),
-          border: filled ? null : Border.all(color: c.outlineVariant.withValues(alpha: 0.5)),
-          boxShadow: filled ? context.aikatsu.softShadow : null,
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 18, color: ink),
-            const SizedBox(width: 8),
-            Text(label, style: TextStyle(fontFamily: 'GoogleSansFlex', fontWeight: FontWeight.w700, fontSize: 14, color: ink)),
-          ],
         ),
       ),
     );
