@@ -23,6 +23,8 @@ pub const SETTING: &str = "shareLibrary";
 pub const RECORD: &str = "lanHost:";
 /// `lanMiss:<id>`: when a device on the same network last timed out reaching that one.
 pub const MISS: &str = "lanMiss:";
+/// `lanSeen:<id>`: a device whose shared folders loaded here, kept while it's away. Never synced.
+const SEEN: &str = "lanSeen:";
 const ID: &str = "lanId";
 const KEY: &str = "lanKey";
 const PORT: u16 = 47821;
@@ -199,6 +201,7 @@ pub fn forget() {
     crate::proxy::clear();
     let _ = db::delete_settings_with_prefix(RECORD);
     let _ = db::delete_settings_with_prefix(MISS);
+    let _ = db::delete_settings_with_prefix(SEEN);
 }
 
 async fn serve(req: Request) -> Response {
@@ -387,6 +390,8 @@ pub async fn library() -> (Vec<Value>, Vec<String>) {
         let miss = format!("{MISS}{}", h.id);
         match res {
             Ok(mut lib) => {
+                let shows = lib["series"].as_array().map_or(0, Vec::len);
+                let _ = db::set_setting(&format!("{SEEN}{}", h.id), &json!({ "name": h.name, "at": now(), "shows": shows }).to_string());
                 out.extend(lib["series"].as_array_mut().map(std::mem::take).unwrap_or_default().into_iter().map(|mut s| {
                     s["host"] = h.name.clone().into();
                     s["path"] = location(&h.id, s["path"].as_str().unwrap_or_default()).into();
@@ -409,6 +414,34 @@ pub async fn library() -> (Vec<Value>, Vec<String>) {
         tokio::spawn(crate::sync::sync());
     }
     (out, missing)
+}
+
+/// Devices whose shared folders have loaded here, last seen first. `online`: seen at or after `since`.
+pub fn devices(since: i64) -> Value {
+    let mut list: Vec<Value> = db::settings_with_prefix(SEEN)
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|(k, v)| {
+            let mut d: Value = serde_json::from_str(&v).ok()?;
+            d["id"] = k.strip_prefix(SEEN)?.into();
+            d["online"] = (d["at"].as_i64()? >= since).into();
+            Some(d)
+        })
+        .collect();
+    list.sort_by_key(|d| std::cmp::Reverse(d["at"].as_i64()));
+    json!(list)
+}
+
+/// Asks every device on the account, so each saved one is online or not right now.
+pub async fn check_devices() -> Value {
+    let since = now();
+    library().await;
+    devices(since)
+}
+
+pub fn forget_device(id: &str) -> Result<()> {
+    ensure!(!id.is_empty(), "Missing device");
+    db::delete_settings_with_prefix(&format!("{SEEN}{id}"))
 }
 
 pub async fn episodes(folder: &str) -> Result<Vec<Episode>> {
@@ -521,6 +554,8 @@ mod tests {
 
             let (shared, _) = library().await;
             assert!(shared.iter().any(|s| s["path"] == location("test-desk", &show) && s["host"] == "Desk"), "{shared:?}");
+            let saved = devices(0);
+            assert!(saved.as_array().unwrap().iter().any(|d| d["id"] == "test-desk" && d["name"] == "Desk" && d["shows"].as_u64() >= Some(1)), "{saved}");
             assert_eq!(episodes(&show).await.unwrap().len(), 1);
             let s = stream(&video).await.unwrap();
             let r = http::PLAIN.get(&s.url).header("Range", "bytes=2-5").send().await.unwrap();
@@ -568,6 +603,10 @@ mod tests {
             db::set_setting(SETTING, "false").unwrap();
             refresh().await;
             assert!(tokio::time::timeout(Duration::from_secs(5), response.bytes()).await.unwrap().is_err(), "active transfers must be cut off");
+            let saved = check_devices().await;
+            assert!(saved.as_array().unwrap().iter().any(|d| d["id"] == "test-desk" && d["online"] == false), "a device that stops sharing stays, offline: {saved}");
+            forget_device("test-desk").unwrap();
+            assert!(!devices(0).to_string().contains("test-desk"));
             db::set_setting(SETTING, "true").unwrap();
             refresh().await;
             assert_ne!(db::setting(KEY).unwrap(), h.key, "re-enabling rotates credentials");

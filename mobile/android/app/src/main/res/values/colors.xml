@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The app theme's surface (lib/theme.dart), so the launch screen hands over without a flash. -->
+    <color name="splash_background">#fff7f8</color>
+</resources>

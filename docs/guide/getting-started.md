@@ -29,6 +29,8 @@ You can also build the app yourself. The [build guide](../developers/building-ai
 
 Download the `android-arm64-v8a.apk` for most current phones. Older 32-bit devices need the `armeabi-v7a.apk` instead. Open the APK and allow installation from your browser or file manager if Android asks.
 
+On first launch, a short welcome offers **Create account** or **Sign in** for [sync](./sync.md). Choose **Skip** to use Aikatsu without an account; you can sign in later in Settings.
+
 ## Install sources
 
 1. Open **Settings > Plugins**. On desktop, open **Sources** and choose **Manage**.

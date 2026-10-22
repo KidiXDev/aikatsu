@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../api.dart';
 import '../widgets.dart';
+import 'onboarding.dart';
 
 /// Called once the app's first frame is ready; nothing downloads without asking.
 /// One dialog at a time: plugin updates can wait for the new version.
@@ -138,6 +139,123 @@ Future<void> checkPluginUpdatesOnOpen(BuildContext context) async {
   }
 }
 
+/// `fields` are (label, secret). The error from `run` shows under the last of them. `confirm` adds a field, with that
+/// label, that must repeat the last one; `run` still gets only `fields`' values.
+Future<bool> _form(
+  BuildContext context,
+  String title,
+  String actionLabel,
+  List<(String, bool)> fields,
+  Future<void> Function(List<String>) run, {
+  String? message,
+  String? confirm,
+}) async {
+  final all = [...fields, if (confirm != null) (confirm, true)];
+  final values = List.filled(all.length, '');
+  final shown = List.filled(all.length, false);
+  String error = '';
+  bool busy = false;
+  return await showDialog<bool>(
+        context: context,
+        builder: (context) => StatefulBuilder(
+          builder: (context, setDialogState) {
+            final last = fields.length - 1;
+            final repeat = confirm == null ? '' : values.last;
+            final matches = confirm == null || repeat == values[last];
+            // Only once the repeat can no longer turn into a match, so typing it doesn't flash an error.
+            final mismatch = !matches && repeat.isNotEmpty && (repeat.length >= values[last].length || !values[last].startsWith(repeat));
+            final ready = !busy && values.every((v) => v.trim().isNotEmpty) && matches;
+            Future<void> submit() async {
+              if (!ready) return;
+              setDialogState(() {
+                busy = true;
+                error = '';
+              });
+              try {
+                await run(values.sublist(0, fields.length));
+                if (context.mounted) Navigator.pop(context, true);
+              } catch (e) {
+                if (context.mounted) {
+                  setDialogState(() {
+                    busy = false;
+                    error = '$e';
+                  });
+                }
+              }
+            }
+
+            return AlertDialog(
+              title: Text(title),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  spacing: 16,
+                  children: [
+                    if (message != null) Text(message),
+                    for (final (i, (label, secret)) in all.indexed)
+                      TextField(
+                        autofocus: i == 0,
+                        autocorrect: false,
+                        enableSuggestions: !secret,
+                        obscureText: secret && !shown[i],
+                        textInputAction: i < all.length - 1 ? TextInputAction.next : TextInputAction.done,
+                        decoration: InputDecoration(
+                          labelText: label,
+                          errorText: i == last && error.isNotEmpty
+                              ? error
+                              : i == fields.length && mismatch
+                              ? "Passwords don't match"
+                              : null,
+                          errorMaxLines: 3,
+                          suffixIcon: secret ? _revealButton(shown[i], () => setDialogState(() => shown[i] = !shown[i])) : null,
+                        ),
+                        onChanged: (v) => setDialogState(() => values[i] = v),
+                        onSubmitted: (_) => submit(),
+                      ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+                TextButton(onPressed: ready ? submit : null, child: Text(busy ? 'Please wait…' : actionLabel)),
+              ],
+            );
+          },
+        ),
+      ) ??
+      false;
+}
+
+Widget _revealButton(bool shown, VoidCallback toggle) => IconButton(
+  tooltip: shown ? 'Hide' : 'Show',
+  icon: Icon(shown ? Icons.visibility_off_rounded : Icons.visibility_rounded),
+  onPressed: toggle,
+);
+
+/// Sync's sign-in or create-account form; true once signed in.
+Future<bool> signIn(BuildContext context, {required bool create}) async {
+  final done = await _form(
+    context,
+    create ? 'Create account' : 'Sign in',
+    create ? 'Create' : 'Sign in',
+    [('Username', false), ('Password', true)],
+    (v) => Api.call('syncSignIn', {'username': v[0].trim(), 'password': v[1], 'create': create}),
+    confirm: create ? 'Confirm password' : null,
+  );
+  if (done) toast(create ? 'Account created' : 'Signed in');
+  return done;
+}
+
+/// "just now", "5 min ago", "3 h ago", else the date.
+String _ago(BuildContext context, int at) {
+  final time = DateTime.fromMillisecondsSinceEpoch(at * 1000);
+  final mins = DateTime.now().difference(time).inMinutes;
+  if (mins < 1) return 'just now';
+  if (mins < 60) return '$mins min ago';
+  return mins < 1440 ? '${mins ~/ 60} h ago' : MaterialLocalizations.of(context).formatShortDate(time);
+}
+
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
 
@@ -184,13 +302,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   String get _syncedLabel {
     final at = toInt(_account['lastSync']);
-    if (at == 0) return 'Not synced yet';
-    final mins = DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(at * 1000)).inMinutes;
-    if (mins < 1) return 'Synced just now';
-    if (mins < 60) return 'Synced $mins min ago';
-    return mins < 1440
-        ? 'Synced ${mins ~/ 60} h ago'
-        : 'Synced ${MaterialLocalizations.of(context).formatShortDate(DateTime.fromMillisecondsSinceEpoch(at * 1000))}';
+    return at == 0 ? 'Not synced yet' : 'Synced ${_ago(context, at)}';
   }
 
   Future<void> _syncNow() async {
@@ -247,116 +359,15 @@ class _SettingsPageState extends State<SettingsPage> {
     if (status != null && mounted) setState(() => _account = status);
   }
 
-  /// `fields` are (label, secret). The error from `run` shows under the last of them. `confirm` adds a field, with that
-  /// label, that must repeat the last one; `run` still gets only `fields`' values.
-  Future<bool> _form(
-    String title,
-    String actionLabel,
-    List<(String, bool)> fields,
-    Future<void> Function(List<String>) run, {
-    String? message,
-    String? confirm,
-  }) async {
-    final all = [...fields, if (confirm != null) (confirm, true)];
-    final values = List.filled(all.length, '');
-    final shown = List.filled(all.length, false);
-    String error = '';
-    bool busy = false;
-    return await showDialog<bool>(
-          context: context,
-          builder: (context) => StatefulBuilder(
-            builder: (context, setDialogState) {
-              final last = fields.length - 1;
-              final repeat = confirm == null ? '' : values.last;
-              final matches = confirm == null || repeat == values[last];
-              // Only once the repeat can no longer turn into a match, so typing it doesn't flash an error.
-              final mismatch = !matches && repeat.isNotEmpty && (repeat.length >= values[last].length || !values[last].startsWith(repeat));
-              final ready = !busy && values.every((v) => v.trim().isNotEmpty) && matches;
-              Future<void> submit() async {
-                if (!ready) return;
-                setDialogState(() {
-                  busy = true;
-                  error = '';
-                });
-                try {
-                  await run(values.sublist(0, fields.length));
-                  if (context.mounted) Navigator.pop(context, true);
-                } catch (e) {
-                  if (context.mounted) {
-                    setDialogState(() {
-                      busy = false;
-                      error = '$e';
-                    });
-                  }
-                }
-              }
-
-              return AlertDialog(
-                title: Text(title),
-                content: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    spacing: 16,
-                    children: [
-                      if (message != null) Text(message),
-                      for (final (i, (label, secret)) in all.indexed)
-                        TextField(
-                          autofocus: i == 0,
-                          autocorrect: false,
-                          enableSuggestions: !secret,
-                          obscureText: secret && !shown[i],
-                          textInputAction: i < all.length - 1 ? TextInputAction.next : TextInputAction.done,
-                          decoration: InputDecoration(
-                            labelText: label,
-                            errorText: i == last && error.isNotEmpty
-                                ? error
-                                : i == fields.length && mismatch
-                                ? "Passwords don't match"
-                                : null,
-                            errorMaxLines: 3,
-                            suffixIcon: secret ? _revealButton(shown[i], () => setDialogState(() => shown[i] = !shown[i])) : null,
-                          ),
-                          onChanged: (v) => setDialogState(() => values[i] = v),
-                          onSubmitted: (_) => submit(),
-                        ),
-                    ],
-                  ),
-                ),
-                actions: [
-                  TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-                  TextButton(onPressed: ready ? submit : null, child: Text(busy ? 'Please wait…' : actionLabel)),
-                ],
-              );
-            },
-          ),
-        ) ??
-        false;
-  }
-
-  Widget _revealButton(bool shown, VoidCallback toggle) => IconButton(
-    tooltip: shown ? 'Hide' : 'Show',
-    icon: Icon(shown ? Icons.visibility_off_rounded : Icons.visibility_rounded),
-    onPressed: toggle,
-  );
-
   Future<void> _signIn({required bool create}) async {
-    final done = await _form(
-      create ? 'Create account' : 'Sign in',
-      create ? 'Create' : 'Sign in',
-      [('Username', false), ('Password', true)],
-      (v) => Api.call('syncSignIn', {'username': v[0].trim(), 'password': v[1], 'create': create}),
-      confirm: create ? 'Confirm password' : null,
-    );
-    if (!done || !mounted) return;
-    setState(() => _account = Api.get('syncStatus'));
-    toast(create ? 'Account created' : 'Signed in');
+    if (await signIn(context, create: create) && mounted) setState(() => _account = Api.get('syncStatus'));
   }
 
   Future<void> _accountAction(String action) async {
     switch (action) {
       case 'password':
         final done = await _form(
+          context,
           'Change password',
           'Change',
           [('Current password', true), ('New password', true)],
@@ -371,6 +382,7 @@ class _SettingsPageState extends State<SettingsPage> {
         if (mounted) setState(() => _account = Map<String, dynamic>.from(status));
       case 'delete':
         final done = await _form(
+          context,
           'Delete account?',
           'Delete',
           [('Password', true)],
@@ -447,6 +459,16 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  String get _devicesSummary {
+    final n = (Api.get('lanDevices') as List).length;
+    return n == 0 ? 'None yet' : '$n device${n == 1 ? '' : 's'}';
+  }
+
+  Future<void> _openDevices() async {
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => const _DevicesPage()));
+    if (mounted) setState(() {});
+  }
+
   Future<void> _openPlugins() async {
     await Navigator.push(context, MaterialPageRoute(builder: (_) => const _PluginsPage()));
     if (mounted) setState(() => _s = Api.get('settings'));
@@ -464,6 +486,11 @@ class _SettingsPageState extends State<SettingsPage> {
       toast('$e');
     }
     if (mounted) setState(() => _installingShaders = false);
+  }
+
+  Future<void> _showOnboarding() async {
+    await Navigator.push(context, MaterialPageRoute(builder: (context) => OnboardingPage(onDone: () => Navigator.pop(context))));
+    if (mounted) setState(() => _account = Api.get('syncStatus'));
   }
 
   void _showLogs() {
@@ -607,6 +634,13 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               ),
             ],
+            if (_signedIn)
+              ListTile(
+                title: const Text('Devices', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: Text(_devicesSummary),
+                trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                onTap: _openDevices,
+              ),
             ListTile(
               title: const Text('Server', style: TextStyle(fontWeight: FontWeight.w600)),
               subtitle: Text(_host.isEmpty ? 'Default' : _host),
@@ -775,6 +809,12 @@ class _SettingsPageState extends State<SettingsPage> {
                 title: const Text('Logs', style: TextStyle(fontWeight: FontWeight.w600)),
                 trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
                 onTap: _showLogs,
+              ),
+            if (_s['developerMode'] == 'true')
+              ListTile(
+                title: const Text('Onboarding', style: TextStyle(fontWeight: FontWeight.w600)),
+                trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                onTap: _showOnboarding,
               ),
             ListTile(
               title: const Text('Cache', style: TextStyle(fontWeight: FontWeight.w600)),
@@ -1066,6 +1106,111 @@ class _PluginsPageState extends State<_PluginsPage> {
                   Center(
                     child: TextButton(onPressed: _syncing ? null : _addKyoko, child: const Text('Add Kyoko')),
                   ),
+              ],
+            ),
+    );
+  }
+}
+
+/// The account's devices whose shared folders have loaded here; offline ones stay until forgotten.
+class _DevicesPage extends StatefulWidget {
+  const _DevicesPage();
+
+  @override
+  State<_DevicesPage> createState() => _DevicesPageState();
+}
+
+class _DevicesPageState extends State<_DevicesPage> {
+  List<dynamic> _devices = Api.get('lanDevices');
+  bool _checking = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _check();
+  }
+
+  Future<void> _check() async {
+    if (mounted) setState(() => _checking = true);
+    try {
+      final list = await Api.call('checkLanDevices') as List;
+      if (mounted) setState(() => _devices = list);
+    } catch (e) {
+      toast('$e');
+    }
+    if (mounted) setState(() => _checking = false);
+  }
+
+  Future<void> _forget(Map<String, dynamic> d) async {
+    if (!await confirm(context, 'Forget ${d['name']}?', 'It comes back once its shared folders load again.', 'Forget')) return;
+    Api.get('forgetLanDevice', {'id': d['id']});
+    if (mounted) setState(() => _devices = _devices.where((x) => x['id'] != d['id']).toList());
+  }
+
+  Widget _tile(Map<String, dynamic> d) {
+    final c = Theme.of(context).colorScheme;
+    final online = !_checking && d['online'] == true;
+    final shows = toInt(d['shows']);
+    return ListTile(
+      leading: AnimatedContainer(
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: online ? c.primaryContainer : c.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Icon(Icons.computer_rounded, color: online ? c.onPrimaryContainer : c.outline),
+      ),
+      title: Text('${d['name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
+      subtitle: Text(
+        _checking
+            ? 'Checking…'
+            : online
+            ? 'Online · $shows show${shows == 1 ? '' : 's'}'
+            : 'Offline · seen ${_ago(context, toInt(d['at']))}',
+        style: online ? TextStyle(color: c.primary, fontWeight: FontWeight.w600) : null,
+      ),
+      trailing: PopupMenuButton<String>(
+        onSelected: (_) => _forget(Map<String, dynamic>.from(d)),
+        itemBuilder: (_) => const [PopupMenuItem(value: 'forget', child: Text('Forget'))],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Devices'),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: IconButton(
+              tooltip: 'Check again',
+              onPressed: _checking ? null : _check,
+              icon: _checking
+                  ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.refresh_rounded),
+            ),
+          ),
+        ],
+      ),
+      body: _devices.isEmpty
+          ? EmptyState(
+              face: _checking ? '(・・ )?' : '(˘▾˘)',
+              title: _checking ? 'Looking for devices' : 'No devices yet',
+              message: _checking ? '' : 'Turn on "Share your folders" on your PC. It shows up here once its folders load.',
+            )
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+              children: [
+                _SettingsGroup(
+                  title: 'Shared folders',
+                  icon: Icons.folder_shared_rounded,
+                  children: [for (final d in _devices) _tile(Map<String, dynamic>.from(d))],
+                ),
               ],
             ),
     );

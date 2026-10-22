@@ -11,8 +11,10 @@ import 'pages/anime.dart';
 import 'pages/downloads.dart';
 import 'pages/home.dart';
 import 'pages/library.dart';
+import 'pages/onboarding.dart';
 import 'pages/search.dart';
 import 'pages/settings.dart';
+import 'splash.dart';
 import 'src/rust/frb_generated.dart';
 import 'theme.dart';
 import 'widgets.dart';
@@ -47,6 +49,7 @@ class AikatsuApp extends StatefulWidget {
 
 class _AikatsuAppState extends State<AikatsuApp> {
   var _theme = themeModeOf(Api.setting('theme'));
+  var _onboarded = Api.setting('onboarded') == 'true' || Api.get('syncStatus')['signedIn'] == true;
   late final StreamSubscription<(String, String)> _sub;
 
   @override
@@ -73,12 +76,17 @@ class _AikatsuAppState extends State<AikatsuApp> {
     themeMode: _theme,
     navigatorObservers: [_DismissKeyboardObserver()],
     // Taps that no widget claims (empty space, text) drop the focus and with it the keyboard.
-    builder: (context, child) => GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onTap: dismissKeyboard,
-      child: child,
+    builder: (context, child) => Splash(
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: dismissKeyboard,
+        child: child,
+      ),
     ),
-    home: const Shell(),
+    home: AnimatedSwitcher(
+      duration: const Duration(milliseconds: 450),
+      child: _onboarded ? const Shell() : OnboardingPage(onDone: () => setState(() => _onboarded = true)),
+    ),
   );
 }
 

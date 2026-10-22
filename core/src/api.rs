@@ -44,6 +44,7 @@ pub const SETTING_DEFAULTS: &[(&str, &str)] = &[
     ("airingAlerts", "true"),
     ("closeAction", "quit"),
     (crate::lan::SETTING, "false"),
+    ("onboarded", "false"),
 ];
 
 pub fn setting(key: &str) -> String {
@@ -179,6 +180,7 @@ pub async fn call(method: &str, args: Value) -> Result<Value> {
             }
             Ok(lib)
         }
+        "checkLanDevices" => Ok(crate::lan::check_devices().await),
         "matchLocal" => Ok(json!(local::match_all().await?)),
         "linkAnime" => Ok(serde_json::to_value(link(s(&args, "source"), s(&args, "url"), i(&args, "anilistId")).await?)?),
         "searchAnime" => Ok(serde_json::to_value(meta::search(s(&args, "query")).await?)?),
@@ -286,6 +288,11 @@ pub fn get(method: &str, args: Value) -> Result<Value> {
         }
         "syncStatus" => Ok(sync::status()),
         "lanStatus" => Ok(crate::lan::state()),
+        "lanDevices" => Ok(crate::lan::devices(i64::MAX)),
+        "forgetLanDevice" => {
+            crate::lan::forget_device(s(&args, "id"))?;
+            Ok(Value::Null)
+        }
         "settings" => Ok(Value::Object(SETTING_DEFAULTS.iter().map(|(k, _)| (k.to_string(), Value::String(setting(k)))).collect())),
         "setSetting" => {
             db::set_setting(s(&args, "key"), s(&args, "value"))?;
