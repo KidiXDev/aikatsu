@@ -288,7 +288,7 @@ pub fn get(method: &str, args: Value) -> Result<Value> {
         }
         "syncStatus" => Ok(sync::status()),
         "lanStatus" => Ok(crate::lan::state()),
-        "lanDevices" => Ok(crate::lan::devices(i64::MAX)),
+        "lanDevices" => Ok(crate::lan::devices(&[])),
         "forgetLanDevice" => {
             crate::lan::forget_device(s(&args, "id"))?;
             Ok(Value::Null)

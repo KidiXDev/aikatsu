@@ -383,15 +383,22 @@ async fn ask(h: &Host, route: &str, path: &str) -> Result<Value> {
 /// timed out on this network hears about it through sync: its firewall is the
 /// usual cause, and it can't see that itself.
 pub async fn library() -> (Vec<Value>, Vec<String>) {
+    let (out, missing, _) = gather().await;
+    (out, missing)
+}
+
+/// [library], plus the ids of the devices that answered.
+async fn gather() -> (Vec<Value>, Vec<String>, Vec<String>) {
     let hosts = hosts();
     let found = futures_util::future::join_all(hosts.iter().map(|h| ask(h, "library", ""))).await;
-    let (mut out, mut missing, mut missed) = (Vec::new(), Vec::new(), false);
+    let (mut out, mut missing, mut answered, mut missed) = (Vec::new(), Vec::new(), Vec::new(), false);
     for (h, res) in hosts.iter().zip(found) {
         let miss = format!("{MISS}{}", h.id);
         match res {
             Ok(mut lib) => {
                 let shows = lib["series"].as_array().map_or(0, Vec::len);
                 let _ = db::set_setting(&format!("{SEEN}{}", h.id), &json!({ "name": h.name, "at": now(), "shows": shows }).to_string());
+                answered.push(h.id.clone());
                 out.extend(lib["series"].as_array_mut().map(std::mem::take).unwrap_or_default().into_iter().map(|mut s| {
                     s["host"] = h.name.clone().into();
                     s["path"] = location(&h.id, s["path"].as_str().unwrap_or_default()).into();
@@ -413,18 +420,19 @@ pub async fn library() -> (Vec<Value>, Vec<String>) {
     if missed {
         tokio::spawn(crate::sync::sync());
     }
-    (out, missing)
+    (out, missing, answered)
 }
 
-/// Devices whose shared folders have loaded here, last seen first. `online`: seen at or after `since`.
-pub fn devices(since: i64) -> Value {
+/// Devices whose shared folders have loaded here, last seen first; `online` if listed there.
+pub fn devices(online: &[String]) -> Value {
     let mut list: Vec<Value> = db::settings_with_prefix(SEEN)
         .unwrap_or_default()
         .into_iter()
         .filter_map(|(k, v)| {
             let mut d: Value = serde_json::from_str(&v).ok()?;
-            d["id"] = k.strip_prefix(SEEN)?.into();
-            d["online"] = (d["at"].as_i64()? >= since).into();
+            let id = k.strip_prefix(SEEN)?;
+            d["online"] = online.iter().any(|o| o == id).into();
+            d["id"] = id.into();
             Some(d)
         })
         .collect();
@@ -434,9 +442,7 @@ pub fn devices(since: i64) -> Value {
 
 /// Asks every device on the account, so each saved one is online or not right now.
 pub async fn check_devices() -> Value {
-    let since = now();
-    library().await;
-    devices(since)
+    devices(&gather().await.2)
 }
 
 pub fn forget_device(id: &str) -> Result<()> {
@@ -554,8 +560,8 @@ mod tests {
 
             let (shared, _) = library().await;
             assert!(shared.iter().any(|s| s["path"] == location("test-desk", &show) && s["host"] == "Desk"), "{shared:?}");
-            let saved = devices(0);
-            assert!(saved.as_array().unwrap().iter().any(|d| d["id"] == "test-desk" && d["name"] == "Desk" && d["shows"].as_u64() >= Some(1)), "{saved}");
+            let saved = check_devices().await;
+            assert!(saved.as_array().unwrap().iter().any(|d| d["id"] == "test-desk" && d["name"] == "Desk" && d["online"] == true && d["shows"].as_u64() >= Some(1)), "{saved}");
             assert_eq!(episodes(&show).await.unwrap().len(), 1);
             let s = stream(&video).await.unwrap();
             let r = http::PLAIN.get(&s.url).header("Range", "bytes=2-5").send().await.unwrap();
@@ -606,7 +612,7 @@ mod tests {
             let saved = check_devices().await;
             assert!(saved.as_array().unwrap().iter().any(|d| d["id"] == "test-desk" && d["online"] == false), "a device that stops sharing stays, offline: {saved}");
             forget_device("test-desk").unwrap();
-            assert!(!devices(0).to_string().contains("test-desk"));
+            assert!(!devices(&[]).to_string().contains("test-desk"));
             db::set_setting(SETTING, "true").unwrap();
             refresh().await;
             assert_ne!(db::setting(KEY).unwrap(), h.key, "re-enabling rotates credentials");
