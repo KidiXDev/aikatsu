@@ -33,6 +33,15 @@ MpvCore::~MpvCore() {
 
 namespace {
 
+#ifdef Q_OS_WIN
+constexpr LONG_PTR borderlessFullScreenStyle(LONG_PTR style) {
+    return style & ~LONG_PTR(WS_POPUP);
+}
+
+static_assert(borderlessFullScreenStyle(WS_POPUP | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | WS_SYSMENU)
+              == (WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | WS_SYSMENU));
+#endif
+
 void *getProcAddress(void *, const char *name) {
     auto *ctx = QOpenGLContext::currentContext();
     return ctx ? reinterpret_cast<void *>(ctx->getProcAddress(QByteArray(name))) : nullptr;
@@ -288,17 +297,23 @@ void aikatsu_engine_init(QQmlApplicationEngine &engine) {
     engine.setNetworkAccessManagerFactory(&factory);
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreated, &engine, [](QObject *object, const QUrl &) {
         if (auto *window = qobject_cast<QWindow *>(object)) {
-            // No _q_has_border_in_fullscreen: the 1px border it adds shows as a line around the video. The cost is that
-            // Windows may stop compositing other windows over the fullscreen GL window, see LogDrawer's export.
             new WindowState(window, QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation) + "/window.ini");
 #ifdef Q_OS_WIN
             const auto hwnd = reinterpret_cast<HWND>(window->winId()); // created by WindowState's show()
             // Leaving fullscreen for maximized, Qt restores the normal geometry and then maximizes. With DWM's
             // restore and maximize animations the window visibly passes through its windowed size, so they are
             // off while fullscreen. Queued, so they come back only after Qt's state change has finished.
-            QObject::connect(window, &QWindow::windowStateChanged, window, [hwnd](Qt::WindowState state) {
-                const BOOL off = state == Qt::WindowFullScreen;
+            QObject::connect(window, &QWindow::windowStateChanged, window, [window, hwnd] {
+                const BOOL off = window->windowState() == Qt::WindowFullScreen;
                 DwmSetWindowAttribute(hwnd, DWMWA_TRANSITIONS_FORCEDISABLED, &off, sizeof off);
+                if (off) {
+                    // EXPERIMENTAL: shortcut: avoids NVIDIA's exclusive OpenGL promotion; extend if overlays fail on other drivers.
+                    const auto style = GetWindowLongPtr(hwnd, GWL_STYLE);
+                    if (!style || !SetWindowLongPtr(hwnd, GWL_STYLE, borderlessFullScreenStyle(style)))
+                        qWarning("could not set the borderless fullscreen window style");
+                    else if (!SetWindowPos(hwnd, nullptr, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE))
+                        qWarning("could not refresh the borderless fullscreen window frame");
+                }
             }, Qt::QueuedConnection);
 #endif
         }
