@@ -543,7 +543,6 @@ class _PlayerPageState extends State<PlayerPage> {
 
   void _togglePause() {
     _player.playOrPause();
-    _showOsd(_player.state.playing ? Icons.pause_rounded : Icons.play_arrow_rounded, '');
   }
 
   void _skipSegment() {
