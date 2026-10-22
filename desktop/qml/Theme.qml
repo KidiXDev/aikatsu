@@ -7,7 +7,7 @@ QtObject {
     id: root
 
     property string mode: "system" // system | dark | light
-    readonly property bool dark: mode === "dark" || (mode === "system" && Qt.styleHints.colorScheme !== Qt.ColorScheme.Light)
+    readonly property bool dark: mode === "dark" || (mode === "system" && Application.styleHints.colorScheme !== Qt.ColorScheme.Light)
     readonly property var palette: dark ? darkPalette : lightPalette
 
     readonly property var darkPalette: ({
@@ -35,7 +35,7 @@ QtObject {
             success: "#1f6d3b", onSuccess: "#ffffff"
         })
 
-    readonly property QtObject rounding: QtObject {
+    component Rounding: QtObject {
         readonly property int extraSmall: 4
         readonly property int small: 8
         readonly property int medium: 12
@@ -46,7 +46,7 @@ QtObject {
         readonly property int extraExtraLarge: 48
         readonly property int full: 10000
     }
-    readonly property QtObject spacing: QtObject {
+    component Spacing: QtObject {
         readonly property int extraSmall: 4
         readonly property int small: 8
         readonly property int medium: 12
@@ -55,7 +55,7 @@ QtObject {
         readonly property int extraLarge: 28
         readonly property int extraExtraLarge: 48
     }
-    readonly property QtObject padding: QtObject {
+    component Padding: QtObject {
         readonly property int extraSmall: 4
         readonly property int small: 8
         readonly property int medium: 12
@@ -64,19 +64,20 @@ QtObject {
         readonly property int extraLarge: 28
     }
 
-    readonly property QtObject anim: QtObject {
-        readonly property QtObject durations: QtObject {
-            readonly property int small: 200
-            readonly property int normal: 400
-            readonly property int large: 600
-            readonly property int extraLarge: 1000
-            readonly property int expressiveFastSpatial: 350
-            readonly property int expressiveDefaultSpatial: 500
-            readonly property int expressiveSlowSpatial: 650
-            readonly property int expressiveFastEffects: 150
-            readonly property int expressiveDefaultEffects: 200
-            readonly property int expressiveSlowEffects: 300
-        }
+    component Durations: QtObject {
+        readonly property int small: 200
+        readonly property int normal: 400
+        readonly property int large: 600
+        readonly property int extraLarge: 1000
+        readonly property int expressiveFastSpatial: 350
+        readonly property int expressiveDefaultSpatial: 500
+        readonly property int expressiveSlowSpatial: 650
+        readonly property int expressiveFastEffects: 150
+        readonly property int expressiveDefaultEffects: 200
+        readonly property int expressiveSlowEffects: 300
+    }
+    component Motion: QtObject {
+        readonly property Durations durations: Durations {}
         readonly property var emphasized: [0.05, 0, 2 / 15, 0.06, 1 / 6, 0.4, 5 / 24, 0.82, 0.25, 1, 1, 1]
         readonly property var emphasizedAccel: [0.3, 0, 0.8, 0.15, 1, 1]
         readonly property var emphasizedDecel: [0.05, 0.7, 0.1, 1, 1, 1]
@@ -88,6 +89,11 @@ QtObject {
         readonly property var expressiveDefaultEffects: [0.34, 0.8, 0.34, 1, 1, 1]
         readonly property var expressiveSlowEffects: [0.34, 0.88, 0.34, 1, 1, 1]
     }
+
+    readonly property Rounding rounding: Rounding {}
+    readonly property Spacing spacing: Spacing {}
+    readonly property Padding padding: Padding {}
+    readonly property Motion anim: Motion {}
 
     readonly property string family: "Google Sans Flex"
     readonly property string iconFamily: "Material Symbols Rounded"
@@ -107,30 +113,42 @@ QtObject {
         });
     }
 
-    readonly property QtObject font: QtObject {
-        readonly property QtObject display: QtObject {
-            readonly property font large: root.textFont(42, 600)
-            readonly property font medium: root.textFont(34, 600)
+    component FontScale: QtObject {
+        property font large
+        property font medium
+        property font small
+    }
+    component Fonts: QtObject {
+        property FontScale display
+        property FontScale headline
+        property FontScale title
+        property FontScale body
+        property FontScale label
+    }
+    readonly property Fonts font: Fonts {
+        display: FontScale {
+            large: root.textFont(42, 600)
+            medium: root.textFont(34, 600)
         }
-        readonly property QtObject headline: QtObject {
-            readonly property font large: root.textFont(28, 600)
-            readonly property font medium: root.textFont(24, 550)
-            readonly property font small: root.textFont(20, 550)
+        headline: FontScale {
+            large: root.textFont(28, 600)
+            medium: root.textFont(24, 550)
+            small: root.textFont(20, 550)
         }
-        readonly property QtObject title: QtObject {
-            readonly property font large: root.textFont(17, 500)
-            readonly property font medium: root.textFont(13, 500)
-            readonly property font small: root.textFont(11, 500)
+        title: FontScale {
+            large: root.textFont(17, 500)
+            medium: root.textFont(13, 500)
+            small: root.textFont(11, 500)
         }
-        readonly property QtObject body: QtObject {
-            readonly property font large: root.textFont(12, 400)
-            readonly property font medium: root.textFont(10.5, 400)
-            readonly property font small: root.textFont(9.5, 400)
+        body: FontScale {
+            large: root.textFont(12, 400)
+            medium: root.textFont(10.5, 400)
+            small: root.textFont(9.5, 400)
         }
-        readonly property QtObject label: QtObject {
-            readonly property font large: root.textFont(10.5, 500)
-            readonly property font medium: root.textFont(9.5, 500)
-            readonly property font small: root.textFont(8.5, 500)
+        label: FontScale {
+            large: root.textFont(10.5, 500)
+            medium: root.textFont(9.5, 500)
+            small: root.textFont(8.5, 500)
         }
     }
 
