@@ -7,6 +7,11 @@ QtObject {
     id: root
 
     property string mode: "system" // system | dark | light
+    onModeChanged: {
+        if (Qt.platform.os === "windows")
+            Application.styleHints.colorScheme = mode === "system" ? Qt.ColorScheme.Unknown
+                : mode === "dark" ? Qt.ColorScheme.Dark : Qt.ColorScheme.Light;
+    }
     readonly property bool dark: mode === "dark" || (mode === "system" && Application.styleHints.colorScheme !== Qt.ColorScheme.Light)
     readonly property var palette: dark ? darkPalette : lightPalette
 

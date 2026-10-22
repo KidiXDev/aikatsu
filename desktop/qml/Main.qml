@@ -200,6 +200,8 @@ ApplicationWindow {
     visible: false // shown after the saved window state is restored
     title: "Aikatsu"
     color: Theme.palette.surface
+    palette.window: Theme.palette.surfaceContainer
+    palette.windowText: Theme.palette.onSurface
 
     Component.onCompleted: {
         Theme.mode = Api.setting("theme");
