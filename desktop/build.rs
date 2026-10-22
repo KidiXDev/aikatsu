@@ -118,8 +118,14 @@ fn main() {
         .qt_module("OpenGL")
         .qt_module("Network")
         .qrc("assets/assets.qrc");
-    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("linux") {
-        builder = builder.qt_module("DBus"); // screensaver inhibit
+    match std::env::var("CARGO_CFG_TARGET_OS").as_deref() {
+        Ok("linux") => builder = builder.qt_module("DBus"), // screensaver inhibit
+        Ok("macos") => {
+            // Keeping the display awake during playback.
+            println!("cargo::rustc-link-lib=framework=IOKit");
+            println!("cargo::rustc-link-lib=framework=CoreFoundation");
+        }
+        _ => {}
     }
     // SAFETY: only adds an include path
     unsafe { builder.cc_builder(|cc| { cc.include(&mpv_include); }) }.build();

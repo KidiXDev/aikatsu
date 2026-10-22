@@ -523,6 +523,17 @@ ApplicationWindow {
         id: snackbar
     }
 
+    // macOS reopens a running app from the Dock without starting a second copy, so no launch asks to show it.
+    Connections {
+        target: Qt.application
+        enabled: Qt.platform.os === "osx"
+
+        function onStateChanged() {
+            if (Qt.application.state === Qt.ApplicationActive && !win.visible)
+                win.showWindow();
+        }
+    }
+
     Platform.SystemTrayIcon {
         id: tray
 

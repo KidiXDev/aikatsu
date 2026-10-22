@@ -78,6 +78,11 @@ fn device_name() -> String {
     std::env::var("COMPUTERNAME")
         .ok()
         .or_else(|| std::fs::read_to_string("/etc/hostname").ok())
+        // macOS has no /etc/hostname; this is the name its sharing settings show.
+        .or_else(|| {
+            let out = std::process::Command::new("scutil").args(["--get", "ComputerName"]).output().ok()?;
+            out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+        })
         .map(|n| n.trim().to_owned())
         .filter(|n| !n.is_empty())
         .unwrap_or_else(|| "Desktop".into())

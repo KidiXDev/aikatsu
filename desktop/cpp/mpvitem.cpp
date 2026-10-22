@@ -5,6 +5,7 @@
 #include <QtGui/QIcon>
 #include <QtCore/QStandardPaths>
 #include <QtGui/QOpenGLContext>
+#include <QtGui/QSurfaceFormat>
 #include <QtNetwork/QNetworkAccessManager>
 #include <QtNetwork/QNetworkDiskCache>
 #include <QtQml/QQmlNetworkAccessManagerFactory>
@@ -21,6 +22,8 @@
 #include <QtDBus/QDBusConnection>
 #include <QtDBus/QDBusMessage>
 #include <QtDBus/QDBusReply>
+#elif defined(Q_OS_MACOS)
+#include <IOKit/pwr_mgt/IOPMLib.h>
 #endif
 
 MpvCore::~MpvCore() {
@@ -243,6 +246,18 @@ void MpvItem::setKeepAwake(bool v) {
         QDBusConnection::sessionBus().send(msg << *m_inhibitCookie);
         m_inhibitCookie.reset();
     }
+#elif defined(Q_OS_MACOS)
+    if (v) {
+        IOPMAssertionID id;
+        if (IOPMAssertionCreateWithName(kIOPMAssertionTypePreventUserIdleDisplaySleep, kIOPMAssertionLevelOn, CFSTR("Playing video"), &id) ==
+            kIOReturnSuccess)
+            m_inhibitCookie = id;
+        else
+            qWarning("could not keep the display awake");
+    } else if (m_inhibitCookie) {
+        IOPMAssertionRelease(*m_inhibitCookie);
+        m_inhibitCookie.reset();
+    }
 #endif
 }
 
@@ -295,5 +310,12 @@ void aikatsu_init() {
     QGuiApplication::setDesktopFileName("aikatsu"); // Wayland app-id, matches aikatsu.desktop
     QGuiApplication::setWindowIcon(QIcon(":/icon.svg"));
     QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
+#ifdef Q_OS_MACOS
+    // Qt Quick asks for OpenGL 2, which macOS serves from its legacy profile; mpv needs a core one.
+    QSurfaceFormat format = QSurfaceFormat::defaultFormat();
+    format.setVersion(4, 1);
+    format.setProfile(QSurfaceFormat::CoreProfile);
+    QSurfaceFormat::setDefaultFormat(format);
+#endif
     std::setlocale(LC_NUMERIC, "C"); // libmpv requires the C numeric locale
 }
