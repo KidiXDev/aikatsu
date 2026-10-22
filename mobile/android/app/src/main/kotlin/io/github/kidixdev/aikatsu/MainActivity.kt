@@ -3,12 +3,14 @@ package io.github.kidixdev.aikatsu
 import android.Manifest
 import android.app.Activity
 import android.app.PendingIntent
+import android.app.PictureInPictureParams
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
@@ -16,7 +18,9 @@ import android.os.Bundle
 import android.os.Environment
 import android.provider.DocumentsContract
 import android.provider.Settings
+import android.util.Rational
 import android.widget.Toast
+import androidx.annotation.RequiresApi
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -27,6 +31,9 @@ class MainActivity : FlutterActivity() {
     private var exportContents = ""
     private var folderResult: MethodChannel.Result? = null
     private var audio: MethodChannel? = null
+    private var pip: MethodChannel? = null
+    private var pipEnabled = false // the player is playing an episode
+    private var pipRatio = Rational(16, 9)
 
     // Headphones unplugged or Bluetooth audio gone: the player pauses instead of going on through the speaker.
     private val noisy = object : BroadcastReceiver() {
@@ -43,6 +50,26 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         audio = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "io.github.kidixdev.aikatsu/audio")
+        pip = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "io.github.kidixdev.aikatsu/pip").apply {
+            setMethodCallHandler { call, result ->
+                if (call.method != "set") {
+                    result.notImplemented()
+                    return@setMethodCallHandler
+                }
+                pipEnabled = call.argument<Boolean>("enabled") == true && packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
+                val w = call.argument<Int>("width") ?: 0
+                val h = call.argument<Int>("height") ?: 0
+                // Android rejects ratios outside 1:2.39 to 2.39:1.
+                pipRatio = when {
+                    w <= 0 || h <= 0 -> Rational(16, 9)
+                    w.toFloat() / h > 2.39f -> Rational(239, 100)
+                    h.toFloat() / w > 2.39f -> Rational(100, 239)
+                    else -> Rational(w, h)
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) setPictureInPictureParams(pipParams())
+                result.success(null)
+            }
+        }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "io.github.kidixdev.aikatsu/update")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -133,6 +160,26 @@ class MainActivity : FlutterActivity() {
             val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
             session.commit(PendingIntent.getActivity(this, 0, status, flags).intentSender)
         }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun pipParams(): PictureInPictureParams {
+        val params = PictureInPictureParams.Builder().setAspectRatio(pipRatio)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) params.setAutoEnterEnabled(pipEnabled)
+        return params.build()
+    }
+
+    // Android 12 and later enter picture-in-picture by themselves (setAutoEnterEnabled).
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (pipEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            enterPictureInPictureMode(pipParams())
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        pip?.invokeMethod("changed", isInPictureInPictureMode)
     }
 
     override fun onNewIntent(intent: Intent) {
