@@ -40,6 +40,7 @@ pub const SETTING_DEFAULTS: &[(&str, &str)] = &[
     ("debug", "false"),
     ("anime4k", "off"),
     ("volume", "100"),
+    ("subtitleScale", "1"),
     ("airingAlerts", "true"),
     ("closeAction", "quit"),
     (crate::lan::SETTING, "false"),

@@ -22,6 +22,15 @@ Use **Skip intro & outro** in Settings for automatic skips, or use the player's 
 
 Skip times come from AniSkip and aren't available for every anime or episode. An ending skip also depends on where you are in the episode and whether there's a next episode.
 
+## Subtitle size and timing
+
+With a subtitle track selected, the audio and subtitles menu has two more options:
+
+- **Subtitle size**: make subtitles smaller or larger. Aikatsu remembers the size on this device.
+- **Subtitle timing**: if subtitles appear too early or too late, use the minus and plus buttons to shift them by 0.1 seconds. Timing resets for each episode. On desktop, **Z** and **X** do the same.
+
+Subtitles that are part of the video itself can't be resized or retimed.
+
 ## Next episode
 
 Enable **Autoplay next episode** to continue after a short countdown at the end of each episode. Cancel the countdown to stop. You can also use the previous and next controls when those episodes are available.
@@ -38,6 +47,7 @@ Enable **Autoplay next episode** to continue after a short countdown at the end 
 | F, or double-click the video | Toggle fullscreen |
 | N / P | Next or previous episode |
 | S | Skip the current opening or ending segment |
+| Z / X | Show subtitles 0.1 seconds earlier or later |
 | Esc | Leave fullscreen first, then close the player |
 | I | Show playback statistics briefly (Developer Mode) |
 | Shift+I | Toggle playback statistics (Developer Mode) |
@@ -47,7 +57,13 @@ Enable **Autoplay next episode** to continue after a short countdown at the end 
 
 Tap the video to show or hide controls. Double-tap the left or right side to jump back or forward 10 seconds. Use the seek bar to move further through the episode.
 
-Double-tapping the middle toggles play and pause. Playback pauses when you leave the app or unplug your headphones.
+Double-tapping the middle toggles play and pause. Playback pauses when you unplug your headphones.
+
+## Picture-in-picture (Android)
+
+Leave the app while an episode is playing, for example with the Home gesture, and the video keeps playing in a small window. Tap the window to expand it back to the full player. Close the window to pause playback. A paused episode doesn't shrink into a window, so pause first if you want to leave without it.
+
+To turn this off, open Android's settings for Aikatsu and switch off **Picture-in-picture**.
 
 With **Developer Mode** on, tap **info** next to the resolution to show playback stats. These include codec, dimensions, frame rates, hardware decoding, dropped frames, audio, and cache. Missing values appear as a dash. On desktop, press **i** to show mpv's stats briefly or **Shift+I** to keep them visible. Press **Shift+I** again to hide them.
 

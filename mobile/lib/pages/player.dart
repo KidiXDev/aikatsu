@@ -46,6 +46,9 @@ class _PlayerPageState extends State<PlayerPage> {
   final _subs = <StreamSubscription<Object?>>[];
   late final AppLifecycleListener _lifecycle;
   static const _audio = MethodChannel('io.github.kidixdev.aikatsu/audio'); // "noisy": headphones unplugged
+  static const _pip = MethodChannel('io.github.kidixdev.aikatsu/pip'); // picture-in-picture on leaving the app
+  bool _inPip = false;
+  String _pipSent = '';
 
   late int _index = widget.index;
   late final String _source = Api.sourceName(d.anime['source']);
@@ -79,6 +82,9 @@ class _PlayerPageState extends State<PlayerPage> {
   final List<dynamic> _anime4kModes = Api.get('anime4kModes');
   final bool _autoplay = Api.setting('autoplay') == 'true';
   final bool _autoSkip = Api.setting('autoSkip') == 'true';
+  double _subScale = double.tryParse(Api.setting('subtitleScale')) ?? 1;
+  double _subDelay = 0; // per episode: each file is timed on its own
+  bool _timing = false; // the subtitle timing bar is open
   bool _controlsVisible = true;
   bool _showStats = false;
   final bool _developerMode = Api.setting('developerMode') == 'true';
@@ -140,6 +146,8 @@ class _PlayerPageState extends State<PlayerPage> {
       s.tracks.listen(_refresh),
       s.track.listen(_refresh),
       s.rate.listen(_refresh),
+      s.width.listen(_refresh),
+      s.height.listen(_refresh),
       Api.pushed.listen((e) {
         if (e.$1 != 'anime4k' || !mounted) return;
         _downloadingShaders = true;
@@ -153,7 +161,19 @@ class _PlayerPageState extends State<PlayerPage> {
     _audio.setMethodCallHandler((call) async {
       if (call.method == 'noisy') _pause();
     });
+    _pip.setMethodCallHandler((call) async {
+      if (call.method == 'changed' && mounted) setState(() => _inPip = call.arguments == true);
+    });
     _setup();
+  }
+
+  /// Android shrinks the player into a window on leaving the app only while an episode plays.
+  void _updatePip() {
+    final s = _player.state;
+    final args = {'enabled': _phase == _Phase.playing && _started && s.playing, 'width': s.width ?? 0, 'height': s.height ?? 0};
+    if ('$args' == _pipSent) return;
+    _pipSent = '$args';
+    _pip.invokeMethod('set', args).ignore();
   }
 
   /// Leaving the app or losing the headphones; Android may kill the app once it's in the background.
@@ -181,6 +201,7 @@ class _PlayerPageState extends State<PlayerPage> {
     final mpv = _player.platform as NativePlayer;
     await mpv.setProperty('demuxer-readahead-secs', '20');
     await mpv.setProperty('audio-display', 'no');
+    await mpv.setProperty('sub-scale', '$_subScale');
     if (!mounted) return; // left before the player was ready
     await mpv.observeProperty('idle-active', (_) async => _checkFailed());
     if (mounted) _start(_index);
@@ -214,6 +235,8 @@ class _PlayerPageState extends State<PlayerPage> {
     d.removeListener(_dataChanged);
     _lifecycle.dispose();
     _audio.setMethodCallHandler(null);
+    _pip.setMethodCallHandler(null);
+    _pip.invokeMethod('set', {'enabled': false, 'width': 0, 'height': 0}).ignore();
     _player.dispose();
     Api.get('stopStreams');
     // Not while the tree is being torn down: listeners rebuild other pages.
@@ -345,8 +368,10 @@ class _PlayerPageState extends State<PlayerPage> {
       _tried = [];
       _quality = '';
       _reconnects = 0;
+      _subDelay = 0;
     });
-    final saved = (Api.get('seriesProgress', {'key': d.seriesKey, 'url': d.anime['url']}) as List).firstWhere(
+    (_player.platform as NativePlayer).setProperty('sub-delay', '0').ignore();
+    final saved =(Api.get('seriesProgress', {'key': d.seriesKey, 'url': d.anime['url']}) as List).firstWhere(
       (p) => p['episode_number'] == _ep['num'],
       orElse: () => null,
     );
@@ -539,8 +564,10 @@ class _PlayerPageState extends State<PlayerPage> {
     _hideTimer?.cancel();
     if (!mounted) return;
     setState(() => _controlsVisible = true);
-    _hideTimer = Timer(const Duration(milliseconds: 3000), () => setState(() => _controlsVisible = false));
+    _hideTimer = Timer(const Duration(milliseconds: 3000), _hideControls);
   }
+
+  void _hideControls() => setState(() => _controlsVisible = _timing = false);
 
   /// Bottom sheet menus keep the controls up while they're open.
   Future<T?> _menu<T>(String header, List<(String, T, bool)> items) async {
@@ -578,9 +605,40 @@ class _PlayerPageState extends State<PlayerPage> {
       for (final t in tracks.audio.where((t) => real.hasMatch(t.id))) ('♪  ${label(t.id, t.title, t.language)}', t, current.audio == t),
       for (final t in tracks.subtitle.where((t) => real.hasMatch(t.id))) (label(t.id, t.title, t.language), t, current.subtitle == t),
       ('Subtitles off', SubtitleTrack.no(), current.subtitle.id == 'no'),
+      if (real.hasMatch(current.subtitle.id)) ...[
+        ('Subtitle size · ${_scaleName(_subScale)}', 'size', false),
+        ('Subtitle timing · ${_delayName()}', 'timing', false),
+      ],
     ]);
     if (choice is AudioTrack) _player.setAudioTrack(choice);
     if (choice is SubtitleTrack) _player.setSubtitleTrack(choice);
+    if (choice == 'size') _sizeMenu();
+    if (choice == 'timing') {
+      setState(() => _timing = true);
+      _poke();
+    }
+  }
+
+  String _scaleName(double v) => v == 1 ? 'Normal' : '${(v * 100).round()}%';
+
+  // Positive is later, as mpv counts it.
+  String _delayName() => '${_subDelay < 0 ? '−' : '+'}${_subDelay.abs().toStringAsFixed(1)} s';
+
+  Future<void> _sizeMenu() async {
+    final v = await _menu('Subtitle size', [
+      for (final v in [0.75, 1.0, 1.25, 1.5, 2.0]) (_scaleName(v), v, _subScale == v),
+    ]);
+    if (v == null) return;
+    setState(() => _subScale = v);
+    (_player.platform as NativePlayer).setProperty('sub-scale', '$v').ignore();
+    Api.setSetting('subtitleScale', v);
+    _showOsd(Icons.format_size_rounded, _scaleName(v));
+  }
+
+  void _nudgeSubs(double sec) {
+    setState(() => _subDelay = ((_subDelay + sec) * 10).round() / 10);
+    (_player.platform as NativePlayer).setProperty('sub-delay', '$_subDelay').ignore();
+    _poke();
   }
 
   Future<void> _anime4kMenu() async {
@@ -595,6 +653,7 @@ class _PlayerPageState extends State<PlayerPage> {
   Widget build(BuildContext context) {
     final playing = _phase == _Phase.playing;
     final card = _phase == _Phase.error || _phase == _Phase.ended;
+    _updatePip(); // every state it depends on rebuilds the page
     return Scaffold(
       key: _scaffold,
       backgroundColor: Colors.black,
@@ -607,79 +666,95 @@ class _PlayerPageState extends State<PlayerPage> {
           if (_video case final video? when _emulator)
             SubtitleView(
               controller: video,
-              configuration: const SubtitleViewConfiguration(
+              configuration: SubtitleViewConfiguration(
                 style: TextStyle(
                   height: 1.4,
-                  fontSize: 32,
+                  fontSize: 32 * _subScale,
                   color: Colors.white,
                   fontWeight: FontWeight.w600,
                   shadows: [Shadow(blurRadius: 3), Shadow(blurRadius: 6)],
                 ),
               ),
             ),
-          // Series art behind the loading screen and the end/error card.
-          if (!_started || card) _backdrop(),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => _controlsVisible && _started ? setState(() => _controlsVisible = false) : _poke(),
-            onDoubleTapDown: (e) {
-              if (!_started || !playing) return;
-              final third = e.localPosition.dx / context.size!.width;
-              third < 0.35 ? _seekBy(-10) : (third > 0.65 ? _seekBy(10) : _togglePause());
-            },
-            onDoubleTap: () {},
-          ),
-          if (!_started && !card) _loadingScreen(),
-          if (_started && (_phase == _Phase.resolving || (playing && _player.state.buffering)))
-            const Center(child: CircularProgressIndicator(color: Colors.white)),
-          if (_osd case (final icon, final label))
-            Align(
-              alignment: _showControls ? const Alignment(0, 0.4) : Alignment.center, // clear of the play button and resume prompt
-              child: _pill([Icon(icon, color: Colors.white, size: 32), if (label.isNotEmpty) _white(label)]),
+          // The picture-in-picture window shows only the video.
+          if (!_inPip) ...[
+            // Series art behind the loading screen and the end/error card.
+            if (!_started || card) _backdrop(),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _controlsVisible && _started ? _hideControls() : _poke(),
+              onDoubleTapDown: (e) {
+                if (!_started || !playing) return;
+                final third = e.localPosition.dx / context.size!.width;
+                third < 0.35 ? _seekBy(-10) : (third > 0.65 ? _seekBy(10) : _togglePause());
+              },
+              onDoubleTap: () {},
             ),
-          if (_showControls) ..._controls(),
-          if (_developerMode && _showStats)
-            Positioned(
-              top: _showControls ? 72 : 16,
-              left: 16,
-              bottom: _showControls ? 110 : 16,
-              child: SafeArea(
-                child: SingleChildScrollView(
-                  child: PlaybackStats(readProperty: (_player.platform as NativePlayer).getProperty),
+            if (!_started && !card) _loadingScreen(),
+            if (_started && (_phase == _Phase.resolving || (playing && _player.state.buffering)))
+              const Center(child: CircularProgressIndicator(color: Colors.white)),
+            if (_osd case (final icon, final label))
+              Align(
+                alignment: _showControls ? const Alignment(0, 0.4) : Alignment.center, // clear of the play button and resume prompt
+                child: _pill([Icon(icon, color: Colors.white, size: 32), if (label.isNotEmpty) _white(label)]),
+              ),
+            if (_showControls) ..._controls(),
+            if (_timing && _showControls && _started)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 110,
+                child: Center(
+                  child: _pill([
+                    IconButton(color: Colors.white, icon: const Icon(Icons.remove_rounded), onPressed: () => _nudgeSubs(-0.1)),
+                    _white('Subtitles ${_delayName()}'),
+                    IconButton(color: Colors.white, icon: const Icon(Icons.add_rounded), onPressed: () => _nudgeSubs(0.1)),
+                  ]),
                 ),
               ),
-            ),
-          if (_started && playing && (_inOp || _inEd))
-            Positioned(
-              right: 24,
-              bottom: _showControls ? 110 : 24,
-              child: FilledButton.icon(
-                icon: const Icon(Icons.fast_forward_rounded),
-                label: Text(_inOp ? 'Skip intro' : 'Skip outro'),
-                onPressed: _skipSegment,
-              ),
-            ),
-          if (_resumePrompt && _started)
-            Positioned(
-              top: 72,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: _pill([
-                  const Icon(Icons.history_rounded, color: Colors.white),
-                  _white('Resumed at ${formatTime(_resumeAt)}'),
-                  TextButton(
-                    onPressed: () {
-                      _seek(0);
-                      setState(() => _resumePrompt = false);
-                    },
-                    child: const Text('Start over'),
+            if (_developerMode && _showStats)
+              Positioned(
+                top: _showControls ? 72 : 16,
+                left: 16,
+                bottom: _showControls ? 110 : 16,
+                child: SafeArea(
+                  child: SingleChildScrollView(
+                    child: PlaybackStats(readProperty: (_player.platform as NativePlayer).getProperty),
                   ),
-                ]),
+                ),
               ),
-            ),
-          if (_countdownLeft > 0) Positioned(right: 24, bottom: 110, child: _upNext()),
-          if (card) Center(child: _endCard()),
+            if (_started && playing && (_inOp || _inEd))
+              Positioned(
+                right: 24,
+                bottom: _showControls ? 110 : 24,
+                child: FilledButton.icon(
+                  icon: const Icon(Icons.fast_forward_rounded),
+                  label: Text(_inOp ? 'Skip intro' : 'Skip outro'),
+                  onPressed: _skipSegment,
+                ),
+              ),
+            if (_resumePrompt && _started)
+              Positioned(
+                top: 72,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: _pill([
+                    const Icon(Icons.history_rounded, color: Colors.white),
+                    _white('Resumed at ${formatTime(_resumeAt)}'),
+                    TextButton(
+                      onPressed: () {
+                        _seek(0);
+                        setState(() => _resumePrompt = false);
+                      },
+                      child: const Text('Start over'),
+                    ),
+                  ]),
+                ),
+              ),
+            if (_countdownLeft > 0) Positioned(right: 24, bottom: 110, child: _upNext()),
+            if (card) Center(child: _endCard()),
+          ],
         ],
       ),
     );

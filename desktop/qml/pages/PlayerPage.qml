@@ -53,10 +53,13 @@ FocusScope {
     property string anime4k: Api.setting("anime4k")
     property bool downloadingShaders
     property var anime4kModes: Api.get("anime4kModes")
+    property real subScale: Number(Api.setting("subtitleScale")) || 1
+    property real subDelay // per episode: each file is timed on its own
+    property bool timing // the subtitle timing bar is open
     readonly property bool autoplay: Api.setting("autoplay") === "true"
     readonly property bool autoSkip: Api.setting("autoSkip") === "true"
     property bool controlsVisible: true
-    readonly property bool menuOpen: speedMenu.opened || trackMenu.opened || a4kMenu.opened || qualityMenu.opened || episodesDrawer.opened
+    readonly property bool menuOpen: speedMenu.opened || trackMenu.opened || subSizeMenu.opened || a4kMenu.opened || qualityMenu.opened || episodesDrawer.opened
     readonly property bool showControls: controlsVisible || mpv.paused || phase !== "playing" || !started || menuOpen
     readonly property bool loadingScreen: !started && (phase === "resolving" || phase === "playing")
 
@@ -129,6 +132,8 @@ FocusScope {
             save(false);
         Api.forget(request);
         mpv.command(["stop"]);
+        subDelay = 0;
+        mpv.setProp("sub-delay", "0");
         index = i;
         phase = "resolving";
         status = `Looking up episode ${ep.num} on ${sourceName}…`;
@@ -321,6 +326,28 @@ FocusScope {
         osd.show("speed", v + "×");
     }
 
+    function scaleName(v: real): string {
+        return v === 1 ? "Normal" : `${Math.round(v * 100)}%`;
+    }
+
+    function setSubScale(v: real): void {
+        subScale = v;
+        mpv.setProp("sub-scale", String(v));
+        Api.setSetting("subtitleScale", v);
+        osd.show("format_size", scaleName(v));
+    }
+
+    // Positive is later, as mpv counts it.
+    function delayName(): string {
+        return `${subDelay < 0 ? "−" : "+"}${Math.abs(subDelay).toFixed(1)} s`;
+    }
+
+    function nudgeSubs(sec: real): void {
+        subDelay = Math.round((subDelay + sec) * 10) / 10;
+        mpv.setProp("sub-delay", String(subDelay));
+        osd.show("subtitles", `Subtitles ${delayName()}`);
+    }
+
     function skipSegment(): void {
         if (inOp)
             root.seek(skip.op[1]);
@@ -348,6 +375,8 @@ FocusScope {
 
     focus: true
     Component.onCompleted: forceActiveFocus()
+    onShowControlsChanged: if (!showControls)
+        timing = false
     onStatusChanged: {
         slow = false;
         slowTimer.restart();
@@ -356,8 +385,8 @@ FocusScope {
     Keys.onPressed: e => {
         if (e.key !== Qt.Key_I)
             poke();
-        // Held keys repeat seeks and volume steps only; a held N would skip through episodes.
-        if (e.isAutoRepeat && ![Qt.Key_Left, Qt.Key_Right, Qt.Key_J, Qt.Key_L, Qt.Key_Up, Qt.Key_Down].includes(e.key))
+        // Held keys repeat seeks, volume and subtitle timing steps only; a held N would skip through episodes.
+        if (e.isAutoRepeat && ![Qt.Key_Left, Qt.Key_Right, Qt.Key_J, Qt.Key_L, Qt.Key_Up, Qt.Key_Down, Qt.Key_Z, Qt.Key_X].includes(e.key))
             return;
         switch (e.key) {
         case Qt.Key_Space:
@@ -394,6 +423,12 @@ FocusScope {
             break;
         case Qt.Key_S:
             skipSegment();
+            break;
+        case Qt.Key_Z:
+            nudgeSubs(-0.1);
+            break;
+        case Qt.Key_X:
+            nudgeSubs(0.1);
             break;
         case Qt.Key_I:
             if (!root.app.developerMode || (e.modifiers & ~Qt.ShiftModifier))
@@ -454,6 +489,7 @@ FocusScope {
             setProp("demuxer-readahead-secs", "20");
             setProp("audio-display", "no");
             setProp("keep-open", "no");
+            setProp("sub-scale", String(root.subScale));
             volume = Number(Api.setting("volume")) || 100;
         }
         onReadyChanged: if (ready)
@@ -1112,16 +1148,47 @@ FocusScope {
                                         type: t.type,
                                         id: t.id
                                     }));
+                            const subs = tracks.some(t => t.type === "sub" && t.selected);
                             items.push({
                                 text: "Subtitles off",
                                 icon: "subtitles_off",
-                                checked: !tracks.some(t => t.type === "sub" && t.selected),
+                                checked: !subs,
                                 type: "sub",
                                 id: "no"
                             });
+                            if (subs)
+                                items.push({
+                                    text: `Subtitle size · ${root.scaleName(root.subScale)}`,
+                                    icon: "format_size",
+                                    action: "size"
+                                }, {
+                                    text: `Subtitle timing · ${root.delayName()}`,
+                                    icon: "timer",
+                                    action: "timing"
+                                });
                             return items;
                         }
-                        onTriggered: item => mpv.setProp(item.type === "audio" ? "aid" : "sid", String(item.id))
+                        onTriggered: item => {
+                            if (item.action === "size")
+                                subSizeMenu.open();
+                            else if (item.action === "timing")
+                                root.timing = true;
+                            else
+                                mpv.setProp(item.type === "audio" ? "aid" : "sid", String(item.id));
+                        }
+                    }
+
+                    StyledMenu {
+                        id: subSizeMenu
+
+                        y: -height - 8
+                        header: "Subtitle size"
+                        model: [0.75, 1, 1.25, 1.5, 2].map(v => ({
+                                    text: root.scaleName(v),
+                                    value: v,
+                                    checked: root.subScale === v
+                                }))
+                        onTriggered: item => root.setSubScale(item.value)
                     }
                 }
                 IconButton {
@@ -1221,6 +1288,45 @@ FocusScope {
                 onClicked: {
                     root.seek(0);
                     root.resumePrompt = false;
+                }
+            }
+        }
+    }
+
+    StyledRect {
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: bottom.top
+        anchors.bottomMargin: Theme.padding.extraLarge
+        visible: root.timing && bottom.opacity > 0
+        implicitWidth: timingRow.implicitWidth + Theme.padding.small * 2
+        implicitHeight: timingRow.implicitHeight + Theme.padding.small * 2
+        radius: Theme.rounding.full
+        color: Theme.palette.surfaceContainerHigh
+
+        RowLayout {
+            id: timingRow
+
+            anchors.centerIn: parent
+            spacing: Theme.spacing.small
+
+            IconButton {
+                type: IconButton.Text
+                icon: "remove"
+                onClicked: {
+                    root.nudgeSubs(-0.1);
+                    root.poke();
+                }
+            }
+            StyledText {
+                text: `Subtitles ${root.delayName()}`
+                font: Theme.font.label.large
+            }
+            IconButton {
+                type: IconButton.Text
+                icon: "add"
+                onClicked: {
+                    root.nudgeSubs(0.1);
+                    root.poke();
                 }
             }
         }

@@ -23,8 +23,9 @@ You don't need an email address. There's no automatic password reset, so keep th
 | Preferred quality | Volume |
 | Which sources are on or off | Discord status (desktop) |
 | Your plugin repos | Debug logging |
-| TMDB API key | New episode alerts (Android) |
+| TMDB API key | New episode alerts |
 | | When closed (desktop) |
+| | Subtitle size |
 
 The plugin repo list syncs, but scripts must be downloaded on each device. Open **Plugins** to install them.
 
