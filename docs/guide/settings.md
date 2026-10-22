@@ -44,7 +44,7 @@ See [managing plugins](../plugins/managing-plugins.md) for adding repos, trust p
 - **Linux AppImage:** the AppImage file is replaced with the new one, then Aikatsu restarts. The folder holding it must be writable.
 - **Android:** the first time, Android asks you to let Aikatsu install apps. Turn that on, go back, and tap **Update** again. Android then asks you to confirm the install.
 
-The Windows ZIP and builds from source can't replace themselves, so the dialog offers **Download** instead, which opens the release page. Updating keeps your history, settings, and downloads.
+The Windows ZIP, macOS, the Linux `.deb` and `.tar.gz`, and builds from source can't replace themselves, so the dialog offers **Download** instead, which opens the release page. Updating keeps your history, settings, and downloads.
 
 ## History
 

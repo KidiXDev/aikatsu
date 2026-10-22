@@ -55,6 +55,18 @@ QMAKE=/usr/bin/qmake6 cargo build --release
 
 Adjust the path for your Qt installation.
 
+## macOS desktop
+
+Use a current stable Rust toolchain, Xcode's command-line tools, Qt 6.11 for macOS including Qt Image Formats, and Homebrew's `mpv` and `pkgconf`. With aqt, install `mac desktop 6.11.2 clang_64 --modules qtimageformats`.
+
+```sh
+brew install mpv pkgconf
+QMAKE=~/Qt/6.11.2/macos/bin/qmake cargo build --release
+./target/release/aikatsu
+```
+
+That binary loads Qt and libmpv from where they're installed. The [release workflow](https://github.com/KidiXDev/aikatsu/blob/main/.github/workflows/release.yml) builds the self-contained `Aikatsu.app`: `dylibbundler` copies in libmpv and its Homebrew libraries, then `macdeployqt` adds Qt. The bundle is signed ad hoc, not notarized.
+
 ## Windows desktop
 
 Use the MSVC Rust toolchain, Visual Studio Build Tools, CMake, NASM, Qt 6.11 for MSVC including Qt Image Formats, and a libmpv development package with an MSVC import library. With aqt, include `--modules qtimageformats` when installing Qt.
@@ -148,4 +160,4 @@ The root `Cargo.toml` supplies the desktop, core, and mobile Rust package versio
 
 The default sync server is compiled in from the `AIKATSU_SYNC_SERVER` environment variable, which the release workflow sets from a repository secret. Builds without it have no default: users enter a server in Settings before signing in. Set it locally to test against your own server, for example `AIKATSU_SYNC_SERVER=http://localhost:3000 cargo run`.
 
-Pushing a `v` version tag starts the existing release workflow. Android release builds use the tag for their visible version and the workflow run number for the build number. Signing secrets are required for published Android releases. Check the workflow before changing release behavior, especially signing and APK ABI handling.
+Pushing a `v` version tag starts the existing release workflow. It builds Windows (setup and ZIP), Linux (AppImage, `.deb` and `.tar.gz`, all from one AppDir), macOS (an Apple silicon `.dmg`), and Android. `desktop/packaging/deb.sh` builds the `.deb` and works out its dependencies from the libraries the AppDir leaves to the system. Run the workflow by hand to test the builds without publishing. Android release builds use the tag for their visible version and the workflow run number for the build number. Signing secrets are required for published Android releases. Check the workflow before changing release behavior, especially signing and APK ABI handling.

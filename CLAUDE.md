@@ -58,7 +58,7 @@ The UIs only see the settings listed in `SETTING_DEFAULTS` in `api.rs`. Other ke
 - Linux: replaces the AppImage;
 - Android: hands the APK to `PackageInstaller` in `MainActivity.kt`.
 
-The Windows ZIP and source builds only get a link to the release page.
+The Windows ZIP, macOS, the Linux `.deb` and `.tar.gz`, and source builds only get a link to the release page.
 
 **HTTP.** `core/src/http.rs` has two clients:
 - `CHROME` (wreq with a Chrome emulation) for scraping sites that block non-browsers;
@@ -79,5 +79,5 @@ Hosts that mpv can't play directly go through local relays in `core/src/proxy.rs
 - **Icons:** the repo keeps the full Material Symbols font (14 MB of RAM). `release.yml` runs `desktop/assets/fonts/subset_icons.py` to cut it down to the icon names in the QML, so name each icon as a whole string literal somewhere in the QML; a name assembled at runtime ends up missing from releases.
 - **Comments and UI copy:** comments explain a non-obvious *why*, not what the code does. Keep UI text short. `DESIGN.md` has the visual tokens: colours, radii, motion.
 - **Docs:** user-visible behaviour is described in `docs/guide/*.md`. Update the matching page when behaviour changes.
-- **Versions:** the root `Cargo.toml` `version` drives every crate. Keep `mobile/pubspec.yaml` and the workspace entries in `Cargo.lock` in step. A `v*` tag runs `.github/workflows/release.yml`, which builds Windows, Linux and Android.
+- **Versions:** the root `Cargo.toml` `version` drives every crate. Keep `mobile/pubspec.yaml` and the workspace entries in `Cargo.lock` in step. A `v*` tag runs `.github/workflows/release.yml`, which builds Windows, Linux (AppImage, `.deb`, `.tar.gz`), macOS (`.dmg`) and Android.
 - **Android release builds:** keep `--split-per-abi`. Each APK must carry only its own ABI's native libraries; see the README.
