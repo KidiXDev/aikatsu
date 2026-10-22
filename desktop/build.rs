@@ -63,6 +63,23 @@ fn embed_windows_icon() {
     }
 }
 
+fn declare_mpvitem_base() {
+    let Some(dir) = std::fs::read_to_string(".qmlls.ini")
+        .ok()
+        .and_then(|ini| ini.lines().find_map(|l| l.strip_prefix("buildDir=")).map(|d| PathBuf::from(d.trim_matches('"'))))
+    else {
+        return;
+    };
+    let path = dir.join("Aikatsu").join("plugin.qmltypes");
+    let Ok(types) = std::fs::read_to_string(&path) else { return };
+    let Some(end) = types.rfind('}') else { return };
+    if types.contains("name: \"QQuickFramebufferObject\"") {
+        return;
+    }
+    let base = "    Component {\n        name: \"QQuickFramebufferObject\"\n        accessSemantics: \"reference\"\n        prototype: \"QQuickItem\"\n    }\n";
+    let _ = std::fs::write(&path, format!("{}{base}{}", &types[..end], &types[end..]));
+}
+
 fn main() {
     if std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
         embed_windows_icon();
@@ -106,4 +123,5 @@ fn main() {
     }
     // SAFETY: only adds an include path
     unsafe { builder.cc_builder(|cc| { cc.include(&mpv_include); }) }.build();
+    declare_mpvitem_base();
 }
