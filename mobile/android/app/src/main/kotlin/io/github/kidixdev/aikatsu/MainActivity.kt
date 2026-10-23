@@ -32,6 +32,7 @@ class MainActivity : FlutterActivity() {
     private var folderResult: MethodChannel.Result? = null
     private var audio: MethodChannel? = null
     private var pip: MethodChannel? = null
+    private var links: MethodChannel? = null
     private var pipEnabled = false // the player is playing an episode
     private var pipRatio = Rational(16, 9)
 
@@ -99,6 +100,20 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+        // Watch-together links: the one that opened the app (once), then any opened while it runs.
+        links = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "io.github.kidixdev.aikatsu/link").apply {
+            setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "initial" -> result.success(partyLink(intent).also { intent.data = null })
+                    "share" -> {
+                        val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, call.argument<String>("text"))
+                        startActivity(Intent.createChooser(send, null))
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+        }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "io.github.kidixdev.aikatsu/files")
             .setMethodCallHandler { call, result ->
                 if (call.method != "pickFolder") {
@@ -182,8 +197,15 @@ class MainActivity : FlutterActivity() {
         pip?.invokeMethod("changed", isInPictureInPictureMode)
     }
 
+    private fun partyLink(intent: Intent?): String? =
+        intent?.takeIf { it.action == Intent.ACTION_VIEW }?.dataString?.takeIf { it.startsWith("aikatsu://party") }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        partyLink(intent)?.let {
+            links?.invokeMethod("open", it)
+            return
+        }
         if (intent.action != INSTALL_STATUS) return
         when (intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)) {
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {

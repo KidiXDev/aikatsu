@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../api.dart';
+import '../party.dart';
 import '../widgets.dart';
 import 'account.dart';
 import 'onboarding.dart';
@@ -614,6 +615,12 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               ),
             ],
+            if (_signedIn)
+              ListTile(
+                title: const Text('Join a party', style: TextStyle(fontWeight: FontWeight.w600)),
+                trailing: const Icon(Icons.group_add_rounded),
+                onTap: () => askToJoin(context),
+              ),
             if (_signedIn)
               ListTile(
                 title: const Text('Devices', style: TextStyle(fontWeight: FontWeight.w600)),

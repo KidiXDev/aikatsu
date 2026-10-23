@@ -8,6 +8,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../api.dart';
+import '../party.dart';
 import '../playback_stats.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -90,7 +91,12 @@ class _PlayerPageState extends State<PlayerPage> {
   final bool _developerMode = Api.setting('developerMode') == 'true';
   double? _dragValue; // seek bar position while dragging
   (IconData, String)? _osd;
-  Timer? _hideTimer, _slowTimer, _resumeHide, _countdown, _osdTimer, _saveTimer;
+  Timer? _hideTimer, _slowTimer, _resumeHide, _countdown, _osdTimer, _saveTimer, _publishTimer, _followTimer;
+  String? _partyLink = Api.party.value['link'] as String?; // the party this player is in, which it leaves on closing
+  int _partyRev = toInt(Api.party.value['state']?['rev']);
+  Map<String, Object?>? _outgoing; // party changes waiting for _publishTimer
+  int _quietUntil = 0; // ms: our own change is on its way, so don't follow the party back
+  int _lastJump = 0;
 
   AnimeData get d => widget.data;
   Map<String, dynamic> get _ep => d.episodes[_index];
@@ -157,6 +163,8 @@ class _PlayerPageState extends State<PlayerPage> {
     _saveTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (_phase == _Phase.playing && _player.state.playing && _duration > 0) _save();
     });
+    Api.party.addListener(_partyChanged);
+    _followTimer = Timer.periodic(const Duration(seconds: 2), (_) => _follow());
     _lifecycle = AppLifecycleListener(onHide: _pause);
     _audio.setMethodCallHandler((call) async {
       if (call.method == 'noisy') _pause();
@@ -179,6 +187,7 @@ class _PlayerPageState extends State<PlayerPage> {
   /// Leaving the app or losing the headphones; Android may kill the app once it's in the background.
   void _pause() {
     _player.pause();
+    _publish({'paused': true});
     if (_phase == _Phase.playing) _save();
   }
 
@@ -226,9 +235,13 @@ class _PlayerPageState extends State<PlayerPage> {
     if (_phase == _Phase.playing) _save();
     Api.call('syncNow').ignore();
     _request++;
-    for (final t in [_hideTimer, _slowTimer, _resumeHide, _countdown, _osdTimer, _saveTimer]) {
+    for (final t in [_hideTimer, _slowTimer, _resumeHide, _countdown, _osdTimer, _saveTimer, _publishTimer, _followTimer]) {
       t?.cancel();
     }
+    Api.party.removeListener(_partyChanged);
+    // Unless a link already took us into another one.
+    final leave = _partyLink != null && Api.party.value['link'] == _partyLink;
+    if (leave) Api.get('partyLeave');
     for (final s in _subs) {
       s.cancel();
     }
@@ -240,7 +253,10 @@ class _PlayerPageState extends State<PlayerPage> {
     _player.dispose();
     Api.get('stopStreams');
     // Not while the tree is being torn down: listeners rebuild other pages.
-    Future.microtask(() => Api.historyRevision.value++);
+    Future.microtask(() {
+      Api.historyRevision.value++;
+      if (leave) Api.party.value = Map<String, dynamic>.from(Api.get('party'));
+    });
     WakelockPlus.disable();
     SystemChrome.setPreferredOrientations([]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -378,6 +394,15 @@ class _PlayerPageState extends State<PlayerPage> {
     _resumeAt = saved != null && saved['completed'] != true && toInt(saved['playback_time']) > 30
         ? toInt(saved['playback_time']).toDouble()
         : 0;
+    final party = Api.get('party');
+    if (party['active'] == true) {
+      _resumeAt = 0;
+      if (toDouble(party['state']['episode']) == toDouble(_ep['num'])) {
+        _startAt = toDouble(party['state']['position']);
+      } else {
+        _publish({'episode': _ep['num'], 'position': 0, 'paused': false});
+      }
+    }
     _fetchSkip();
     if (_localFile case final file?) {
       _load(req, {'url': file});
@@ -537,7 +562,13 @@ class _PlayerPageState extends State<PlayerPage> {
     _showOsd(Icons.auto_awesome_rounded, _modeName(mode));
   }
 
-  void _seek(num sec) => _player.seek(Duration(milliseconds: (sec * 1000).round()));
+  void _seek(num sec) {
+    _jump(sec);
+    _publish({'position': sec});
+  }
+
+  /// Without telling the party: following it.
+  void _jump(num sec) => _player.seek(Duration(milliseconds: (sec * 1000).round()));
 
   void _seekBy(int sec) {
     _seek(max(0, _position + sec));
@@ -545,7 +576,73 @@ class _PlayerPageState extends State<PlayerPage> {
   }
 
   void _togglePause() {
+    final pausing = _player.state.playing;
     _player.playOrPause();
+    _publish({'paused': pausing});
+  }
+
+  /// Our own play, pause, seek, speed or episode change, for the rest of the party.
+  void _publish(Map<String, Object?> changes) {
+    if (Api.party.value['active'] != true) return;
+    _quietUntil = DateTime.now().millisecondsSinceEpoch + 1500;
+    _outgoing = {...?_outgoing, ...changes};
+    _publishTimer?.cancel();
+    _publishTimer = Timer(const Duration(milliseconds: 250), () {
+      final st = _player.state;
+      Api.call('partyUpdate', {'episode': _ep['num'], 'position': _position, 'paused': !st.playing, 'speed': st.rate, ...?_outgoing}).ignore();
+      _outgoing = null;
+    });
+  }
+
+  /// Into step with the party: its episode, then play or pause, speed and position.
+  void _follow() {
+    final p = Api.get('party');
+    if (!mounted || p['active'] != true || DateTime.now().millisecondsSinceEpoch < _quietUntil) return;
+    final s = p['state'];
+    if (toDouble(s['episode']) != toDouble(_ep['num'])) {
+      final i = d.episodes.indexWhere((e) => toDouble(e['num']) == toDouble(s['episode']));
+      if (i >= 0) _start(i);
+      return;
+    }
+    if (!_started) return;
+    final st = _player.state;
+    if (st.playing == (s['paused'] == true)) s['paused'] == true ? _player.pause() : _player.play();
+    if (st.rate != toDouble(s['speed'])) _player.setRate(toDouble(s['speed']));
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (!st.buffering && (_position - toDouble(s['position'])).abs() > 2 && now - _lastJump > 3000) {
+      _lastJump = now;
+      _jump(toDouble(s['position']));
+    }
+  }
+
+  void _partyChanged() {
+    final p = Api.party.value;
+    final s = p['state'];
+    if (s != null && toInt(s['rev']) > _partyRev) {
+      if (_partyRev > 0 && s['by'] != p['me'] && mounted) {
+        _showOsd(s['paused'] == true ? Icons.pause_rounded : Icons.play_arrow_rounded, '${s['by']}');
+      }
+      _partyRev = toInt(s['rev']);
+    }
+    _follow();
+    _refresh();
+  }
+
+  Future<void> _partySheet() async {
+    _hideTimer?.cancel();
+    await showPartySheet(
+      context,
+      playback: () => {
+        'anime': {...d.anime, 'anilistId': toInt(_meta['anilist_id']) > 0 ? toInt(_meta['anilist_id']) : toInt(d.anime['anilistId'])},
+        'episode': _ep['num'],
+        'position': _position,
+        'paused': !_player.state.playing,
+        'speed': _player.state.rate,
+      },
+    );
+    _partyLink = Api.party.value['link'] as String?;
+    _partyRev = toInt(Api.party.value['state']?['rev']);
+    _poke();
   }
 
   void _skipSegment() {
@@ -596,6 +693,7 @@ class _PlayerPageState extends State<PlayerPage> {
     if (v == null) return;
     _player.setRate(v);
     _showOsd(Icons.speed_rounded, '$v×');
+    _publish({'speed': v});
   }
 
   Future<void> _trackMenu() async {
@@ -825,6 +923,7 @@ class _PlayerPageState extends State<PlayerPage> {
     final position = _dragValue != null ? _dragValue! * duration : _position;
     final buffered = duration > 0 ? (_player.state.buffer.inMilliseconds / 1000 / duration).clamp(0.0, 1.0) : 0.0;
     final epTitle = d.episodeTitle(_ep);
+    final party = Api.party.value;
     final bottom = _started && (_phase == _Phase.playing || _phase == _Phase.resolving);
     const shade = [Colors.black87, Colors.transparent];
     return [
@@ -861,6 +960,19 @@ class _PlayerPageState extends State<PlayerPage> {
                       ),
                     ),
                   ),
+                  if (d.anime['source'] != 'local')
+                    IconButton(
+                      tooltip: 'Watch together',
+                      onPressed: _partySheet,
+                      icon: Badge(
+                        isLabelVisible: party['active'] == true,
+                        label: Text('${(party['members'] as List?)?.length ?? 0}'),
+                        child: Icon(
+                          party['active'] == true && party['connected'] != true ? Icons.sync_problem_rounded : Icons.group_rounded,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
                   _white('$_sourceName${_quality.isNotEmpty && _quality != 'best' ? '  ·  $_quality' : ''}', style: t.labelLarge),
                 ],
               ),
