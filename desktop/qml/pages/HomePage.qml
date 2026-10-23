@@ -102,8 +102,7 @@ Item {
     }
 
     Component.onCompleted: show()
-    onVisibleChanged: if (visible)
-        show()
+    onVisibleChanged: visible ? show() : trailer.close()
     onHeroChanged: {
         heroMeta = null;
         if (hero && hero.anilist_id > 0) {
@@ -132,6 +131,7 @@ Item {
         contentHeight: content.implicitHeight + Theme.padding.extraLarge
         clip: true
         ScrollBar.vertical: StyledScrollBar {}
+        onContentYChanged: trailer.close()
 
         ColumnLayout {
             id: content
@@ -410,6 +410,7 @@ Item {
                         infoDialog.item = item;
                         infoDialog.open();
                     }
+                    onPeek: (card, item) => trailer.arm(card, item)
                 }
             }
 
@@ -439,6 +440,234 @@ Item {
         }
     }
 
+    // A shelf poster hovered for a moment plays its trailer over the card.
+    // mpv's ytdl_hook resolves the page with yt-dlp.
+    MouseArea {
+        id: trailer
+
+        property PosterCard card
+        property var item: null // a shelf item: {meta, badge, subtitle, note}
+        property point at // the hovered cover's centre
+        property bool shown
+        property bool playing
+        property bool failed
+        property bool sound
+        property string ytdlp
+        readonly property bool keep: containsMouse || (card?.hovered ?? false)
+
+        function arm(c: PosterCard, it: var): void {
+            if (shown && c === card)
+                return;
+            close();
+            if (!it.meta.trailer)
+                return;
+            card = c;
+            item = it;
+            dwell.restart();
+        }
+
+        function open(): void {
+            at = card.mapToItem(root, card.width / 2, card.width * 0.725);
+            failed = false;
+            shown = true;
+            if (ytdlp !== "")
+                return;
+            const it = item;
+            Api.call("ytdlp", {}, path => {
+                trailer.ytdlp = path;
+                if (trailer.item === it)
+                    trailer.play();
+            }, () => {
+                if (trailer.item === it)
+                    trailer.failed = true;
+            });
+        }
+
+        function play(): void {
+            const mpv = video.item as MpvItem;
+            if (!mpv?.ready || ytdlp === "")
+                return;
+            mpv.command(["change-list", "script-opts", "append", `ytdl_hook-ytdl_path=${ytdlp}`]);
+            mpv.command(["loadfile", item.meta.trailer]);
+        }
+
+        function close(): void {
+            dwell.stop();
+            shown = playing = false;
+            card = null;
+        }
+
+        z: 1
+        x: Math.max(Theme.padding.extraLarge, Math.min(root.width - width - Theme.padding.extraLarge, at.x - width / 2))
+        y: Math.max(Theme.padding.extraLarge, Math.min(root.height - height - Theme.padding.extraLarge, at.y - height / 2))
+        width: 360
+        height: body.implicitHeight
+        visible: opacity > 0
+        enabled: shown
+        opacity: shown ? 1 : 0
+        scale: shown ? 1 : 0.92
+        hoverEnabled: true
+        cursorShape: Qt.PointingHandCursor
+        onKeepChanged: if (!keep)
+            leave.restart()
+        onClicked: {
+            infoDialog.item = item;
+            infoDialog.open();
+            close();
+        }
+        onWheel: wheel => {
+            close();
+            wheel.accepted = false;
+        }
+
+        Behavior on opacity {
+            Anim {
+                type: Anim.FastEffects
+            }
+        }
+        Behavior on scale {
+            Anim {
+                type: Anim.FastSpatial
+            }
+        }
+
+        Timer {
+            id: dwell
+
+            interval: 1500
+            onTriggered: if (trailer.keep)
+                trailer.open()
+        }
+        // Grace for crossing from the card onto the popover.
+        Timer {
+            id: leave
+
+            interval: 200
+            onTriggered: if (!trailer.keep)
+                trailer.close()
+        }
+
+        Elevation {
+            anchors.fill: parent
+            radius: Theme.rounding.large
+            level: 4
+        }
+
+        Rectangle {
+            id: mask
+
+            anchors.fill: parent
+            radius: Theme.rounding.large
+            visible: false
+            layer.enabled: true
+        }
+
+        Rectangle {
+            id: body
+
+            readonly property var m: trailer.item?.meta ?? ({})
+
+            anchors.fill: parent
+            implicitHeight: col.implicitHeight
+            color: Theme.palette.surfaceContainer
+            layer.enabled: true
+            layer.effect: MultiEffect {
+                maskEnabled: true
+                maskSource: mask
+                maskThresholdMin: 0.5
+                maskSpreadAtMin: 1
+            }
+
+            ColumnLayout {
+                id: col
+
+                width: parent.width
+                spacing: 0
+
+                Item {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: width * 9 / 16
+
+                    Loader {
+                        id: video
+
+                        anchors.fill: parent
+                        active: trailer.shown
+
+                        sourceComponent: MpvItem {
+                            Component.onCompleted: {
+                                setProp("mute", trailer.sound ? "no" : "yes");
+                                setProp("loop-file", "inf");
+                                setProp("ytdl-format", "bv*[height<=720][vcodec^=avc1]+ba/bv*[height<=720]+ba/b"); // H.264 decodes on any GPU
+                                volume = Number(Api.setting("volume")) || 100;
+                            }
+                            onReadyChanged: trailer.play()
+                            onPlaybackRestart: trailer.playing = true
+                            onEndFile: reason => {
+                                if (reason === "error")
+                                    trailer.failed = true;
+                            }
+                        }
+                    }
+
+                    // Over the video rather than hiding it: Qt skips drawing transparent items, which would hold up mpv.
+                    ClippedImage {
+                        anchors.fill: parent
+                        radius: 0
+                        source: body.m.banner || body.m.cover || ""
+                        opacity: trailer.playing ? 0 : 1
+
+                        Behavior on opacity {
+                            Anim {
+                                type: Anim.SlowEffects
+                            }
+                        }
+                    }
+
+                    Loading {
+                        anchors.centerIn: parent
+                        size: 32
+                        visible: trailer.shown && !trailer.playing && !trailer.failed
+                    }
+
+                    IconButton {
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        anchors.margins: Theme.spacing.small
+                        visible: trailer.playing
+                        type: IconButton.Tonal
+                        icon: trailer.sound ? "volume_up" : "volume_off"
+                        onClicked: {
+                            trailer.sound = !trailer.sound;
+                            (video.item as MpvItem)?.setProp("mute", trailer.sound ? "no" : "yes");
+                        }
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    Layout.margins: Theme.padding.medium
+                    spacing: 2
+
+                    StyledText {
+                        Layout.fillWidth: true
+                        text: body.m.title_english || body.m.title_romaji || ""
+                        font: Theme.font.title.small
+                        elide: Text.ElideRight
+                    }
+                    StyledText {
+                        Layout.fillWidth: true
+                        visible: text !== ""
+                        text: [trailer.item?.badge, trailer.item?.subtitle].filter(t => t).join(" · ")
+                        font: Theme.font.label.medium
+                        color: Theme.palette.onSurfaceVariant
+                        elide: Text.ElideRight
+                    }
+                }
+            }
+        }
+    }
+
     // A titled row of AniList posters, hidden when empty. The wheel scrolls the
     // page, so ‹ › page it sideways (drag and touchpad swipes work too).
     component Shelf: ColumnLayout {
@@ -447,6 +676,7 @@ Item {
         required property var modelData // {title, icon, items: [{meta, badge, subtitle, note}]}
 
         signal opened(var item)
+        signal peek(PosterCard card, var item)
 
         Layout.fillWidth: true
         visible: modelData.items.length > 0
@@ -526,6 +756,8 @@ Item {
             model: shelf.modelData.items
 
             delegate: PosterCard {
+                id: card
+
                 required property var modelData
 
                 title: modelData.meta.title_english || modelData.meta.title_romaji
@@ -533,6 +765,8 @@ Item {
                 image: modelData.meta.cover
                 badge: modelData.badge
                 onClicked: shelf.opened(modelData)
+                onHoveredChanged: if (hovered)
+                    shelf.peek(card, modelData)
             }
 
             Anim {
