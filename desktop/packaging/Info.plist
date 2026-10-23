@@ -28,6 +28,18 @@
     <true/>
     <key>NSSupportsAutomaticGraphicsSwitching</key>
     <true/>
+    <!-- Watch-together links; the app gets them as file-open events (cpp/mpvitem.cpp). -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>io.github.kidixdev.aikatsu.party</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>aikatsu</string>
+            </array>
+        </dict>
+    </array>
     <key>NSLocalNetworkUsageDescription</key>
     <string>Aikatsu shares your folders with your other devices and plays the ones they share.</string>
 </dict>
