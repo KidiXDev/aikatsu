@@ -28,6 +28,7 @@ export default defineConfig({
           { text: 'Your library', link: '/guide/local-library' },
           { text: 'History and settings', link: '/guide/settings' },
           { text: 'Sync between devices', link: '/guide/sync' },
+          { text: 'Watch together', link: '/guide/watch-together' },
           { text: 'Watchlist, AniList and MyAnimeList', link: '/guide/trackers' },
           { text: 'Run your own sync server', link: '/guide/self-hosting' },
           { text: 'Troubleshooting', link: '/guide/troubleshooting' }
