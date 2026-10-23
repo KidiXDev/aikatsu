@@ -45,12 +45,15 @@ Item {
         opacity: img.status === Image.Ready ? 1 : 0
 
         ShapePath {
-            // The fill is the whole picture at its own size, so crop it here as PreserveAspectCrop would.
-            readonly property real crop: img.implicitWidth > 0 ? Math.max(root.width / img.implicitWidth, root.height / img.implicitHeight) : 1
+            // The fill is the whole picture at its texture size over the device pixel ratio, while a raster Image's
+            // implicit size is in device pixels, so crop it here as PreserveAspectCrop would.
+            readonly property real fillWidth: img.implicitWidth / Screen.devicePixelRatio
+            readonly property real fillHeight: img.implicitHeight / Screen.devicePixelRatio
+            readonly property real crop: fillWidth > 0 ? Math.max(root.width / fillWidth, root.height / fillHeight) : 1
 
             strokeWidth: -1
             fillItem: img
-            fillTransform: PlanarTransform.fromAffineMatrix(crop, 0, 0, crop, (root.width - img.implicitWidth * crop) / 2, (root.height - img.implicitHeight * crop) / 2)
+            fillTransform: PlanarTransform.fromAffineMatrix(crop, 0, 0, crop, (root.width - fillWidth * crop) / 2, (root.height - fillHeight * crop) / 2)
 
             PathRectangle {
                 width: root.width
