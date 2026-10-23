@@ -139,6 +139,8 @@ pub struct Meta {
     pub relations: Vec<RelatedAnime>,
     #[serde(default)]
     pub recommendations: Vec<RecommendedAnime>,
+    #[serde(default)]
+    pub trailer: String,
 }
 
 impl Meta {
@@ -401,6 +403,11 @@ fn parse_media(m: &Value) -> Option<Meta> {
         staff,
         relations,
         recommendations,
+        trailer: match (m["trailer"]["site"].as_str(), m["trailer"]["id"].as_str()) {
+            (Some("youtube"), Some(id)) => format!("https://www.youtube.com/watch?v={id}"),
+            (Some("dailymotion"), Some(id)) => format!("https://www.dailymotion.com/video/{id}"),
+            _ => String::new(),
+        },
     };
     meta.season_map = season_map_from_relations(episodes, &m["relations"]["edges"]);
     Some(meta)
@@ -580,7 +587,7 @@ pub struct Discover {
 /// MEDIA_FIELDS without relations (lists don't need season maps), plus isAdult:
 /// the airing calendar has no filter for it.
 const LIST_FIELDS: &str = "id idMal title { romaji english native } coverImage { extraLarge large color } bannerImage
-    description(asHtml: false) genres averageScore episodes status startDate { year month } isAdult";
+    description(asHtml: false) genres averageScore episodes status startDate { year month } isAdult trailer { id site }";
 
 pub async fn discover() -> Result<Discover> {
     let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as i64;
@@ -842,12 +849,13 @@ mod tests {
                 {"episode": 9, "airingAt": 100, "media": show(2, true)}
             ]},
             "next": {"airingSchedules": [{"episode": 3, "airingAt": 300, "media": show(3, false)}, {"episode": 1, "airingAt": 250, "media": {"id": 0}}]},
-            "trending": {"media": [show(4, false)]},
+            "trending": {"media": [show(4, false), {"id": 5, "trailer": {"id": "abc", "site": "youtube"}}]},
             "comingSoon": null
         }));
         let sched: Vec<(i64, i64)> = d.schedule.iter().map(|a| (a.anime.anilist_id, a.episode)).collect();
         assert_eq!(sched, [(1, 5), (3, 3)], "adult and id-less entries dropped, oldest first");
         assert_eq!(d.trending[0].title_romaji, "Show 4");
+        assert_eq!((d.trending[0].trailer.as_str(), d.trending[1].trailer.as_str()), ("", "https://www.youtube.com/watch?v=abc"));
         assert!(d.coming_soon.is_empty());
     }
 

@@ -134,6 +134,8 @@ pub async fn call(method: &str, args: Value) -> Result<Value> {
             let d = db::cached("discover", std::time::Duration::from_secs(30 * 60), refresh(&args), meta::discover()).await?;
             Ok(serde_json::to_value(d)?)
         }
+        // Downloads yt-dlp the first time it's missing.
+        "ytdlp" => Ok(json!(download::ensure_ytdlp().await?)),
         // syncNow never fails; errors are in its status.
         "syncSetServer" => sync::set_server(s(&args, "server")),
         "syncSignIn" => sync::sign_in(s(&args, "username"), s(&args, "password"), args["create"].as_bool().unwrap_or(false)).await,
