@@ -1,9 +1,11 @@
 #include "mpvitem.h"
 #include "windowstate.h"
 
+#include <QtGui/QFileOpenEvent>
 #include <QtGui/QGuiApplication>
 #include <QtGui/QIcon>
 #include <QtGui/QColor>
+#include <QtCore/QPointer>
 #include <QtCore/QStandardPaths>
 #include <QtGui/QOpenGLContext>
 #include <QtGui/QSurfaceFormat>
@@ -16,6 +18,7 @@
 #include <QtQuick/QQuickWindow>
 #include <clocale>
 #include <stdexcept>
+#include <utility>
 
 #ifdef Q_OS_WIN
 #include <QtCore/qt_windows.h> // windows.h without the min/max macros
@@ -319,13 +322,42 @@ public:
     }
 };
 
+// macOS hands aikatsu: links to the running app as file-open events, not arguments, and
+// may do so before the window exists.
+class LinkOpener : public QObject {
+public:
+    QPointer<QObject> window;
+    QString pending;
+
+    void open(const QString &link) {
+        if (window) QMetaObject::invokeMethod(window, "openLink", Qt::QueuedConnection, Q_ARG(QString, link));
+        else pending = link;
+    }
+
+protected:
+    bool eventFilter(QObject *target, QEvent *event) override {
+        if (event->type() == QEvent::FileOpen) {
+            const QUrl url = static_cast<QFileOpenEvent *>(event)->url();
+            if (url.scheme() == QLatin1String("aikatsu")) {
+                open(url.toString());
+                return true;
+            }
+        }
+        return QObject::eventFilter(target, event);
+    }
+};
+
 } // namespace
 
 void aikatsu_engine_init(QQmlApplicationEngine &engine) {
     static CachingNamFactory factory;
     engine.setNetworkAccessManagerFactory(&factory);
+    static LinkOpener links;
+    QGuiApplication::instance()->installEventFilter(&links);
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreated, &engine, [](QObject *object, const QUrl &) {
         if (auto *window = qobject_cast<QWindow *>(object)) {
+            links.window = window;
+            if (!links.pending.isEmpty()) links.open(std::exchange(links.pending, {}));
             new WindowState(window, QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation) + "/window.ini");
 #ifdef Q_OS_WIN
             const auto hwnd = reinterpret_cast<HWND>(window->winId()); // created by WindowState's show()

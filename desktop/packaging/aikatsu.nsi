@@ -13,6 +13,7 @@ RequestExecutionLevel user
 !include FileFunc.nsh
 
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\Aikatsu"
+!define LINK_KEY "Software\Classes\aikatsu"
 
 ; Generate exact file removals so a custom folder's other files survive uninstall.
 !tempfile UNINSTALL_FILES
@@ -82,6 +83,12 @@ Section
     WriteRegDWORD HKCU "${UNINST_KEY}" "NoModify" 1
     WriteRegDWORD HKCU "${UNINST_KEY}" "NoRepair" 1
 
+    ; Watch-together links (aikatsu://party?...)
+    WriteRegStr HKCU "${LINK_KEY}" "" "URL:Aikatsu"
+    WriteRegStr HKCU "${LINK_KEY}" "URL Protocol" ""
+    WriteRegStr HKCU "${LINK_KEY}\DefaultIcon" "" "$INSTDIR\aikatsu.exe,0"
+    WriteRegStr HKCU "${LINK_KEY}\shell\open\command" "" '"$INSTDIR\aikatsu.exe" "%1"'
+
     ${GetParameters} $0
     ClearErrors
     ${GetOptions} $0 "/UPDATE" $1
@@ -98,4 +105,5 @@ Section "Uninstall"
     Delete "$INSTDIR\uninstall.exe"
     RMDir "$INSTDIR"
     DeleteRegKey HKCU "${UNINST_KEY}"
+    DeleteRegKey HKCU "${LINK_KEY}"
 SectionEnd

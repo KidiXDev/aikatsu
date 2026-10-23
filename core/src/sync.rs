@@ -32,8 +32,8 @@ static ONE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 static ERROR: Mutex<String> = Mutex::new(String::new());
 
 #[derive(Debug)]
-struct Refused {
-    status: u16,
+pub(crate) struct Refused {
+    pub(crate) status: u16,
     message: String,
 }
 
@@ -63,6 +63,15 @@ pub(crate) fn signed_in() -> bool {
     !stored(TOKEN).is_empty()
 }
 
+/// The server and session token, when signed in.
+pub(crate) fn session() -> Option<(String, String)> {
+    signed_in().then(|| (server(), stored(TOKEN)))
+}
+
+pub(crate) fn username() -> String {
+    stored(USER)
+}
+
 pub fn status() -> Value {
     json!({
         "signedIn": signed_in(),
@@ -74,14 +83,14 @@ pub fn status() -> Value {
     })
 }
 
-fn normalize(input: &str) -> Result<String> {
+pub(crate) fn normalize(input: &str) -> Result<String> {
     let s = input.trim().trim_end_matches('/');
     let s = if s.contains("://") { s.to_owned() } else { format!("https://{s}") };
     let url = url::Url::parse(&s).ok().filter(|u| matches!(u.scheme(), "http" | "https") && u.host().is_some());
     Ok(url.context("Invalid server address")?.as_str().trim_end_matches('/').to_owned())
 }
 
-async fn post(server: &str, path: &str, token: &str, body: &Value) -> Result<Value> {
+pub(crate) async fn post(server: &str, path: &str, token: &str, body: &Value) -> Result<Value> {
     let mut rb = http::PLAIN
         .post(format!("{server}{path}"))
         .header("User-Agent", http::API_UA)
@@ -132,6 +141,7 @@ fn forget() {
         let _ = db::set_setting(key, "");
     }
     crate::lan::forget();
+    crate::party::leave();
 }
 
 pub async fn sign_out() -> Value {

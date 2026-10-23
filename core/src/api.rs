@@ -4,7 +4,7 @@
 use crate::plugins::{self, Plugin};
 use crate::push;
 use crate::sources;
-use crate::{anime4k, db, download, local, meta, proxy, sync, tracker, update};
+use crate::{anime4k, db, download, local, meta, party, proxy, sync, tracker, update};
 use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
 
@@ -134,10 +134,16 @@ pub async fn call(method: &str, args: Value) -> Result<Value> {
             let d = db::cached("discover", std::time::Duration::from_secs(30 * 60), refresh(&args), meta::discover()).await?;
             Ok(serde_json::to_value(d)?)
         }
+        // Downloads yt-dlp the first time it's missing.
+        "ytdlp" => Ok(json!(download::ensure_ytdlp().await?)),
         // syncNow never fails; errors are in its status.
         "syncSetServer" => sync::set_server(s(&args, "server")),
         "syncSignIn" => sync::sign_in(s(&args, "username"), s(&args, "password"), args["create"].as_bool().unwrap_or(false)).await,
         "syncSignOut" => Ok(sync::sign_out().await),
+        // Watch together: args are {anime?, episode, position, paused, speed}.
+        "partyCreate" => party::create(&args).await.map_err(party::plain),
+        "partyJoin" => party::join(s(&args, "link")).await.map_err(party::plain),
+        "partyUpdate" => party::update(&args).await.map(|_| Value::Null),
         "trackerLogin" => tracker::login(s(&args, "service")).await,
         // Watching and planned shows' next two weeks, for Android's notifications.
         "upcomingEpisodes" => {
@@ -287,6 +293,11 @@ pub fn get(method: &str, args: Value) -> Result<Value> {
             Ok(json!({ "series": series, "episode": db::episode_key(&series, i(&args, "episode")) }))
         }
         "syncStatus" => Ok(sync::status()),
+        "party" => Ok(party::status()),
+        "partyLeave" => {
+            party::leave();
+            Ok(Value::Null)
+        }
         "lanStatus" => Ok(crate::lan::state()),
         "lanDevices" => Ok(crate::lan::devices(&[])),
         "forgetLanDevice" => {

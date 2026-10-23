@@ -14,6 +14,8 @@ Air dates follow AniList's schedule. Your source may upload an episode later.
 
 Open a discovery card for details, then search your installed sources to watch the show.
 
+On desktop, keep the pointer on a discovery card for a moment to preview its trailer, when AniList has one. It plays muted; the speaker button turns sound on. The first preview downloads yt-dlp if it isn't installed.
+
 ## Search sources
 
 Enter at least two characters and submit. Aikatsu searches all enabled sources at once and shows results as they arrive.

@@ -62,6 +62,11 @@ FocusScope {
     readonly property bool menuOpen: speedMenu.opened || trackMenu.opened || subSizeMenu.opened || a4kMenu.opened || qualityMenu.opened || episodesDrawer.opened
     readonly property bool showControls: controlsVisible || mpv.paused || phase !== "playing" || !started || menuOpen
     readonly property bool loadingScreen: !started && (phase === "resolving" || phase === "playing")
+    readonly property var party: app.party
+    property int partyRev
+    property var outgoing: null // party changes waiting for publishTimer
+    property real quietUntil // ms: our own change is on its way, so don't follow the party back
+    property real lastJump
 
     readonly property bool inOp: !!skip.op && mpv.position >= skip.op[0] && mpv.position < skip.op[1] - 1
     readonly property bool inEd: !!skip.ed && mpv.position >= skip.ed[0] && mpv.position < skip.ed[1] - 1
@@ -155,6 +160,18 @@ FocusScope {
             url: anime.url
         }).find(p => p.episode_number === ep.num);
         resumeAt = saved && !saved.completed && saved.playback_time > 30 ? saved.playback_time : 0;
+        const shared = Api.get("party");
+        if (shared.active) {
+            resumeAt = 0;
+            if (shared.state.episode === ep.num)
+                startAt = shared.state.position;
+            else
+                publish({
+                    episode: ep.num,
+                    position: 0,
+                    paused: false
+                });
+        }
         fetchSkip();
         request = Api.call("qualities", {
             source: anime.source,
@@ -288,16 +305,30 @@ FocusScope {
     }
 
     function seek(sec: real): void {
+        jump(sec);
+        publish({
+            position: sec
+        });
+    }
+
+    // Without telling the party: loading at a spot, or following it.
+    function jump(sec: real): void {
         mpv.command(["seek", String(sec), "absolute"]);
     }
 
     function seekBy(sec: real): void {
         mpv.command(["seek", String(sec)]);
         osd.show(sec < 0 ? "fast_rewind" : "fast_forward", `${sec < 0 ? "−" : "+"}${Math.abs(sec)}s`);
+        publish({
+            position: Math.max(0, mpv.position + sec)
+        });
     }
 
     function pause(): void {
         mpv.paused = true;
+        publish({
+            paused: true
+        });
     }
 
     function togglePause(): void {
@@ -305,6 +336,9 @@ FocusScope {
         const p = !mpv.paused;
         mpv.paused = p;
         osd.show(p ? "pause" : "play_arrow", "");
+        publish({
+            paused: p
+        });
     }
 
     function setVolume(v: real): void {
@@ -324,6 +358,68 @@ FocusScope {
     function setSpeed(v: real): void {
         mpv.speed = v;
         osd.show("speed", v + "×");
+        publish({
+            speed: v
+        });
+    }
+
+    // Our own play, pause, seek, speed or episode change, for the rest of the party.
+    function publish(changes: var): void {
+        if (!party.active)
+            return;
+        quietUntil = Date.now() + 1500;
+        outgoing = Object.assign(outgoing ?? {}, changes);
+        publishTimer.restart();
+    }
+
+    // Into step with the party: its episode, then play or pause, speed and position.
+    function follow(): void {
+        const p = Api.get("party");
+        if (!p.active || Date.now() < quietUntil || !ep)
+            return;
+        const s = p.state;
+        if (s.episode !== ep.num) {
+            const i = episodes.findIndex(e => e.num === s.episode);
+            if (i >= 0)
+                start(i);
+            return;
+        }
+        if (!started)
+            return;
+        if (mpv.paused !== s.paused)
+            mpv.paused = s.paused;
+        if (mpv.speed !== s.speed)
+            mpv.speed = s.speed;
+        if (!mpv.buffering && Math.abs(mpv.position - s.position) > 2 && Date.now() - lastJump > 3000) {
+            lastJump = Date.now();
+            jump(s.position);
+        }
+    }
+
+    function startParty(): void {
+        partyDialog.busy = true;
+        partyDialog.error = "";
+        Api.call("partyCreate", {
+            anime: Object.assign({}, anime, {
+                anilistId: meta.anilist_id || anime.anilistId || 0
+            }),
+            episode: ep.num,
+            position: mpv.position,
+            paused: mpv.paused,
+            speed: mpv.speed
+        }, p => {
+            partyDialog.busy = false;
+            root.partyRev = p.state.rev;
+            root.app.party = p;
+        }, e => {
+            partyDialog.busy = false;
+            partyDialog.error = e;
+        });
+    }
+
+    function leaveParty(): void {
+        Api.get("partyLeave");
+        root.app.party = Api.get("party");
     }
 
     function scaleName(v: real): string {
@@ -358,6 +454,8 @@ FocusScope {
     function exit(): void {
         if (phase === "playing")
             save(false);
+        if (party.active)
+            leaveParty();
         Api.forget(request);
         mpv.command(["stop"]);
         Api.get("stopStreams");
@@ -498,10 +596,10 @@ FocusScope {
             root.loaded = true;
             root.status = "Buffering…";
             if (root.startAt >= 0) {
-                root.seek(root.startAt);
+                root.jump(root.startAt);
                 root.startAt = -1;
             } else if (root.resumeAt > 0) {
-                root.seek(root.resumeAt);
+                root.jump(root.resumeAt);
                 root.resumePrompt = true;
                 resumeHide.restart();
             }
@@ -534,6 +632,42 @@ FocusScope {
                 root.skippedEd = true;
                 root.seek(root.skip.ed[1]);
             }
+        }
+    }
+
+    Timer {
+        id: publishTimer
+
+        interval: 250 // a dragged seek bar moves many times a second
+        onTriggered: {
+            Api.call("partyUpdate", Object.assign({
+                episode: root.ep.num,
+                position: mpv.position,
+                paused: mpv.paused,
+                speed: mpv.speed
+            }, root.outgoing), null, e => console.warn("party update failed:", e));
+            root.outgoing = null;
+        }
+    }
+
+    Timer {
+        interval: 2000
+        repeat: true
+        running: root.party.active
+        onTriggered: root.follow()
+    }
+
+    Connections {
+        target: root.app
+
+        function onPartyChanged(): void {
+            const s = root.party.state;
+            if (s && s.rev > root.partyRev) {
+                if (root.partyRev > 0 && s.by !== root.party.me)
+                    osd.show(s.paused ? "pause" : "play_arrow", s.by);
+                root.partyRev = s.rev;
+            }
+            root.follow();
         }
     }
 
@@ -928,6 +1062,16 @@ FocusScope {
                     color: Qt.alpha("#ffffff", 0.75)
                     elide: Text.ElideRight
                 }
+            }
+            Chip {
+                visible: root.anime.source !== "local"
+                text: root.party.active ? String(root.party.members.length) : "Watch together"
+                icon: root.party.active && !root.party.connected ? "sync_problem" : "group"
+                selected: true
+                clickable: true
+                tint: Qt.alpha("#000000", 0.45)
+                onTint: "#ffffff"
+                onClicked: partyDialog.open()
             }
             Chip {
                 text: root.sourceName + (root.quality && root.quality !== "best" ? `  ·  ${root.quality}` : "")
@@ -1540,5 +1684,143 @@ FocusScope {
                 }
             }
         }
+    }
+
+    StyledDialog {
+        id: partyDialog
+
+        property bool signedIn
+        property bool busy
+        property bool copied
+        property string error
+
+        icon: "group"
+        title: "Watch together"
+        text: !signedIn ? "Sign in to sync first." : root.party.active ? "" : "Anyone signed in to your sync server can join with the link."
+        width: Math.min(560, parent ? parent.width - 48 : 560)
+        onAboutToShow: {
+            signedIn = Api.get("syncStatus").signedIn;
+            error = "";
+            copied = false;
+        }
+        onClosed: root.forceActiveFocus()
+
+        RowLayout {
+            Layout.fillWidth: true
+            visible: root.party.active
+            spacing: Theme.spacing.extraLarge
+
+            Rectangle {
+                Layout.alignment: Qt.AlignTop
+                implicitWidth: 168
+                implicitHeight: 168
+                radius: Theme.rounding.medium
+                color: "#ffffff"
+
+                Canvas {
+                    readonly property var qr: root.party.qr ?? null
+
+                    anchors.fill: parent
+                    onQrChanged: requestPaint()
+                    onPaint: {
+                        const ctx = getContext("2d");
+                        ctx.reset();
+                        if (!qr)
+                            return;
+                        const n = qr.size + 4; // two modules of quiet zone each side, inside the white card's padding
+                        const cell = Math.floor(width / n);
+                        const offset = (width - cell * qr.size) / 2;
+                        ctx.fillStyle = "#000000";
+                        for (let y = 0; y < qr.size; y++)
+                            for (let x = 0; x < qr.size; x++)
+                                if (qr.modules[y * qr.size + x] === "1")
+                                    ctx.fillRect(offset + x * cell, offset + y * cell, cell, cell);
+                    }
+                }
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.alignment: Qt.AlignTop
+                spacing: Theme.spacing.medium
+
+                StyledTextField {
+                    id: linkField
+
+                    Layout.fillWidth: true
+                    readOnly: true
+                    text: root.party.link ?? ""
+                }
+                IconTextButton {
+                    type: TextButton.Tonal
+                    icon: partyDialog.copied ? "check" : "content_copy"
+                    text: partyDialog.copied ? "Copied" : "Copy link"
+                    onClicked: {
+                        linkField.selectAll();
+                        linkField.copy();
+                        linkField.deselect();
+                        partyDialog.copied = true;
+                    }
+                }
+                Flow {
+                    Layout.fillWidth: true
+                    Layout.topMargin: Theme.spacing.small
+                    spacing: Theme.spacing.small
+
+                    Repeater {
+                        model: root.party.members ?? []
+
+                        Chip {
+                            required property var modelData
+
+                            icon: modelData.device === "android" ? "smartphone" : "computer"
+                            text: modelData.username === root.party.me ? "You" : modelData.username
+                        }
+                    }
+                }
+            }
+        }
+
+        StyledText {
+            Layout.fillWidth: true
+            visible: partyDialog.error !== ""
+            text: partyDialog.error
+            color: Theme.palette.error
+            wrapMode: Text.Wrap
+        }
+
+        actions: [
+            TextButton {
+                visible: root.party.active
+                type: TextButton.Text
+                text: "Leave"
+                onClicked: {
+                    root.leaveParty();
+                    partyDialog.close();
+                }
+            },
+            TextButton {
+                type: TextButton.Text
+                text: "Close"
+                onClicked: partyDialog.close()
+            },
+            TextButton {
+                visible: !partyDialog.signedIn
+                type: TextButton.Tonal
+                text: "Account"
+                onClicked: {
+                    partyDialog.close();
+                    root.exit();
+                    root.app.openAccount();
+                }
+            },
+            TextButton {
+                visible: partyDialog.signedIn && !root.party.active
+                type: TextButton.Tonal
+                text: partyDialog.busy ? "Starting…" : "Start"
+                disabled: partyDialog.busy || !root.started
+                onClicked: root.startParty()
+            }
+        ]
     }
 }

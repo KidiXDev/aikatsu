@@ -35,6 +35,7 @@ StyledRect {
     ]
 
     signal selected(int index)
+    signal join
 
     implicitWidth: 92
     color: Theme.palette.surfaceContainer
@@ -192,6 +193,16 @@ StyledRect {
 
         Item {
             Layout.fillHeight: true
+        }
+
+        IconButton {
+            Layout.alignment: Qt.AlignHCenter
+            type: IconButton.Text
+            icon: "group_add"
+            iconSize: 16
+            ToolTip.visible: hovered
+            ToolTip.text: "Join a party"
+            onClicked: root.join()
         }
 
         IconButton {

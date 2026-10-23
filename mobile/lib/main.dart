@@ -14,6 +14,7 @@ import 'pages/library.dart';
 import 'pages/onboarding.dart';
 import 'pages/search.dart';
 import 'pages/settings.dart';
+import 'party.dart';
 import 'splash.dart';
 import 'src/rust/frb_generated.dart';
 import 'theme.dart';
@@ -37,6 +38,7 @@ Future<void> main() async {
   }
   await DownloadNotifications.init();
   await EpisodeNotifications.init();
+  await PartyLinks.init();
   runApp(const AikatsuApp());
 }
 
@@ -119,10 +121,13 @@ class _ShellState extends State<Shell> {
     DownloadNotifications.tapped.addListener(_showDownloads);
     EpisodeNotifications.opened.addListener(_openNotified);
     SearchPage.requested.addListener(_searchRequested);
+    PartyLinks.opened.addListener(_openLink);
+    Api.party.addListener(_partyChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       checkUpdatesOnOpen(context);
       _openNotified(); // the app was started from one
+      _openLink();
     });
   }
 
@@ -131,6 +136,8 @@ class _ShellState extends State<Shell> {
     DownloadNotifications.tapped.removeListener(_showDownloads);
     EpisodeNotifications.opened.removeListener(_openNotified);
     SearchPage.requested.removeListener(_searchRequested);
+    PartyLinks.opened.removeListener(_openLink);
+    Api.party.removeListener(_partyChanged);
     _lifecycle.dispose();
     super.dispose();
   }
@@ -156,6 +163,18 @@ class _ShellState extends State<Shell> {
     if (w == null) return;
     Navigator.popUntil(context, (route) => route.isFirst);
     openAnime(context, watchedAnime(w));
+  }
+
+  void _openLink() {
+    final link = PartyLinks.opened.value;
+    if (link == null) return;
+    PartyLinks.opened.value = null;
+    joinParty(context, link);
+  }
+
+  void _partyChanged() {
+    final ended = Api.party.value['ended'];
+    if (ended is String) toast(ended);
   }
 
   void _searchRequested() {

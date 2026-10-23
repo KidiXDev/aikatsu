@@ -14,6 +14,7 @@ mod http;
 mod lan;
 mod local;
 mod meta;
+mod party;
 pub mod plugin_cli;
 mod plugins;
 mod proxy;

@@ -5,6 +5,7 @@ mod bridge;
 
 use cxx_qt_lib::{QByteArray, QGuiApplication, QQmlApplicationEngine, QUrl};
 use anyhow::Context;
+use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 
 fn lock_instance(data: &std::path::Path) -> std::io::Result<Option<std::fs::File>> {
@@ -18,7 +19,7 @@ fn lock_instance(data: &std::path::Path) -> std::io::Result<Option<std::fs::File
 }
 
 /// The running copy may be hidden in the tray, so a second launch asks it to
-/// show its window instead.
+/// show its window instead, passing on the watch-together link it was opened with.
 fn listen_for_launches(data: &std::path::Path) {
     let Ok(listener) = TcpListener::bind("127.0.0.1:0") else { return };
     let Ok(addr) = listener.local_addr() else { return };
@@ -26,15 +27,41 @@ fn listen_for_launches(data: &std::path::Path) {
         return;
     }
     std::thread::spawn(move || {
-        for _ in listener.incoming().flatten() {
+        for stream in listener.incoming().flatten() {
+            let mut link = String::new();
+            let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(1)));
+            let _ = stream.take(4096).read_to_string(&mut link);
             bridge::push("show", &serde_json::Value::Null);
+            if link.starts_with("aikatsu:") {
+                bridge::push("link", &serde_json::Value::String(link));
+            }
         }
     });
 }
 
 fn show_running(data: &std::path::Path) {
-    if let Some(port) = std::fs::read_to_string(data.join("instance.port")).ok().and_then(|p| p.trim().parse::<u16>().ok()) {
-        let _ = TcpStream::connect_timeout(&SocketAddr::from(([127, 0, 0, 1], port)), std::time::Duration::from_secs(1));
+    if let Some(port) = std::fs::read_to_string(data.join("instance.port")).ok().and_then(|p| p.trim().parse::<u16>().ok())
+        && let Ok(mut stream) = TcpStream::connect_timeout(&SocketAddr::from(([127, 0, 0, 1], port)), std::time::Duration::from_secs(1))
+        && let Some(link) = std::env::args().skip(1).find(|a| a.starts_with("aikatsu:"))
+    {
+        let _ = stream.write_all(link.as_bytes());
+    }
+}
+
+/// An AppImage isn't installed, so it registers aikatsu: links itself, pointing at wherever it now lives.
+#[cfg(target_os = "linux")]
+fn register_appimage_links() {
+    let (Some(appimage), Some(dir)) = (std::env::var_os("APPIMAGE"), dirs::data_dir().map(|d| d.join("applications"))) else { return };
+    let file = dir.join("aikatsu-link.desktop");
+    let entry = format!(
+        "[Desktop Entry]\nType=Application\nName=Aikatsu\nExec=\"{}\" %u\nIcon=aikatsu\nNoDisplay=true\nMimeType=x-scheme-handler/aikatsu;\n",
+        appimage.to_string_lossy()
+    );
+    if std::fs::read_to_string(&file).is_ok_and(|old| old == entry) {
+        return;
+    }
+    if std::fs::create_dir_all(&dir).is_ok() && std::fs::write(&file, entry).is_ok() {
+        let _ = std::process::Command::new("xdg-mime").args(["default", "aikatsu-link.desktop", "x-scheme-handler/aikatsu"]).status();
     }
 }
 
@@ -58,6 +85,8 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     };
     listen_for_launches(&dirs.data);
+    #[cfg(target_os = "linux")]
+    register_appimage_links();
     let startup = aikatsu_core::init(dirs, std::env::args().any(|a| a == "--debug"), bridge::push);
     // SAFETY: single-threaded at this point
     unsafe {

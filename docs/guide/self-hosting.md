@@ -57,6 +57,8 @@ Then change the compose file:
 
 In the app, use `https://sync.example.com` as the server.
 
+[Watch-together](./watch-together.md) parties are kept in the server's memory, so run one server process; restarting it ends them. Their live updates are server-sent events. Caddy passes them through as is. With nginx, add `proxy_buffering off;` for `/party/`.
+
 ## Settings
 
 Set these under `environment:` in the compose file, then run `docker compose up -d`.

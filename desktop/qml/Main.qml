@@ -21,6 +21,7 @@ ApplicationWindow {
     property string alertKey // the show the last alert was about, for its click
     readonly property bool trayAvailable: tray.available
     property var lan: Api.get("lanStatus") // library sharing, for Settings and the tray
+    property var party: Api.get("party") // watch together (core party.rs)
     property var downloadJobs: ({})
     readonly property int activeDownloads: Object.values(downloadJobs).filter(j => ["queued", "resolving", "downloading", "remuxing"].includes(j.state)).length
 
@@ -106,6 +107,28 @@ ApplicationWindow {
     function openFolders(): void {
         if (stack.currentItem?.objectName !== "foldersPage")
             stack.push(foldersPage);
+    }
+
+    // A watch-together link, from the Join dialog, the OS or a second launch.
+    function openLink(link: string): void {
+        if (playing)
+            playerLoader.item.exit(); // leaves its own party
+        Api.call("partyJoin", {
+            link: link
+        }, p => {
+            win.party = p;
+            if (stack.depth > 1)
+                stack.pop(null);
+            openAnime(p.state.anime, p.state.episode);
+        }, e => win.toast(e));
+    }
+
+    function openAccount(): void {
+        goTab(4);
+        Qt.callLater(() => {
+            if (settingsLoader.item)
+                settingsLoader.item.room = 4;
+        });
     }
 
     function goTab(i: int): void {
@@ -215,6 +238,9 @@ ApplicationWindow {
         else
             checkPluginUpdates();
         refreshUpcoming();
+        const link = Qt.application.arguments.find(a => a.startsWith("aikatsu:"));
+        if (link)
+            openLink(link);
     }
 
     StyledDialog {
@@ -371,6 +397,13 @@ ApplicationWindow {
                 win.downloadJobs = map;
             } else if (kind === "show")
                 win.showWindow();
+            else if (kind === "link")
+                win.openLink(data);
+            else if (kind === "party") {
+                win.party = data;
+                if (data.ended)
+                    win.toast(data.ended);
+            }
             else if (kind === "appUpdate")
                 appUpdateDialog.progress = data.done / Math.max(1, data.total);
         }
@@ -393,6 +426,7 @@ ApplicationWindow {
                 current: stack.depth > 1 ? -1 : win.tab
                 activeDownloads: win.activeDownloads
                 onSelected: i => win.goTab(i)
+                onJoin: joinDialog.open()
             }
 
             StackView {
@@ -471,6 +505,8 @@ ApplicationWindow {
                 sourceComponent: DownloadsPage {}
             }
             Loader {
+                id: settingsLoader
+
                 active: (win.openedTabs & 16) !== 0
                 sourceComponent: SettingsPage {}
             }
@@ -523,6 +559,45 @@ ApplicationWindow {
 
     Snackbar {
         id: snackbar
+    }
+
+    StyledDialog {
+        id: joinDialog
+
+        icon: "group_add"
+        title: "Join a party"
+        onOpened: {
+            linkField.text = "";
+            linkField.forceActiveFocus();
+        }
+
+        StyledTextField {
+            id: linkField
+
+            Layout.fillWidth: true
+            placeholderText: "Party link"
+            onAccepted: if (!joinButton.disabled)
+                joinButton.clicked()
+        }
+
+        actions: [
+            TextButton {
+                type: TextButton.Text
+                text: "Cancel"
+                onClicked: joinDialog.close()
+            },
+            TextButton {
+                id: joinButton
+
+                type: TextButton.Tonal
+                text: "Join"
+                disabled: linkField.text.trim() === ""
+                onClicked: {
+                    joinDialog.close();
+                    win.openLink(linkField.text.trim());
+                }
+            }
+        ]
     }
 
     // macOS reopens a running app from the Dock without starting a second copy, so no launch asks to show it.

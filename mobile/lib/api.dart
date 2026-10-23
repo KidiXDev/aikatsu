@@ -21,6 +21,9 @@ abstract final class Api {
   /// Bumped when downloaded episodes are deleted (finished ones arrive as `download` pushes).
   static final libraryRevision = ValueNotifier(0);
 
+  /// Watch together (core party.rs); `ended` holds why a party closed under us.
+  static final party = ValueNotifier<Map<String, dynamic>>(const {'active': false});
+
   static Future<void> init(String dataDir, String videosDir) {
     final ready = Completer<void>();
     rust.init(dataDir: dataDir, videosDir: videosDir).listen((e) {
@@ -35,6 +38,7 @@ abstract final class Api {
       }
       _pushed.add((e.kind, data));
       if (e.kind == 'sync' && data['history'] == true) historyRevision.value++;
+      if (e.kind == 'party') party.value = Map<String, dynamic>.from(data);
     }, onError: (Object error, StackTrace stack) {
       if (!ready.isCompleted) ready.completeError(error, stack);
     });
