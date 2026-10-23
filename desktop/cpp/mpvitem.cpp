@@ -3,12 +3,14 @@
 
 #include <QtGui/QGuiApplication>
 #include <QtGui/QIcon>
+#include <QtGui/QColor>
 #include <QtCore/QStandardPaths>
 #include <QtGui/QOpenGLContext>
 #include <QtGui/QSurfaceFormat>
 #include <QtNetwork/QNetworkAccessManager>
 #include <QtNetwork/QNetworkDiskCache>
 #include <QtQml/QQmlNetworkAccessManagerFactory>
+#include <QtQml/QQmlProperty>
 #include <QtOpenGL/QOpenGLFramebufferObject>
 #include <QtQuick/QQuickOpenGLUtils>
 #include <QtQuick/QQuickWindow>
@@ -40,6 +42,33 @@ constexpr LONG_PTR borderlessFullScreenStyle(LONG_PTR style) {
 
 static_assert(borderlessFullScreenStyle(WS_POPUP | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | WS_SYSMENU)
               == (WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | WS_SYSMENU));
+
+constexpr COLORREF nativeCaptionColor(QRgb color) {
+    return RGB(qRed(color), qGreen(color), qBlue(color));
+}
+
+static_assert(nativeCaptionColor(0xff123456) == 0x00563412);
+static_assert(nativeCaptionColor(0x00123456) == nativeCaptionColor(0xff123456));
+
+void updateNativeTitleBar(QQuickWindow *window) {
+    const auto background = QQmlProperty::read(window, QStringLiteral("palette.window")).value<QColor>();
+    const auto foreground = QQmlProperty::read(window, QStringLiteral("palette.windowText")).value<QColor>();
+    if (!background.isValid() || !foreground.isValid()) return;
+    const auto hwnd = reinterpret_cast<HWND>(window->winId());
+    const BOOL dark = background.lightness() < 128;
+    const auto captionColor = nativeCaptionColor(background.rgb());
+    const auto textColor = nativeCaptionColor(foreground.rgb());
+    const auto setAttribute = [hwnd](DWORD attribute, const auto &value) {
+        const auto result = DwmSetWindowAttribute(hwnd, attribute, &value, sizeof value);
+        // Older Windows versions keep their native colors when these attributes are unsupported.
+        if (FAILED(result) && result != E_INVALIDARG)
+            qWarning("could not set native title bar attribute %lu: 0x%lx", attribute, static_cast<unsigned long>(result));
+    };
+    // DWM draws the real caption buttons, hover states and animations; only their palette is customized.
+    setAttribute(DWMWA_USE_IMMERSIVE_DARK_MODE, dark);
+    setAttribute(DWMWA_CAPTION_COLOR, captionColor);
+    setAttribute(DWMWA_TEXT_COLOR, textColor);
+}
 #endif
 
 void *getProcAddress(void *, const char *name) {
@@ -300,6 +329,12 @@ void aikatsu_engine_init(QQmlApplicationEngine &engine) {
             new WindowState(window, QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation) + "/window.ini");
 #ifdef Q_OS_WIN
             const auto hwnd = reinterpret_cast<HWND>(window->winId()); // created by WindowState's show()
+            if (auto *quickWindow = qobject_cast<QQuickWindow *>(window)) {
+                updateNativeTitleBar(quickWindow);
+                QObject::connect(quickWindow, &QQuickWindow::paletteChanged, quickWindow, [quickWindow] {
+                    updateNativeTitleBar(quickWindow);
+                }, Qt::QueuedConnection);
+            }
             // Leaving fullscreen for maximized, Qt restores the normal geometry and then maximizes. With DWM's
             // restore and maximize animations the window visibly passes through its windowed size, so they are
             // off while fullscreen. Queued, so they come back only after Qt's state change has finished.
