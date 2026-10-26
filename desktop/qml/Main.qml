@@ -104,6 +104,11 @@ ApplicationWindow {
             stack.push(pluginsPage);
     }
 
+    function openCalendar(): void {
+        if (stack.currentItem?.objectName !== "calendarPage")
+            stack.push(calendarPage);
+    }
+
     function openFolders(): void {
         if (stack.currentItem?.objectName !== "foldersPage")
             stack.push(foldersPage);
@@ -322,7 +327,7 @@ ApplicationWindow {
         ]
     }
 
-    // Dev aid: `aikatsu --screenshot out.png [--tab N | --plugins | --folders]` renders, saves, quits.
+    // Dev aid: `aikatsu --screenshot out.png [--tab N | --plugins | --folders | --calendar]` renders, saves, quits.
     Timer {
         readonly property var args: Qt.application.arguments
         readonly property int at: args.indexOf("--screenshot")
@@ -339,6 +344,8 @@ ApplicationWindow {
                 win.openPlugins();
             if (args.includes("--folders"))
                 win.openFolders();
+            if (args.includes("--calendar"))
+                win.openCalendar();
             if (args.includes("--anime")) {
                 win.openAnime({
                     name: "Sousou no Frieren",
@@ -523,6 +530,12 @@ ApplicationWindow {
         id: pluginsPage
 
         PluginsPage {}
+    }
+
+    Component {
+        id: calendarPage
+
+        CalendarPage {}
     }
 
     Component {

@@ -134,6 +134,12 @@ pub async fn call(method: &str, args: Value) -> Result<Value> {
             let d = db::cached("discover", std::time::Duration::from_secs(30 * 60), refresh(&args), meta::discover()).await?;
             Ok(serde_json::to_value(d)?)
         }
+        // `from`: the UI's local week start, in unix seconds.
+        "schedule" => {
+            let key = format!("schedule:{}", i(&args, "from"));
+            let week = db::cached(&key, std::time::Duration::from_secs(30 * 60), refresh(&args), meta::schedule(i(&args, "from"))).await?;
+            Ok(serde_json::to_value(week)?)
+        }
         // Downloads yt-dlp the first time it's missing.
         "ytdlp" => Ok(json!(download::ensure_ytdlp().await?)),
         // syncNow never fails; errors are in its status.

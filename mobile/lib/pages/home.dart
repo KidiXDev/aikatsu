@@ -5,6 +5,7 @@ import '../history.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'anime.dart';
+import 'calendar.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key, required this.onSearch});
@@ -188,7 +189,7 @@ class _HomePageState extends State<HomePage> {
     String genre(Map<String, dynamic> m) => (m['genres'] as List).take(2).join(' · ');
     String score(Map<String, dynamic> m) => toInt(m['score']) > 0 ? '★ ${(toInt(m['score']) / 10).toStringAsFixed(1)}' : '';
 
-    _DiscoverItem airing(Map<String, dynamic> a) {
+    DiscoverItem airing(Map<String, dynamic> a) {
       final label = airingLabel(toInt(a['airing_at']), now);
       return (
         meta: a['anime'],
@@ -200,7 +201,13 @@ class _HomePageState extends State<HomePage> {
 
     return [
       _DiscoverRow(title: 'Out today', icon: Icons.new_releases_rounded, items: aired.map(airing).toList(), onOpen: _showInfo),
-      _DiscoverRow(title: 'Up next', icon: Icons.schedule_rounded, items: next.map(airing).toList(), onOpen: _showInfo),
+      _DiscoverRow(
+        title: 'Up next',
+        icon: Icons.schedule_rounded,
+        items: next.map(airing).toList(),
+        onOpen: _showInfo,
+        onMore: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CalendarPage(onSearch: widget.onSearch))),
+      ),
       _DiscoverRow(
         title: 'Trending now',
         icon: Icons.local_fire_department_rounded,
@@ -221,90 +228,7 @@ class _HomePageState extends State<HomePage> {
     ];
   }
 
-  /// Details only: Aikatsu can't stream from AniList, so the way on is a source search.
-  Future<void> _showInfo(_DiscoverItem item) async {
-    final m = item.meta;
-    final title = text([m['title_english'], m['title_romaji']]);
-    final query = text([m['title_romaji'], m['title_english']]); // the sources mostly use romaji names
-    final search = await showModalBottomSheet<bool>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (context) {
-        final t = Theme.of(context);
-        final c = t.colorScheme;
-        return ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.85),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              spacing: 14,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(width: 100, height: 146, child: Cover(text([m['cover']]), radius: 16)),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        spacing: 6,
-                        children: [
-                          Text(
-                            title,
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
-                            style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-                          ),
-                          if (text([m['title_romaji']]) != title || text([m['title_native']]).isNotEmpty)
-                            Text(
-                              [m['title_romaji'], m['title_native']].where((s) => text([s]).isNotEmpty && s != title).join('  ·  '),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: t.textTheme.bodySmall?.copyWith(color: c.onSurfaceVariant),
-                            ),
-                          if (item.note.isNotEmpty)
-                            Text(
-                              item.note,
-                              style: t.textTheme.labelLarge?.copyWith(color: c.primary, fontWeight: FontWeight.w700),
-                            ),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 6,
-                            children: [
-                              if (toInt(m['score']) > 0)
-                                PillBadge(label: '★ ${(toInt(m['score']) / 10).toStringAsFixed(1)}', color: c.tertiary),
-                              if (toInt(m['year']) > 0) PillBadge(label: '${m['year']}', icon: Icons.calendar_month_rounded),
-                              if (toInt(m['episodes']) > 0) PillBadge(label: '${m['episodes']} eps', icon: Icons.video_library_rounded),
-                              if (text([m['status']]).isNotEmpty) PillBadge(label: '${m['status']}'.replaceAll('_', ' ').toLowerCase()),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                if ((m['genres'] as List).isNotEmpty)
-                  Wrap(spacing: 6, runSpacing: 6, children: [for (final g in m['genres'] as List) PillBadge(label: '$g')]),
-                if (text([m['description']]).isNotEmpty)
-                  Text(m['description'], style: t.textTheme.bodyMedium?.copyWith(color: c.onSurfaceVariant, height: 1.4)),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    icon: const Icon(Icons.search_rounded),
-                    label: Text('Search sources for “$query”', maxLines: 1, overflow: TextOverflow.ellipsis),
-                    onPressed: () => Navigator.pop(context, true),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-    if (search == true) widget.onSearch(query);
-  }
+  void _showInfo(DiscoverItem item) => showDiscoverInfo(context, item, widget.onSearch);
 
   Widget _heroBanner(BuildContext context) {
     final t = Theme.of(context);
@@ -463,16 +387,102 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-typedef _DiscoverItem = ({Map<String, dynamic> meta, String badge, String subtitle, String note});
+/// Details only: Aikatsu can't stream from AniList, so the way on is a source search.
+Future<void> showDiscoverInfo(BuildContext context, DiscoverItem item, ValueChanged<String> onSearch) async {
+  final m = item.meta;
+  final title = text([m['title_english'], m['title_romaji']]);
+  final query = text([m['title_romaji'], m['title_english']]); // the sources mostly use romaji names
+  final search = await showModalBottomSheet<bool>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (context) {
+      final t = Theme.of(context);
+      final c = t.colorScheme;
+      return ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.85),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            spacing: 14,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(width: 100, height: 146, child: Cover(text([m['cover']]), radius: 16)),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      spacing: 6,
+                      children: [
+                        Text(
+                          title,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                        if (text([m['title_romaji']]) != title || text([m['title_native']]).isNotEmpty)
+                          Text(
+                            [m['title_romaji'], m['title_native']].where((s) => text([s]).isNotEmpty && s != title).join('  ·  '),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: t.textTheme.bodySmall?.copyWith(color: c.onSurfaceVariant),
+                          ),
+                        if (item.note.isNotEmpty)
+                          Text(
+                            item.note,
+                            style: t.textTheme.labelLarge?.copyWith(color: c.primary, fontWeight: FontWeight.w700),
+                          ),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            if (toInt(m['score']) > 0)
+                              PillBadge(label: '★ ${(toInt(m['score']) / 10).toStringAsFixed(1)}', color: c.tertiary),
+                            if (toInt(m['year']) > 0) PillBadge(label: '${m['year']}', icon: Icons.calendar_month_rounded),
+                            if (toInt(m['episodes']) > 0) PillBadge(label: '${m['episodes']} eps', icon: Icons.video_library_rounded),
+                            if (text([m['status']]).isNotEmpty) PillBadge(label: '${m['status']}'.replaceAll('_', ' ').toLowerCase()),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              if ((m['genres'] as List).isNotEmpty)
+                Wrap(spacing: 6, runSpacing: 6, children: [for (final g in m['genres'] as List) PillBadge(label: '$g')]),
+              if (text([m['description']]).isNotEmpty)
+                Text(m['description'], style: t.textTheme.bodyMedium?.copyWith(color: c.onSurfaceVariant, height: 1.4)),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  icon: const Icon(Icons.search_rounded),
+                  label: Text('Search sources for “$query”', maxLines: 1, overflow: TextOverflow.ellipsis),
+                  onPressed: () => Navigator.pop(context, true),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+  if (search == true) onSearch(query);
+}
+
+typedef DiscoverItem = ({Map<String, dynamic> meta, String badge, String subtitle, String note});
 
 /// A titled horizontal shelf of posters; hidden when empty.
 class _DiscoverRow extends StatelessWidget {
-  const _DiscoverRow({required this.title, required this.icon, required this.items, required this.onOpen});
+  const _DiscoverRow({required this.title, required this.icon, required this.items, required this.onOpen, this.onMore});
 
   final String title;
   final IconData icon;
-  final List<_DiscoverItem> items;
-  final ValueChanged<_DiscoverItem> onOpen;
+  final List<DiscoverItem> items;
+  final ValueChanged<DiscoverItem> onOpen;
+  final VoidCallback? onMore;
 
   @override
   Widget build(BuildContext context) {
@@ -489,7 +499,14 @@ class _DiscoverRow extends StatelessWidget {
               spacing: 8,
               children: [
                 Icon(icon, size: 20, color: c.primary),
-                Text(title, style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                Expanded(child: Text(title, style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700))),
+                if (onMore != null)
+                  TextButton.icon(
+                    icon: const Icon(Icons.calendar_month_rounded, size: 18),
+                    label: const Text('Schedule'),
+                    style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                    onPressed: onMore,
+                  ),
               ],
             ),
           ),
