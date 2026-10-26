@@ -1,4 +1,4 @@
-//! Local proxy for the two hosts mpv can't play directly: Blogger video only
+//! Local proxy for the two hosts mpv can't play directly: Blogger/Google video only
 //! answers browser-like connections, and Wibufile only streams well over HTTP/3.
 
 use anyhow::{Result, anyhow};
@@ -23,7 +23,7 @@ enum Upstream {
 static ROUTES: LazyLock<Mutex<HashMap<String, Upstream>>> = LazyLock::new(Default::default);
 static PORT: OnceCell<u16> = OnceCell::const_new();
 
-static CHROME_H1: LazyLock<wreq::Client> = LazyLock::new(|| {
+pub(crate) static CHROME_H1: LazyLock<wreq::Client> = LazyLock::new(|| {
     wreq::Client::builder()
         .emulation(wreq_util::Emulation::Chrome149)
         .http1_only()
@@ -87,7 +87,7 @@ pub async fn blogger(blogger_url: &str) -> Result<String> {
             Ok(url) => {
                 let status = CHROME_H1.head(&url).send().await.map(|r| r.status().as_u16()).unwrap_or(0);
                 if status == 0 || (200..300).contains(&status) {
-                    return register(Upstream::Chrome { url }).await;
+                    return googlevideo(&url).await;
                 }
                 last = anyhow!("blogger CDN not serving video (HTTP {status})");
             }
@@ -97,6 +97,19 @@ pub async fn blogger(blogger_url: &str) -> Result<String> {
         tokio::time::sleep(std::time::Duration::from_millis(500 * attempt)).await;
     }
     Err(last)
+}
+
+pub fn is_googlevideo(u: &str) -> bool {
+    url::Url::parse(u).is_ok_and(|u| {
+        matches!(u.scheme(), "http" | "https")
+            && u.host_str().is_some_and(|h| h == "googlevideo.com" || h.ends_with(".googlevideo.com"))
+    })
+}
+
+/// Site wrappers can return the Google CDN URL directly, without a Blogger token.
+pub async fn googlevideo(url: &str) -> Result<String> {
+    anyhow::ensure!(is_googlevideo(url), "invalid Google video URL");
+    register(Upstream::Chrome { url: url.to_owned() }).await
 }
 
 /// Wibufile video, which streams well only over HTTP/3. A host check, not a
@@ -201,6 +214,32 @@ mod tests {
     fn wibufile_host_check() {
         assert!(super::is_wibufile("https://s0.wibufile.com/video01/episode.mp4"));
         assert!(!super::is_wibufile("https://wibufile.com.evil.example/episode.mp4"));
+    }
+
+    #[test]
+    fn googlevideo_host_check() {
+        assert!(super::is_googlevideo("https://rr4---sn-25glenez.googlevideo.com/videoplayback?itag=18"));
+        assert!(!super::is_googlevideo("https://googlevideo.com.evil.example/video.mp4"));
+        assert!(!super::is_googlevideo("https://fakegooglevideo.com/video.mp4"));
+        assert!(!super::is_googlevideo("https://googlevideo.com@evil.example/video.mp4"));
+        assert!(!super::is_googlevideo("file://googlevideo.com/video.mp4"));
+        assert!(!super::is_googlevideo("not a URL"));
+    }
+
+    /// LIVE_GOOGLEVIDEO_URL=<fresh URL> cargo test live_googlevideo_proxy -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn live_googlevideo_proxy() {
+        crate::RT.block_on(async {
+            let url = std::env::var("LIVE_GOOGLEVIDEO_URL").expect("set LIVE_GOOGLEVIDEO_URL to a fresh direct Google video URL");
+            assert!(crate::http::playable(&url, None).await, "the plugin probe must accept browser-only media");
+            let local = super::googlevideo(&url).await.unwrap();
+            let resp = crate::http::PLAIN.get(&local).header("Range", "bytes=0-1048575").send().await.unwrap();
+            assert_eq!(resp.status().as_u16(), 206);
+            let body = resp.bytes().await.unwrap();
+            assert_eq!(body.len(), 1 << 20);
+            assert_eq!(&body[4..8], b"ftyp", "mp4 header");
+        });
     }
 
     /// `cargo test live_blogger -- --ignored --nocapture`: resolves Samehadaku's

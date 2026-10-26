@@ -171,10 +171,11 @@ pub fn check_challenge(doc: &Html, label: &str) -> Result<()> {
     }
 }
 
-/// Asks for one byte; true when the host serves the file (200/206). Uses the
-/// plain client: file hosts (pixeldrain, googlevideo) don't negotiate h2 ALPN.
+/// Asks for one byte; true when the host serves the file (200/206).
+/// Google video needs the playback relay's Chrome connection; other file hosts use the plain client.
 pub async fn playable(url: &str, referer: Option<&str>) -> bool {
-    let mut rb = PLAIN.get(url).header("User-Agent", UA).header("Range", "bytes=0-0").timeout(Duration::from_secs(10));
+    let rb = if crate::proxy::is_googlevideo(url) { crate::proxy::CHROME_H1.get(url) } else { PLAIN.get(url).header("User-Agent", UA) };
+    let mut rb = rb.header("Range", "bytes=0-0").timeout(Duration::from_secs(10));
     if let Some(r) = referer {
         rb = rb.header("Referer", r);
     }

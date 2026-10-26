@@ -214,9 +214,9 @@ async fn run(id: u64, src: &str, episode_url: &str, quality: &str, path: &Path) 
     };
     let url = stream.url.clone();
     let lower = url.to_lowercase();
-    let result = if blogger::is_blogger(&url) {
+    let result = if blogger::is_blogger(&url) || proxy::is_googlevideo(&url) {
         update(id, |j| j.method = "blogger".into());
-        let direct = blogger::resolve(&url).await?;
+        let direct = if blogger::is_blogger(&url) { blogger::resolve(&url).await? } else { url.clone() };
         ranged(&Fetcher::Chrome, &direct, path, &progress).await.map(|_| path.to_owned())
     } else if proxy::is_wibufile(&url) {
         update(id, |j| j.method = "http3".into());
