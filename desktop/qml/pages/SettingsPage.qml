@@ -71,10 +71,11 @@ Item {
         { what: "Volume", keys: ["@arrow_upward", "@arrow_downward"] },
         { what: "Mute", keys: ["M"] },
         { what: "Fullscreen", keys: ["F", "/", "Double-click"] },
+        { what: "Picture in picture", keys: ["Ctrl", "+", "P"] },
         { what: "Next or previous episode", keys: ["N", "/", "P"] },
         { what: "Skip intro or outro", keys: ["S"] },
         ...(s.developerMode === "true" ? [{ what: "Show or toggle playback information", keys: ["I", "/", "Shift+I"] }] : []),
-        { what: "Leave fullscreen, then close", keys: ["Esc"] }
+        { what: "Leave PiP or fullscreen, then close", keys: ["Esc"] }
     ]
 
     function listOf(v: var): var {

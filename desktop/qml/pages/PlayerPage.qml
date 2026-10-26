@@ -479,6 +479,8 @@ FocusScope {
         slow = false;
         slowTimer.restart();
     }
+    onPhaseChanged: if (root.app.pip && (phase === "error" || phase === "ended"))
+        root.app.togglePip()
 
     Keys.onPressed: e => {
         if (e.key !== Qt.Key_I)
@@ -535,7 +537,9 @@ FocusScope {
             mpv.command(["script-binding", e.modifiers & Qt.ShiftModifier ? "stats/display-stats-toggle" : "stats/display-stats"]);
             break;
         case Qt.Key_Escape:
-            if (root.app.visibility === Window.FullScreen)
+            if (root.app.pip)
+                root.app.togglePip();
+            else if (root.app.visibility === Window.FullScreen)
                 root.app.toggleFullScreen();
             else
                 exit();
@@ -762,6 +766,13 @@ FocusScope {
             root.app.toggleFullScreen();
         }
 
+        DragHandler {
+            target: null
+            enabled: root.app.pip
+            onActiveChanged: if (active)
+                root.app.startSystemMove()
+        }
+
         Timer {
             id: clickDelay
 
@@ -837,6 +848,7 @@ FocusScope {
 
             ClippedImage {
                 Layout.alignment: Qt.AlignHCenter
+                visible: !root.app.pip
                 Layout.preferredWidth: 132
                 Layout.preferredHeight: 190
                 Layout.bottomMargin: Theme.spacing.large
@@ -1008,7 +1020,7 @@ FocusScope {
         anchors.right: parent.right
         anchors.top: parent.top
         height: 120
-        opacity: root.showControls ? 1 : 0
+        opacity: root.showControls && !root.app.pip ? 1 : 0
         visible: opacity > 0
 
         Behavior on opacity {
@@ -1090,7 +1102,7 @@ FocusScope {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         height: 140
-        opacity: root.showControls && root.started && (root.phase === "playing" || root.phase === "resolving") ? 1 : 0
+        opacity: root.showControls && !root.app.pip && root.started && (root.phase === "playing" || root.phase === "resolving") ? 1 : 0
         visible: opacity > 0
 
         Behavior on opacity {
@@ -1368,11 +1380,75 @@ FocusScope {
                 }
                 IconButton {
                     type: IconButton.Text
+                    icon: "picture_in_picture_alt"
+                    label.color: "#ffffff"
+                    onClicked: root.app.togglePip()
+                }
+                IconButton {
+                    type: IconButton.Text
                     icon: root.app.visibility === Window.FullScreen ? "fullscreen_exit" : "fullscreen"
                     label.color: "#ffffff"
                     onClicked: root.app.toggleFullScreen()
                 }
             }
+        }
+    }
+
+    Item {
+        anchors.fill: parent
+        opacity: root.app.pip && root.showControls ? 1 : 0
+        visible: opacity > 0
+
+        Behavior on opacity {
+            Anim {
+                type: Anim.DefaultEffects
+            }
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            color: Qt.alpha("#000000", 0.35)
+        }
+        MouseArea {
+            width: 16
+            height: 16
+            visible: Qt.platform.os !== "osx" // Qt has no system resize there
+            cursorShape: Qt.SizeFDiagCursor
+            onPressed: root.app.startSystemResize(Qt.TopEdge | Qt.LeftEdge)
+        }
+        RowLayout {
+            anchors.top: parent.top
+            anchors.right: parent.right
+            anchors.margins: Theme.spacing.small
+            spacing: 0
+
+            IconButton {
+                type: IconButton.Text
+                icon: "open_in_full"
+                label.color: "#ffffff"
+                onClicked: root.app.togglePip()
+            }
+            IconButton {
+                type: IconButton.Text
+                icon: "close"
+                label.color: "#ffffff"
+                onClicked: root.exit()
+            }
+        }
+        IconButton {
+            anchors.centerIn: parent
+            visible: root.started && root.phase === "playing"
+            icon: mpv.paused ? "play_arrow" : "pause"
+            iconSize: 20
+            onClicked: root.togglePause()
+        }
+        LinearProgress {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            visible: mpv.duration > 0
+            value: mpv.position / mpv.duration
+            trackColor: Qt.alpha("#ffffff", 0.25)
         }
     }
 

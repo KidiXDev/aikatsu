@@ -632,6 +632,25 @@ pub async fn upcoming(ids: &[i64]) -> Result<Vec<Upcoming>> {
     Ok(out)
 }
 
+/// A week of AniList's airing calendar from `from` (unix seconds), oldest first.
+pub async fn schedule(from: i64) -> Result<Vec<Airing>> {
+    let query = format!(
+        "query ($from: Int, $to: Int, $page: Int) {{ Page(perPage: 50, page: $page) {{ pageInfo {{ hasNextPage }}
+            airingSchedules(airingAt_greater: $from, airingAt_lesser: $to, sort: TIME) {{ episode airingAt media {{ {LIST_FIELDS} }} }} }} }}"
+    );
+    let mut out = Vec::new();
+    for page in 1..=10 {
+        let v = anilist(&query, json!({ "from": from - 1, "to": from + 7 * 86400, "page": page })).await?;
+        anyhow::ensure!(v["data"].is_object(), "AniList returned no data: {}", v["errors"]);
+        let p = &v["data"]["Page"];
+        out.extend(airings(&p["airingSchedules"]));
+        if p["pageInfo"]["hasNextPage"] != true {
+            break;
+        }
+    }
+    Ok(out)
+}
+
 pub async fn search(query: &str) -> Result<Vec<Meta>> {
     let query = query.trim();
     if query.is_empty() {
@@ -645,14 +664,18 @@ pub async fn search(query: &str) -> Result<Vec<Meta>> {
 
 fn parse_discover(d: &Value) -> Discover {
     let media = |page: &Value| -> Vec<Meta> { page["media"].as_array().into_iter().flatten().filter_map(parse_media).collect() };
-    let mut schedule: Vec<Airing> = ["aired", "next"]
-        .iter()
-        .flat_map(|k| d[k]["airingSchedules"].as_array().into_iter().flatten())
-        .filter(|s| s["media"]["isAdult"].as_bool() != Some(true))
-        .filter_map(|s| Some(Airing { episode: s["episode"].as_i64()?, airing_at: s["airingAt"].as_i64()?, anime: parse_media(&s["media"])? }))
-        .collect();
+    let mut schedule: Vec<Airing> = ["aired", "next"].iter().flat_map(|k| airings(&d[k]["airingSchedules"])).collect();
     schedule.sort_by_key(|a| a.airing_at);
     Discover { schedule, trending: media(&d["trending"]), coming_soon: media(&d["comingSoon"]) }
+}
+
+/// The airing calendar has no adult filter, so it's done here.
+fn airings(list: &Value) -> impl Iterator<Item = Airing> + '_ {
+    list.as_array()
+        .into_iter()
+        .flatten()
+        .filter(|s| s["media"]["isAdult"].as_bool() != Some(true))
+        .filter_map(|s| Some(Airing { episode: s["episode"].as_i64()?, airing_at: s["airingAt"].as_i64()?, anime: parse_media(&s["media"])? }))
 }
 
 async fn jikan(path: &str) -> Result<Value> {
@@ -944,6 +967,18 @@ mod tests {
             println!("  ep {} at {}: {}", a.episode, a.airing_at, a.anime.title());
         }
         assert!(!d.schedule.is_empty() && !d.trending.is_empty() && !d.coming_soon.is_empty());
+    }
+
+    /// `cargo test live_schedule -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn live_schedule() {
+        let from = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64 - 3 * 86400;
+        let s = schedule(from).await.unwrap();
+        println!("{} airings this week", s.len());
+        assert!(!s.is_empty());
+        assert!(s.windows(2).all(|w| w[0].airing_at <= w[1].airing_at));
+        assert!(s.iter().all(|a| a.airing_at >= from && a.airing_at < from + 7 * 86400));
     }
 
     /// `cargo test live_anilist -- --ignored --nocapture`

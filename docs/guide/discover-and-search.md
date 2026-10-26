@@ -7,7 +7,7 @@ Search finds titles on your installed sources. Home shows your watch history and
 - **Continue** shows unfinished shows and where you left off.
 - **Recent** lets you revisit what you've watched, including finished shows.
 - **Out today** shows recently aired episodes.
-- **Up next** shows upcoming airings.
+- **Up next** shows upcoming airings. **Schedule** opens the whole week's airings by day. **My shows** narrows it to what you're watching or plan to watch; those open straight to the series.
 - **Trending now** and the upcoming-anime shelf help you find something new.
 
 Air dates follow AniList's schedule. Your source may upload an episode later.

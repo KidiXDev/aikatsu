@@ -31,6 +31,12 @@ With a subtitle track selected, the audio and subtitles menu has two more option
 
 Subtitles that are part of the video itself can't be resized or retimed.
 
+## Picture in picture
+
+On desktop, press **Ctrl+P** or the picture-in-picture button to shrink the player into a small window that stays on top of other apps. Drag the video to move it, and the top-left corner to resize it (not on macOS). Press **Ctrl+P** or **Esc**, or double-click, to return to the full window.
+
+On Wayland, your compositor decides the window's size, position, and whether it stays on top. Use its float and pin rules if it doesn't.
+
 ## Next episode
 
 Enable **Autoplay next episode** to continue after a short countdown at the end of each episode. Cancel the countdown to stop. You can also use the previous and next controls when those episodes are available.
@@ -45,10 +51,11 @@ Enable **Autoplay next episode** to continue after a short countdown at the end 
 | Up / Down | Change volume |
 | M | Mute or unmute |
 | F, or double-click the video | Toggle fullscreen |
+| Ctrl+P | Toggle picture in picture |
 | N / P | Next or previous episode |
 | S | Skip the current opening or ending segment |
 | Z / X | Show subtitles 0.1 seconds earlier or later |
-| Esc | Leave fullscreen first, then close the player |
+| Esc | Leave picture in picture or fullscreen first, then close the player |
 | I | Show playback statistics briefly (Developer Mode) |
 | Shift+I | Toggle playback statistics (Developer Mode) |
 | Ctrl+L | Open the app log (Developer Mode) |
