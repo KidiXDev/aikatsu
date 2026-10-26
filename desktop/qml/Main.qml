@@ -14,6 +14,9 @@ ApplicationWindow {
     readonly property bool playing: playerLoader.active
     property bool developerMode: Api.setting("developerMode") === "true"
     property int windowedVisibility: Window.Windowed
+    property bool pip // picture in picture: the player shrunk to a small window on top
+    property rect normalGeometry // kept by WindowState (cpp/windowstate.h), which ignores PiP
+    property rect pipGeometry
     property string closeAction: Api.setting("closeAction")
     property bool airingAlerts: Api.setting("airingAlerts") === "true"
     property var upcoming: [] // upcomingEpisodes: watching and planned shows' next airings
@@ -27,8 +30,10 @@ ApplicationWindow {
 
     onTabChanged: openedTabs |= 1 << tab
     onVisibilityChanged: {
-        if (win.visibility === Window.Windowed || win.visibility === Window.Maximized)
+        if (!pip && (win.visibility === Window.Windowed || win.visibility === Window.Maximized))
             windowedVisibility = win.visibility;
+        else if (pip && win.visibility === Window.Windowed && !(flags & Qt.WindowStaysOnTopHint))
+            shrinkToPip();
     }
 
     // Bumped whenever watch history changes so pages can refresh.
@@ -158,6 +163,8 @@ ApplicationWindow {
     }
 
     function closePlayer(): void {
+        if (pip)
+            togglePip();
         if (visibility === Window.FullScreen)
             toggleFullScreen();
         playerLoader.active = false;
@@ -191,7 +198,41 @@ ApplicationWindow {
     }
 
     function toggleFullScreen(): void {
-        visibility = visibility === Window.FullScreen ? windowedVisibility : Window.FullScreen;
+        if (pip)
+            togglePip();
+        else
+            visibility = visibility === Window.FullScreen ? windowedVisibility : Window.FullScreen;
+    }
+
+    // Wayland compositors decide the size, position and stacking themselves, so there it's only frameless.
+    function togglePip(): void {
+        if (pip) {
+            if (flags & Qt.WindowStaysOnTopHint)
+                pipGeometry = Qt.rect(x, y, width, height);
+            pip = false;
+            flags = Qt.Window;
+            x = normalGeometry.x;
+            y = normalGeometry.y;
+            width = normalGeometry.width;
+            height = normalGeometry.height;
+            if (windowedVisibility === Window.Maximized)
+                showMaximized();
+        } else if (playing) {
+            pip = true;
+            // macOS animates leaving fullscreen and maximized, and drops a resize made meanwhile, so wait for onVisibilityChanged.
+            if (visibility === Window.Windowed)
+                shrinkToPip();
+            else
+                showNormal();
+        }
+    }
+
+    function shrinkToPip(): void {
+        flags = Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint;
+        width = pipGeometry.width || 480;
+        height = pipGeometry.height || 270;
+        x = pipGeometry.width ? pipGeometry.x : Screen.virtualX + Screen.width - width - 24;
+        y = pipGeometry.width ? pipGeometry.y : Screen.virtualY + Screen.height - height - 72;
     }
 
     function openLog(): void {
@@ -223,8 +264,8 @@ ApplicationWindow {
 
     width: 1360
     height: 840
-    minimumWidth: 960
-    minimumHeight: 600
+    minimumWidth: pip ? 240 : 960
+    minimumHeight: pip ? 135 : 600
     visible: false // shown after the saved window state is restored
     title: "Aikatsu"
     color: Theme.palette.surface
@@ -568,6 +609,12 @@ ApplicationWindow {
         sequence: "Ctrl+L"
         enabled: win.developerMode
         onActivated: logs.visible ? logs.close() : logs.open()
+    }
+
+    Shortcut {
+        sequence: "Ctrl+P"
+        enabled: win.playing
+        onActivated: win.togglePip()
     }
 
     Snackbar {

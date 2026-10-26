@@ -12,9 +12,12 @@ class WindowState : public QObject {
     QRect normal;
     bool maximized;
 
+    bool pip() const { return window->property("pip").toBool(); }
+
     void rememberGeometry() {
-        if (window->windowState() == Qt::WindowNoState)
+        if (window->windowState() == Qt::WindowNoState && !pip())
             normal = window->geometry();
+        window->setProperty("normalGeometry", QRectF(normal));
     }
 
 public:
@@ -35,13 +38,14 @@ public:
         } else {
             normal = window->geometry();
         }
+        window->setProperty("normalGeometry", QRectF(normal));
         // Wait for maximize/fullscreen transitions to settle before recording bounds.
         connect(window, &QWindow::xChanged, this, &WindowState::rememberGeometry, Qt::QueuedConnection);
         connect(window, &QWindow::yChanged, this, &WindowState::rememberGeometry, Qt::QueuedConnection);
         connect(window, &QWindow::widthChanged, this, &WindowState::rememberGeometry, Qt::QueuedConnection);
         connect(window, &QWindow::heightChanged, this, &WindowState::rememberGeometry, Qt::QueuedConnection);
         connect(window, &QWindow::windowStateChanged, this, [this](Qt::WindowState state) {
-            if (state == Qt::WindowNoState || state == Qt::WindowMaximized)
+            if (!pip() && (state == Qt::WindowNoState || state == Qt::WindowMaximized))
                 maximized = state == Qt::WindowMaximized;
         });
         connect(qGuiApp, &QCoreApplication::aboutToQuit, this, &WindowState::save);
