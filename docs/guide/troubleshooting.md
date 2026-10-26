@@ -27,6 +27,8 @@ A **checksum mismatch** can happen when an index and its script haven't both rea
 
 Try another quality or source. If an episode worked earlier, its stream URL may have expired. Reopen it so the plugin can resolve a fresh one.
 
+Blogger and direct Google video streams use a local relay because their hosts require browser-like connections. If a plugin finds a video that plays on the site but the app rejects it, check for an app update as well as a plugin update.
+
 A 403, challenge, or blocked-request message usually points to the source or video host refusing the request. Metadata loading successfully doesn't mean that host is reachable.
 
 ## Video stutters or the phone gets hot

@@ -224,13 +224,15 @@ pub(crate) async fn enrich(id: i64, name: &str, url: &str, refresh: bool) -> Res
     .await
 }
 
-/// Source stream → something mpv can open. Blogger and Wibufile go through
+/// Source stream → something mpv can open. Blogger/Google video and Wibufile go through
 /// the local proxy (Chrome TLS / HTTP/3); everything else plays directly.
 async fn resolve(src: &str, episode_url: &str, quality: &str) -> Result<Value> {
     let stream = sources::stream(src, episode_url, quality).await?;
     let mut url = stream.url.clone();
     if crate::blogger::is_blogger(&url) {
         url = proxy::blogger(&url).await?;
+    } else if proxy::is_googlevideo(&url) {
+        url = proxy::googlevideo(&url).await?;
     } else if proxy::is_wibufile(&url) {
         match proxy::wibufile(&url, &stream.referer).await {
             Ok(p) => url = p,

@@ -61,7 +61,7 @@ let responses = fetch_all([
 
 ### `playable(url)` and `playable(url, referer)`
 
-Request one byte from the video host. Return `true` for a 200 or 206 response and `false` otherwise. This checks availability without testing video decoding.
+Request one byte from the video host. Return `true` for a 200 or 206 response and `false` otherwise. This checks availability without testing video decoding. Google video URLs use the same Chrome connection as the playback relay; other file hosts use the plain client.
 
 ## HTML and text
 
