@@ -28,6 +28,8 @@ class SearchPageState extends State<SearchPage> {
   /// Source key → {name, state: loading|ok|error, count, error}.
   Map<String, Map<String, dynamic>> _status = {};
   String _filter = ''; // source key or ''
+  List<String> _recent = Api.setting('recentSearches').split('\n').where((q) => q.isNotEmpty).toList();
+  List<dynamic> _trending = [];
 
   List<dynamic> get _shown => _filter.isEmpty ? _results : _results.where((r) => r['source'] == _filter).toList();
   List<Map<String, dynamic>> get _failures => _status.values.where((s) => s['state'] == 'error').toList();
@@ -49,6 +51,9 @@ class SearchPageState extends State<SearchPage> {
         }
       });
     });
+    Api.call('discover').then((d) {
+      if (mounted) setState(() => _trending = d['trending']);
+    }, onError: (_) {});
   }
 
   @override
@@ -61,9 +66,15 @@ class SearchPageState extends State<SearchPage> {
   /// From Home's info sheets: fills the field and searches every source.
   void search(String q) => _search(q);
 
+  void _setRecent(List<String> recent) {
+    setState(() => _recent = recent);
+    Api.setSetting('recentSearches', recent.join('\n'));
+  }
+
   Future<void> _search(String q) async {
     q = q.trim();
     if (q.length < 2) return;
+    _setRecent([q, ..._recent.where((r) => r.toLowerCase() != q.toLowerCase())].take(10).toList());
     final request = ++_request;
     _field.text = q;
     final disabled = Api.setting('disabledSources').split(',').map((x) => x.trim());
@@ -239,6 +250,7 @@ class SearchPageState extends State<SearchPage> {
         ),
       );
     }
+    if (_query.isEmpty && (_recent.isNotEmpty || _trending.isNotEmpty)) return _idle();
     return SingleChildScrollView(
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.only(bottom: 110),
@@ -269,6 +281,56 @@ class SearchPageState extends State<SearchPage> {
             ),
         ],
       ),
+    );
+  }
+
+  Widget _idle() {
+    String score(Map<String, dynamic> m) => toInt(m['score']) > 0 ? '★ ${(toInt(m['score']) / 10).toStringAsFixed(1)}' : '';
+    return CustomScrollView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      slivers: [
+        if (_recent.isNotEmpty) ...[
+          sectionHeader(
+            context,
+            'Recent searches',
+            Icons.history_rounded,
+            action: TextButton(onPressed: () => _setRecent([]), child: const Text('Clear')),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            sliver: SliverToBoxAdapter(
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final q in _recent)
+                    ActionChip(avatar: const Icon(Icons.history_rounded, size: 16), label: Text(q), onPressed: () => _search(q)),
+                ],
+              ),
+            ),
+          ),
+        ],
+        if (_trending.isNotEmpty) ...[
+          sectionHeader(context, 'Trending now', Icons.local_fire_department_rounded),
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            sliver: SliverGrid.builder(
+              gridDelegate: posterGrid(),
+              itemCount: _trending.length,
+              itemBuilder: (context, i) {
+                final m = _trending[i] as Map<String, dynamic>;
+                return PosterCard(
+                  title: text([m['title_english'], m['title_romaji']]),
+                  image: text([m['cover']]),
+                  badge: score(m),
+                  onTap: () => _search(text([m['title_romaji'], m['title_english']])),
+                );
+              },
+            ),
+          ),
+        ],
+        const SliverToBoxAdapter(child: SizedBox(height: 110)),
+      ],
     );
   }
 }

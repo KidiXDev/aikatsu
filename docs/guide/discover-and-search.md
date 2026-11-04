@@ -20,6 +20,8 @@ On desktop, keep the pointer on a discovery card for a moment to preview its tra
 
 Enter at least two characters and submit. Aikatsu searches all enabled sources at once and shows results as they arrive.
 
+Before you search, the page shows your recent searches and what's trending on AniList. Select one to search for it. **Clear** forgets your recent searches, which stay on this device.
+
 The source filters show which sites are still loading, how many results they returned, and whether something failed. Use a filter to focus on one source. On mobile, tapping a failed source can show its error.
 
 Try another spelling, a shorter title, or the Japanese title if a search comes back empty. The app turns hyphens and underscores into spaces before sending a query to a source.
