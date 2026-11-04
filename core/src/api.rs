@@ -45,6 +45,7 @@ pub const SETTING_DEFAULTS: &[(&str, &str)] = &[
     ("closeAction", "quit"),
     (crate::lan::SETTING, "false"),
     ("onboarded", "false"),
+    ("recentSearches", ""),
 ];
 
 pub fn setting(key: &str) -> String {

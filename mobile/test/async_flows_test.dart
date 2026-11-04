@@ -15,19 +15,22 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 class _Backend extends Fake implements RustLibApi {
   final events = StreamController<Event>();
   final searches = <(int, Completer<String>)>[];
+  final settings = <String, String>{'disabledSources': ''};
 
   @override
   Stream<Event> crateApiInit({required String dataDir, required String videosDir}) => events.stream;
 
   @override
   String crateApiGet({required String method, required String args}) => jsonEncode(switch (method) {
-    'settings' => {'disabledSources': ''},
+    'settings' => settings,
+    'setSetting' => settings[jsonDecode(args)['key']] = jsonDecode(args)['value'],
     'sources' => [{'key': 'test/source', 'name': 'Test source'}],
     _ => throw StateError(method),
   });
 
   @override
   Future<String> crateApiCall({required String method, required String args}) {
+    if (method == 'discover') return Future.value('{"trending": []}');
     if (method != 'search') throw StateError(method);
     final result = Completer<String>();
     searches.add((jsonDecode(args)['requestId'] as int, result));
@@ -92,6 +95,7 @@ void main() {
     backend.result(first.$1, 'Very late Naruto');
     await tester.pump();
     expect(find.text('Very late Naruto'), findsNothing);
+    expect(backend.settings['recentSearches'], 'Naruto\nBleach');
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });

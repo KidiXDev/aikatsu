@@ -22,6 +22,19 @@ Item {
     readonly property var shown: filter ? results.filter(r => r.source === filter) : results
     readonly property var failures: Object.values(status).filter(s => s.state === "error")
     readonly property bool allFailed: !searching && failures.length > 0 && failures.length === Object.keys(status).length
+    property var recent: Api.setting("recentSearches").split("\n").filter(x => x)
+    property var trending: []
+    readonly property bool idle: !query && enabledSources.length > 0 && (recent.length > 0 || trending.length > 0)
+
+    function loadTrending(): void {
+        if (trending.length === 0)
+            Api.call("discover", {}, d => root.trending = d.trending);
+    }
+
+    function setRecent(list: var): void {
+        recent = list;
+        Api.setSetting("recentSearches", list.join("\n"));
+    }
 
     function refreshSources(): void {
         sources = Api.get("sources");
@@ -33,6 +46,8 @@ Item {
         if (q.length < 2)
             return;
         refreshSources();
+        setRecent([q].concat(recent.filter(r => r.toLowerCase() !== q.toLowerCase())).slice(0, 10));
+        field.text = q;
         const request = ++requestId;
         query = q;
         results = [];
@@ -67,6 +82,7 @@ Item {
     // Dev aid: `--search <q> [--open]` searches on launch and opens the first hit.
     readonly property var devArgs: Qt.application.arguments
     Component.onCompleted: {
+        loadTrending();
         const i = devArgs.indexOf("--search");
         if (i > 0) {
             root.app.tab = 1;
@@ -75,6 +91,7 @@ Item {
     }
     onVisibleChanged: if (visible) {
         refreshSources();
+        loadTrending();
         field.forceActiveFocus();
     }
     onResultsChanged: if (results.length > 0 && devArgs.includes("--open") && !opened) {
@@ -87,7 +104,6 @@ Item {
         target: root.app
 
         function onSearchRequested(q: string): void {
-            field.text = q;
             root.search(q);
         }
     }
@@ -201,6 +217,11 @@ Item {
                     icon: "close"
                     onClicked: {
                         field.text = "";
+                        root.requestId++;
+                        root.query = "";
+                        root.results = [];
+                        root.status = {};
+                        root.searching = false;
                         field.forceActiveFocus();
                     }
                 }
@@ -309,10 +330,85 @@ Item {
             }
         }
 
+        GridView {
+            id: idleGrid
+
+            readonly property int columns: Math.max(2, Math.floor(width / 176))
+
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            visible: root.idle
+            clip: true
+            cellWidth: width / columns
+            cellHeight: (cellWidth - Theme.spacing.large) * 1.45 + 80
+            model: root.trending
+            ScrollBar.vertical: StyledScrollBar {}
+
+            header: ColumnLayout {
+                width: idleGrid.width
+                spacing: Theme.spacing.medium
+
+                Heading {
+                    visible: root.recent.length > 0
+                    icon: "history"
+                    title: "Recent searches"
+
+                    TextButton {
+                        type: TextButton.Text
+                        text: "Clear"
+                        onClicked: root.setRecent([])
+                    }
+                }
+                Flow {
+                    Layout.fillWidth: true
+                    Layout.bottomMargin: Theme.spacing.large
+                    visible: root.recent.length > 0
+                    spacing: Theme.spacing.small
+
+                    Repeater {
+                        model: root.recent
+
+                        Chip {
+                            required property string modelData
+
+                            text: modelData
+                            icon: "history"
+                            clickable: true
+                            onClicked: root.search(modelData)
+                        }
+                    }
+                }
+                Heading {
+                    Layout.bottomMargin: Theme.spacing.small
+                    visible: root.trending.length > 0
+                    icon: "local_fire_department"
+                    title: "Trending now"
+                }
+            }
+
+            delegate: Item {
+                id: trend
+
+                required property var modelData
+
+                width: idleGrid.cellWidth
+                height: idleGrid.cellHeight
+
+                PosterCard {
+                    anchors.fill: parent
+                    anchors.margins: Theme.spacing.large / 2
+                    title: trend.modelData.title_english || trend.modelData.title_romaji
+                    image: trend.modelData.cover
+                    badge: trend.modelData.score > 0 ? `★ ${(trend.modelData.score / 10).toFixed(1)}` : ""
+                    onClicked: root.search(trend.modelData.title_romaji || trend.modelData.title_english)
+                }
+            }
+        }
+
         Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            visible: root.shown.length === 0
+            visible: root.shown.length === 0 && !root.idle
 
             EmptyState {
                 anchors.centerIn: parent
@@ -347,6 +443,36 @@ Item {
                 visible: root.searching
                 size: 56
             }
+        }
+    }
+
+    component Heading: RowLayout {
+        id: heading
+
+        property string icon
+        property string title
+
+        Layout.fillWidth: true
+        spacing: Theme.spacing.medium
+
+        StyledRect {
+            implicitWidth: 34
+            implicitHeight: 34
+            radius: Theme.rounding.medium
+            color: Theme.palette.secondaryContainer
+
+            MaterialIcon {
+                anchors.centerIn: parent
+                text: heading.icon
+                fill: 1
+                size: 16
+                color: Theme.palette.onSecondaryContainer
+            }
+        }
+        StyledText {
+            Layout.fillWidth: true
+            text: heading.title
+            font: Theme.font.title.large
         }
     }
 }
